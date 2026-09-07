@@ -1,30 +1,51 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import Modal from '@/components/Modal';
 import Spinner from '@/components/Spinner';
 import EmptyState from '@/components/EmptyState';
-import { useKycQueue } from '@/lib/hooks';
 import { timeAgo } from '@/lib/format';
-import type { KycQueueItem, KycStatus } from '@/lib/types';
 import { FileCheck, Clock, CheckCircle2, XCircle, IdCard, User, ShieldCheck, FileSearch } from 'lucide-react';
 
-const statusBadge: Record<KycStatus, { tone: 'amber' | 'emerald' | 'red'; label: string }> = {
+const statusBadge: Record<string, { tone: 'amber' | 'emerald' | 'red'; label: string }> = {
   pending: { tone: 'amber', label: 'Pending' },
   approved: { tone: 'emerald', label: 'Approved' },
   rejected: { tone: 'red', label: 'Rejected' },
 };
 
-const licenseTone = (s: string): 'emerald' | 'amber' | 'red' | 'slate' =>
-  s === 'valid' ? 'emerald' : s === 'pending' ? 'amber' : s === 'rejected' || s === 'expired' ? 'red' : 'slate';
-
 export default function KycPage() {
-  const { items, loading, updateStatus } = useKycQueue();
-  const [filter, setFilter] = useState<'all' | KycStatus>('pending');
-  const [active, setActive] = useState<KycQueueItem | null>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [active, setActive] = useState<any | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const fetchLivePendingKYC = async () => {
+    setLoading(true);
+    try {
+      // Pull only drivers and merchants for KYC
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('role', ['driver', 'merchant'])
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setItems(data || []);
+    } catch (err) {
+      console.error("Error fetching live KYC queue:", err);
+      setErr("Failed to load live data.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLivePendingKYC();
+  }, []);
 
   const filtered = useMemo(
     () => (filter === 'all' ? items : items.filter((i) => i.kyc_status === filter)),
@@ -37,14 +58,21 @@ export default function KycPage() {
     rejected: items.filter((i) => i.kyc_status === 'rejected').length,
   }), [items]);
 
-  const handleAction = async (id: string, status: KycStatus) => {
+  const handleAction = async (id: string, status: string) => {
     setErr(null);
     setBusyId(id);
     try {
-      await updateStatus(id, status);
-      setActive((prev) => (prev && prev.id === id ? { ...prev, kyc_status: status } : prev));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to update status');
+      const { error } = await supabase
+        .from('profiles')
+        .update({ kyc_status: status })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setActive((prev: any) => (prev && prev.id === id ? { ...prev, kyc_status: status } : prev));
+      fetchLivePendingKYC();
+    } catch (e: any) {
+      setErr(e.message || 'Failed to update status');
     } finally {
       setBusyId(null);
     }
@@ -100,23 +128,23 @@ export default function KycPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((item) => {
-                  const sb = statusBadge[item.kyc_status];
+                  const sb = statusBadge[item.kyc_status] || statusBadge['pending'];
                   return (
                     <tr key={item.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-600 text-xs font-semibold">
-                            {item.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                            {item.full_name ? item.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : 'U'}
                           </div>
                           <div>
-                            <p className="font-medium text-slate-900">{item.full_name}</p>
-                            <p className="text-xs text-slate-400">{item.phone_number || '—'}</p>
+                            <p className="font-medium text-slate-900">{item.full_name || 'No Name'}</p>
+                            <p className="text-xs text-slate-400">{item.email || '—'}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3 capitalize text-slate-600">{item.role.replace('_', ' ')}</td>
+                      <td className="px-5 py-3 capitalize text-slate-600">{item.role ? item.role.replace('_', ' ') : '—'}</td>
                       <td className="px-5 py-3"><Badge tone={sb.tone}>{sb.label}</Badge></td>
-                      <td className="px-5 py-3 text-slate-500">{timeAgo(item.created_at)}</td>
+                      <td className="px-5 py-3 text-slate-500">{item.created_at ? timeAgo(item.created_at) : '—'}</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-2">
                           <button
@@ -160,41 +188,19 @@ export default function KycPage() {
           <div className="space-y-5">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
-                <p className="font-semibold text-slate-900 text-lg">{active.full_name}</p>
-                <p className="text-sm text-slate-500 capitalize">{active.role.replace('_', ' ')} · {active.phone_number || 'No phone'}</p>
+                <p className="font-semibold text-slate-900 text-lg">{active.full_name || 'No Name'}</p>
+                <p className="text-sm text-slate-500 capitalize">
+                  {active.role ? active.role.replace('_', ' ') : 'Unknown'} · {active.email || 'No email'}
+                </p>
               </div>
-              <Badge tone={statusBadge[active.kyc_status].tone}>{statusBadge[active.kyc_status].label}</Badge>
+              <Badge tone={statusBadge[active.kyc_status]?.tone || 'amber'}>
+                {statusBadge[active.kyc_status]?.label || 'Pending'}
+              </Badge>
             </div>
 
-            {active.driver && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">KYC Progress</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
-                      <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${active.driver.kyc_progress}%` }} />
-                    </div>
-                    <span className="text-xs font-medium text-slate-700">{active.driver.kyc_progress}%</span>
-                  </div>
-                </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">License</p>
-                  <div className="mt-1"><Badge tone={licenseTone(active.driver.license_status)}>{active.driver.license_status}</Badge></div>
-                </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Insurance</p>
-                  <div className="mt-1"><Badge tone={licenseTone(active.driver.insurance_status)}>{active.driver.insurance_status}</Badge></div>
-                </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Inspection</p>
-                  <div className="mt-1"><Badge tone={licenseTone(active.driver.inspection_status)}>{active.driver.inspection_status}</Badge></div>
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <DocCard label="ID Card" url={active.id_card_photo} icon={IdCard} />
-              <DocCard label="Selfie" url={active.selfie_url} icon={User} />
+              <DocCard label="ID Card Document" url={active.id_card_url || null} icon={IdCard} />
+              <DocCard label="Selfie Verification" url={active.selfie_url || null} icon={User} />
             </div>
 
             <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">

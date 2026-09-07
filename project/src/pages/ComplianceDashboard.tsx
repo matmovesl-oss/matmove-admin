@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Search, Bell, Clock, TrendingUp, Banknote, AlertOctagon, FileCheck, Wallet, Users, RefreshCw } from 'lucide-react';
 
-export function ComplianceDashboard() {
+export default function ComplianceDashboard() {
   const [stats, setStats] = useState({
     pendingKyc: 0,
     approvedKyc: 0,
@@ -18,7 +18,6 @@ export function ComplianceDashboard() {
 
   const fetchLiveDashboardData = async () => {
     setLoading(true);
-
     try {
       // 1. Fetch KYC Counts
       const { count: pendingKycCount } = await supabase
@@ -35,7 +34,7 @@ export function ComplianceDashboard() {
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
-      // 2. Fetch System Balances (Sum from wallets table if present, fallback to profiles query)
+      // 2. Fetch System Balances 
       const { data: walletsData } = await supabase.from('wallets').select('balance');
       const systemBalanceSum = walletsData 
         ? walletsData.reduce((acc, w) => acc + (Number(w.balance) || 0), 0)
@@ -54,7 +53,7 @@ export function ComplianceDashboard() {
         : 0;
 
       // 4. Fetch Fraud Logs
-      const { data: fraudData, count: highRiskCnt } = await supabase
+      const { data: fraudData } = await supabase
         .from('fraud_logs')
         .select('*')
         .order('created_at', { ascending: false });
@@ -114,7 +113,7 @@ export function ComplianceDashboard() {
 
       {/* Main Content Dashboard */}
       <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
-        
+
         {/* Primary Metrics Grid */}
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
