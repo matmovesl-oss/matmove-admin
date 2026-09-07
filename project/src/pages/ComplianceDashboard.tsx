@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Search, Bell, Clock, TrendingUp, Banknote, AlertOctagon, FileCheck, Wallet, Users, RefreshCw } from 'lucide-react';
 
-export default function ComplianceDashboard() {
+export function ComplianceDashboard() {
   const [stats, setStats] = useState({
     pendingKyc: 0,
     approvedKyc: 0,

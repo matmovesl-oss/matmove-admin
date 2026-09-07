@@ -15,7 +15,7 @@ const statusBadge: Record<string, { tone: 'amber' | 'emerald' | 'red'; label: st
   rejected: { tone: 'red', label: 'Rejected' },
 };
 
-export default function KycPage() {
+export function KycPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
