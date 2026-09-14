@@ -140,84 +140,50 @@ export default function KycPage() {
 
   const [selected, setSelected] = useState<KycSubmission | null>(null);
 
-  const [decision, setDecision] =
-    useState<KycDecision>('approved');
-
+  const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
 
-  const loadSubmissions = async () => {
+  // Added silent flag to prevent UI flashing during approvals
+  const loadSubmissions = async (silent = false) => {
     if (!supabase) {
       setError('Supabase is not configured.');
-      setLoading(false);
+      if (!silent) setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
 
     try {
+      // Pull directly from the profiles table where onboarding data lives
       const { data, error: queryError } = await supabase
-        .from('kyc_submissions')
-        .select(`
-          id,
-          profile_id,
-          target_role,
-          status,
-          rejection_reason,
-          submitted_at,
-          reviewed_at,
-          reviewer_id,
-          created_at,
-          profile:profiles (
-            id,
-            first_name,
-            last_name,
-            full_name,
-            phone,
-            phone_number,
-            email,
-            date_of_birth,
-            nationality,
-            country,
-            residential_address,
-            city,
-            address,
-            kyc_status,
-            role,
-            vehicle_type,
-            plate_number,
-            driver_license_no,
-            business_name,
-            business_type,
-            tax_id,
-            id_card_url,
-            selfie_url,
-            license_doc_url,
-            business_doc_url,
-            created_at,
-            updated_at
-          )
-        `)
-        .order('created_at', { ascending: false });
+        .from('profiles')
+        .select('*')
+        .in('role', ['driver', 'merchant'])
+        .order('updated_at', { ascending: false });
 
       if (queryError) {
         throw queryError;
       }
 
-      const normalized = (data ?? []).map((item: any) => ({
-        ...item,
-        profile: Array.isArray(item.profile)
-          ? item.profile[0] ?? null
-          : item.profile ?? null,
+      // Map profiles to match your KycSubmission UI state exactly
+      const normalized = (data ?? []).map((profile: any) => ({
+        id: profile.id,
+        profile_id: profile.id,
+        target_role: profile.role,
+        status: profile.kyc_status || 'pending',
+        rejection_reason: null, 
+        submitted_at: profile.updated_at || profile.created_at,
+        reviewed_at: null,
+        reviewer_id: null,
+        created_at: profile.created_at,
+        profile: profile
       }));
 
       setSubmissions(normalized);
     } catch (err: any) {
       console.error('KYC load error:', err);
-      setError(
-        err?.message ||
-          'Unable to load KYC submissions.'
-      );
+      setError(err?.message || 'Unable to load KYC submissions.');
     } finally {
       setLoading(false);
     }
@@ -329,29 +295,20 @@ export default function KycPage() {
     setError(null);
 
     try {
-      const { data, error: rpcError } =
-        await supabase.rpc(
-          'review_kyc_submission',
-          {
-            p_submission_id: selected.id,
-            p_decision: decision,
-            p_rejection_reason:
-              reason.trim() || null,
-          }
-        );
+      // Direct update to the live profiles table
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ kyc_status: decision })
+        .eq('id', selected.profile_id);
 
-      if (rpcError) {
-        throw rpcError;
+      if (updateError) {
+        throw updateError;
       }
 
-      console.log(
-        'KYC review completed:',
-        data
-      );
-
       closeReview();
-
-      await loadSubmissions();
+      
+      // Load silently to prevent the table from flashing
+      await loadSubmissions(true);
     } catch (err: any) {
       console.error(
         'KYC review error:',
@@ -516,7 +473,7 @@ export default function KycPage() {
 
           <button
             type="button"
-            onClick={loadSubmissions}
+            onClick={() => loadSubmissions(false)}
             disabled={loading}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
