@@ -1,255 +1,1116 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import AdminLayout from '@/components/AdminLayout';
-import StatCard from '@/components/StatCard';
-import Badge from '@/components/Badge';
-import Modal from '@/components/Modal';
-import Spinner from '@/components/Spinner';
-import EmptyState from '@/components/EmptyState';
-import { timeAgo } from '@/lib/format';
-import { FileCheck, Clock, CheckCircle2, XCircle, IdCard, User, ShieldCheck, FileSearch } from 'lucide-react';
 
-const statusBadge: Record<string, { tone: 'amber' | 'emerald' | 'red'; label: string }> = {
-  pending: { tone: 'amber', label: 'Pending' },
-  approved: { tone: 'emerald', label: 'Approved' },
-  rejected: { tone: 'red', label: 'Rejected' },
+type KycDecision =
+  | 'approved'
+  | 'rejected'
+  | 'resubmission_required';
+
+type KycStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'resubmission_required';
+
+type TargetRole =
+  | 'rider'
+  | 'driver'
+  | 'merchant';
+
+type Profile = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  phone: string | null;
+  phone_number: string | null;
+  email: string | null;
+  date_of_birth: string | null;
+  nationality: string | null;
+  country: string | null;
+  residential_address: string | null;
+  city: string | null;
+  address: string | null;
+  kyc_status: string | null;
+  role: string | null;
+
+  vehicle_type: string | null;
+  plate_number: string | null;
+  driver_license_no: string | null;
+
+  business_name: string | null;
+  business_type: string | null;
+  tax_id: string | null;
+
+  id_card_url: string | null;
+  selfie_url: string | null;
+  license_doc_url: string | null;
+  business_doc_url: string | null;
+
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-export function KycPage() {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
-  const [active, setActive] = useState<any | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+type KycSubmission = {
+  id: string;
+  profile_id: string | null;
+  target_role: TargetRole | null;
+  status: KycStatus | null;
+  rejection_reason: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewer_id: string | null;
+  created_at: string | null;
 
-  const fetchLivePendingKYC = async () => {
+  profile: Profile | null;
+};
+
+const statusLabel = (status: KycStatus | null) => {
+  switch (status) {
+    case 'approved':
+      return 'Approved';
+    case 'rejected':
+      return 'Rejected';
+    case 'resubmission_required':
+      return 'Resubmission Required';
+    case 'pending':
+    default:
+      return 'Pending';
+  }
+};
+
+const roleLabel = (role: TargetRole | null) => {
+  switch (role) {
+    case 'driver':
+      return 'Driver';
+    case 'merchant':
+      return 'Merchant';
+    case 'rider':
+      return 'Rider';
+    default:
+      return 'Customer';
+  }
+};
+
+const statusClass = (status: KycStatus | null) => {
+  switch (status) {
+    case 'approved':
+      return 'bg-green-100 text-green-700';
+    case 'rejected':
+      return 'bg-red-100 text-red-700';
+    case 'resubmission_required':
+      return 'bg-yellow-100 text-yellow-700';
+    case 'pending':
+    default:
+      return 'bg-blue-100 text-blue-700';
+  }
+};
+
+const formatDate = (value: string | null) => {
+  if (!value) return '—';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toLocaleString();
+};
+
+const getCustomerName = (profile: Profile | null) => {
+  if (!profile) return 'Unknown customer';
+
+  const fullName =
+    profile.full_name?.trim() ||
+    `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim();
+
+  return fullName || 'Unnamed customer';
+};
+
+export default function KycPage() {
+  const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | KycStatus>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | TargetRole>('all');
+
+  const [selected, setSelected] = useState<KycSubmission | null>(null);
+
+  const [decision, setDecision] =
+    useState<KycDecision>('approved');
+
+  const [reason, setReason] = useState('');
+
+  const loadSubmissions = async () => {
+    if (!supabase) {
+      setError('Supabase is not configured.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+    setError(null);
+
     try {
-      // Pull only drivers and merchants for KYC
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('role', ['driver', 'merchant'])
+      const { data, error: queryError } = await supabase
+        .from('kyc_submissions')
+        .select(`
+          id,
+          profile_id,
+          target_role,
+          status,
+          rejection_reason,
+          submitted_at,
+          reviewed_at,
+          reviewer_id,
+          created_at,
+          profile:profiles (
+            id,
+            first_name,
+            last_name,
+            full_name,
+            phone,
+            phone_number,
+            email,
+            date_of_birth,
+            nationality,
+            country,
+            residential_address,
+            city,
+            address,
+            kyc_status,
+            role,
+            vehicle_type,
+            plate_number,
+            driver_license_no,
+            business_name,
+            business_type,
+            tax_id,
+            id_card_url,
+            selfie_url,
+            license_doc_url,
+            business_doc_url,
+            created_at,
+            updated_at
+          )
+        `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setItems(data || []);
-    } catch (err) {
-      console.error("Error fetching live KYC queue:", err);
-      setErr("Failed to load live data.");
+      if (queryError) {
+        throw queryError;
+      }
+
+      const normalized = (data ?? []).map((item: any) => ({
+        ...item,
+        profile: Array.isArray(item.profile)
+          ? item.profile[0] ?? null
+          : item.profile ?? null,
+      }));
+
+      setSubmissions(normalized);
+    } catch (err: any) {
+      console.error('KYC load error:', err);
+      setError(
+        err?.message ||
+          'Unable to load KYC submissions.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchLivePendingKYC();
+    loadSubmissions();
   }, []);
 
-  const filtered = useMemo(
-    () => (filter === 'all' ? items : items.filter((i) => i.kyc_status === filter)),
-    [items, filter]
-  );
+  const filteredSubmissions = useMemo(() => {
+    const query = search.trim().toLowerCase();
 
-  const stats = useMemo(() => ({
-    pending: items.filter((i) => i.kyc_status === 'pending').length,
-    approved: items.filter((i) => i.kyc_status === 'approved').length,
-    rejected: items.filter((i) => i.kyc_status === 'rejected').length,
-  }), [items]);
+    return submissions.filter((submission) => {
+      const profile = submission.profile;
 
-  const handleAction = async (id: string, status: string) => {
-    setErr(null);
-    setBusyId(id);
+      const name = getCustomerName(profile).toLowerCase();
+
+      const phone =
+        profile?.phone ||
+        profile?.phone_number ||
+        '';
+
+      const email = profile?.email || '';
+
+      const matchesSearch =
+        !query ||
+        name.includes(query) ||
+        phone.toLowerCase().includes(query) ||
+        email.toLowerCase().includes(query) ||
+        submission.id.toLowerCase().includes(query);
+
+      const matchesStatus =
+        statusFilter === 'all' ||
+        submission.status === statusFilter;
+
+      const matchesRole =
+        roleFilter === 'all' ||
+        submission.target_role === roleFilter;
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesRole
+      );
+    });
+  }, [
+    submissions,
+    search,
+    statusFilter,
+    roleFilter,
+  ]);
+
+  const stats = useMemo(() => {
+    return {
+      total: submissions.length,
+      pending: submissions.filter(
+        (item) => item.status === 'pending'
+      ).length,
+      approved: submissions.filter(
+        (item) => item.status === 'approved'
+      ).length,
+      rejected: submissions.filter(
+        (item) => item.status === 'rejected'
+      ).length,
+      resubmission: submissions.filter(
+        (item) =>
+          item.status === 'resubmission_required'
+      ).length,
+    };
+  }, [submissions]);
+
+  const openReview = (
+    submission: KycSubmission,
+    selectedDecision: KycDecision = 'approved'
+  ) => {
+    setSelected(submission);
+    setDecision(selectedDecision);
+
+    setReason(
+      selectedDecision === 'approved'
+        ? ''
+        : submission.rejection_reason || ''
+    );
+  };
+
+  const closeReview = () => {
+    if (actionLoading) return;
+
+    setSelected(null);
+    setReason('');
+    setDecision('approved');
+  };
+
+  const submitDecision = async () => {
+    if (!supabase || !selected) return;
+
+    if (
+      (decision === 'rejected' ||
+        decision === 'resubmission_required') &&
+      !reason.trim()
+    ) {
+      setError(
+        'A reason is required for rejection or resubmission.'
+      );
+      return;
+    }
+
+    setActionLoading(true);
+    setError(null);
+
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ kyc_status: status })
-        .eq('id', id);
+      const { data, error: rpcError } =
+        await supabase.rpc(
+          'review_kyc_submission',
+          {
+            p_submission_id: selected.id,
+            p_decision: decision,
+            p_rejection_reason:
+              reason.trim() || null,
+          }
+        );
 
-      if (error) throw error;
-      
-      setActive((prev: any) => (prev && prev.id === id ? { ...prev, kyc_status: status } : prev));
-      fetchLivePendingKYC();
-    } catch (e: any) {
-      setErr(e.message || 'Failed to update status');
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      console.log(
+        'KYC review completed:',
+        data
+      );
+
+      closeReview();
+
+      await loadSubmissions();
+    } catch (err: any) {
+      console.error(
+        'KYC review error:',
+        err
+      );
+
+      setError(
+        err?.message ||
+          'Unable to complete the KYC review.'
+      );
     } finally {
-      setBusyId(null);
+      setActionLoading(false);
     }
   };
 
+  const profile = selected?.profile ?? null;
+
   return (
-    <AdminLayout
-      title="KYC & Onboarding Approvals"
-      subtitle="Verify driver and vendor identity documents before activation"
-    >
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard label="Pending Review" value={String(stats.pending)} icon={Clock} tone="amber" />
-        <StatCard label="Approved" value={String(stats.approved)} icon={CheckCircle2} tone="emerald" />
-        <StatCard label="Rejected" value={String(stats.rejected)} icon={XCircle} tone="indigo" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">
+          KYC Review
+        </h1>
+
+        <p className="mt-1 text-sm text-gray-500">
+          Review customer identity documents and make
+          secure KYC decisions.
+        </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {(['pending', 'approved', 'rejected', 'all'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
-              filter === f ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
+      {/* Error */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center justify-between gap-4">
+            <span>{error}</span>
 
-      {err && (
-        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">
-          {err}
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="font-semibold hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <Spinner label="Loading verification queue..." />
-        ) : filtered.length === 0 ? (
-          <EmptyState icon={FileCheck} title="No records" description="No users match this filter." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide">
-                <tr>
-                  <th className="text-left px-5 py-3 font-medium">Applicant</th>
-                  <th className="text-left px-5 py-3 font-medium">Role</th>
-                  <th className="text-left px-5 py-3 font-medium">KYC Status</th>
-                  <th className="text-left px-5 py-3 font-medium">Submitted</th>
-                  <th className="text-right px-5 py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((item) => {
-                  const sb = statusBadge[item.kyc_status] || statusBadge['pending'];
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-600 text-xs font-semibold">
-                            {item.full_name ? item.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : 'U'}
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-900">{item.full_name || 'No Name'}</p>
-                            <p className="text-xs text-slate-400">{item.email || '—'}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 capitalize text-slate-600">{item.role ? item.role.replace('_', ' ') : '—'}</td>
-                      <td className="px-5 py-3"><Badge tone={sb.tone}>{sb.label}</Badge></td>
-                      <td className="px-5 py-3 text-slate-500">{item.created_at ? timeAgo(item.created_at) : '—'}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => setActive(item)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 inline-flex items-center gap-1.5"
-                          >
-                            <FileSearch className="w-3.5 h-3.5" /> Inspect
-                          </button>
-                          <button
-                            disabled={busyId === item.id}
-                            onClick={() => handleAction(item.id, 'approved')}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            disabled={busyId === item.id}
-                            onClick={() => handleAction(item.id, 'rejected')}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* Stats */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <p className="text-sm text-gray-500">
+            Total
+          </p>
+          <p className="mt-1 text-2xl font-bold text-gray-900">
+            {stats.total}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
+          <p className="text-sm text-blue-700">
+            Pending
+          </p>
+          <p className="mt-1 text-2xl font-bold text-blue-800">
+            {stats.pending}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-green-200 bg-green-50 p-5">
+          <p className="text-sm text-green-700">
+            Approved
+          </p>
+          <p className="mt-1 text-2xl font-bold text-green-800">
+            {stats.approved}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
+          <p className="text-sm text-red-700">
+            Rejected
+          </p>
+          <p className="mt-1 text-2xl font-bold text-red-800">
+            {stats.rejected}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5">
+          <p className="text-sm text-yellow-700">
+            Resubmission
+          </p>
+          <p className="mt-1 text-2xl font-bold text-yellow-800">
+            {stats.resubmission}
+          </p>
+        </div>
       </div>
 
-      <Modal
-        open={Boolean(active)}
-        onClose={() => setActive(null)}
-        title="Document Inspector"
-        maxWidth="max-w-4xl"
-      >
-        {active && (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* Filters */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
+            placeholder="Search name, phone, email..."
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+          />
+
+          <select
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(
+                event.target.value as
+                  | 'all'
+                  | KycStatus
+              )
+            }
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+          >
+            <option value="all">
+              All statuses
+            </option>
+            <option value="pending">
+              Pending
+            </option>
+            <option value="approved">
+              Approved
+            </option>
+            <option value="rejected">
+              Rejected
+            </option>
+            <option value="resubmission_required">
+              Resubmission Required
+            </option>
+          </select>
+
+          <select
+            value={roleFilter}
+            onChange={(event) =>
+              setRoleFilter(
+                event.target.value as
+                  | 'all'
+                  | TargetRole
+              )
+            }
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+          >
+            <option value="all">
+              All account types
+            </option>
+            <option value="rider">
+              Rider
+            </option>
+            <option value="driver">
+              Driver
+            </option>
+            <option value="merchant">
+              Merchant
+            </option>
+          </select>
+
+          <button
+            type="button"
+            onClick={loadSubmissions}
+            disabled={loading}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading
+              ? 'Refreshing...'
+              : 'Refresh'}
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Customer
+                </th>
+
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Account
+                </th>
+
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Submitted
+                </th>
+
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Status
+                </th>
+
+                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Action
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-12 text-center text-sm text-gray-500"
+                  >
+                    Loading KYC submissions...
+                  </td>
+                </tr>
+              ) : filteredSubmissions.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-6 py-12 text-center text-sm text-gray-500"
+                  >
+                    No KYC submissions found.
+                  </td>
+                </tr>
+              ) : (
+                filteredSubmissions.map(
+                  (submission) => {
+                    const itemProfile =
+                      submission.profile;
+
+                    const customerName =
+                      getCustomerName(
+                        itemProfile
+                      );
+
+                    const phone =
+                      itemProfile?.phone ||
+                      itemProfile?.phone_number ||
+                      '—';
+
+                    return (
+                      <tr
+                        key={submission.id}
+                        className="hover:bg-gray-50"
+                      >
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="font-medium text-gray-900">
+                            {customerName}
+                          </div>
+
+                          <div className="text-sm text-gray-500">
+                            {phone}
+                          </div>
+                        </td>
+
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+                          {roleLabel(
+                            submission.target_role
+                          )}
+                        </td>
+
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                          {formatDate(
+                            submission.submitted_at ||
+                              submission.created_at
+                          )}
+                        </td>
+
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(
+                              submission.status
+                            )}`}
+                          >
+                            {statusLabel(
+                              submission.status
+                            )}
+                          </span>
+                        </td>
+
+                        <td className="whitespace-nowrap px-6 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openReview(
+                                submission
+                              )
+                            }
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                          >
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  }
+                )
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Review Modal */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5">
               <div>
-                <p className="font-semibold text-slate-900 text-lg">{active.full_name || 'No Name'}</p>
-                <p className="text-sm text-slate-500 capitalize">
-                  {active.role ? active.role.replace('_', ' ') : 'Unknown'} · {active.email || 'No email'}
+                <h2 className="text-xl font-bold text-gray-900">
+                  KYC Review
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  {getCustomerName(profile)} ·{' '}
+                  {roleLabel(
+                    selected.target_role
+                  )}
                 </p>
               </div>
-              <Badge tone={statusBadge[active.kyc_status]?.tone || 'amber'}>
-                {statusBadge[active.kyc_status]?.label || 'Pending'}
-              </Badge>
+
+              <button
+                type="button"
+                onClick={closeReview}
+                disabled={actionLoading}
+                className="text-2xl leading-none text-gray-400 hover:text-gray-700 disabled:opacity-50"
+              >
+                ×
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <DocCard label="ID Card Document" url={active.id_card_url || null} icon={IdCard} />
-              <DocCard label="Selfie Verification" url={active.selfie_url || null} icon={User} />
+            <div className="space-y-6 p-6">
+              {/* Identity Information */}
+              <section>
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">
+                  Customer Information
+                </h3>
+
+                <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3">
+                  <Info
+                    label="Full name"
+                    value={getCustomerName(
+                      profile
+                    )}
+                  />
+
+                  <Info
+                    label="Phone"
+                    value={
+                      profile?.phone ||
+                      profile?.phone_number ||
+                      '—'
+                    }
+                  />
+
+                  <Info
+                    label="Email"
+                    value={
+                      profile?.email || '—'
+                    }
+                  />
+
+                  <Info
+                    label="Date of birth"
+                    value={
+                      profile?.date_of_birth ||
+                      '—'
+                    }
+                  />
+
+                  <Info
+                    label="Nationality"
+                    value={
+                      profile?.nationality ||
+                      '—'
+                    }
+                  />
+
+                  <Info
+                    label="Country"
+                    value={
+                      profile?.country ||
+                      '—'
+                    }
+                  />
+
+                  <Info
+                    label="City"
+                    value={
+                      profile?.city || '—'
+                    }
+                  />
+
+                  <Info
+                    label="Address"
+                    value={
+                      profile?.residential_address ||
+                      profile?.address ||
+                      '—'
+                    }
+                  />
+
+                  <Info
+                    label="Current KYC status"
+                    value={
+                      profile?.kyc_status ||
+                      '—'
+                    }
+                  />
+                </div>
+              </section>
+
+              {/* Driver Information */}
+              {selected.target_role ===
+                'driver' && (
+                <section>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">
+                    Driver Information
+                  </h3>
+
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3">
+                    <Info
+                      label="Vehicle type"
+                      value={
+                        profile?.vehicle_type ||
+                        '—'
+                      }
+                    />
+
+                    <Info
+                      label="Plate number"
+                      value={
+                        profile?.plate_number ||
+                        '—'
+                      }
+                    />
+
+                    <Info
+                      label="Driver license number"
+                      value={
+                        profile?.driver_license_no ||
+                        '—'
+                      }
+                    />
+                  </div>
+                </section>
+              )}
+
+              {/* Merchant Information */}
+              {selected.target_role ===
+                'merchant' && (
+                <section>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">
+                    Business Information
+                  </h3>
+
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3">
+                    <Info
+                      label="Business name"
+                      value={
+                        profile?.business_name ||
+                        '—'
+                      }
+                    />
+
+                    <Info
+                      label="Business type"
+                      value={
+                        profile?.business_type ||
+                        '—'
+                      }
+                    />
+
+                    <Info
+                      label="Tax ID"
+                      value={
+                        profile?.tax_id || '—'
+                      }
+                    />
+                  </div>
+                </section>
+              )}
+
+              {/* Documents */}
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                    Submitted Documents
+                  </h3>
+
+                  <span className="text-xs text-gray-500">
+                    Verify documents before approving.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <DocumentCard
+                    title="ID Card"
+                    url={profile?.id_card_url}
+                  />
+
+                  <DocumentCard
+                    title="Selfie"
+                    url={profile?.selfie_url}
+                  />
+
+                  {selected.target_role ===
+                    'driver' && (
+                    <DocumentCard
+                      title="Driver License"
+                      url={
+                        profile?.license_doc_url
+                      }
+                    />
+                  )}
+
+                  {selected.target_role ===
+                    'merchant' && (
+                    <DocumentCard
+                      title="Business Document"
+                      url={
+                        profile?.business_doc_url
+                      }
+                    />
+                  )}
+                </div>
+              </section>
+
+              {/* Previous reason */}
+              {selected.rejection_reason && (
+                <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+                  <p className="text-sm font-semibold text-yellow-800">
+                    Previous review reason
+                  </p>
+
+                  <p className="mt-1 text-sm text-yellow-700">
+                    {selected.rejection_reason}
+                  </p>
+                </div>
+              )}
+
+              {/* Decision */}
+              <section className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                  Admin Decision
+                </h3>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <DecisionButton
+                    active={
+                      decision === 'approved'
+                    }
+                    onClick={() =>
+                      setDecision(
+                        'approved'
+                      )
+                    }
+                    title="Approve KYC"
+                    description="Customer passes KYC review."
+                  />
+
+                  <DecisionButton
+                    active={
+                      decision === 'rejected'
+                    }
+                    onClick={() =>
+                      setDecision(
+                        'rejected'
+                      )
+                    }
+                    title="Reject"
+                    description="Permanently reject this submission."
+                  />
+
+                  <DecisionButton
+                    active={
+                      decision ===
+                      'resubmission_required'
+                    }
+                    onClick={() =>
+                      setDecision(
+                        'resubmission_required'
+                      )
+                    }
+                    title="Request Resubmission"
+                    description="Customer must submit corrected information."
+                  />
+                </div>
+
+                {decision !== 'approved' && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Reason
+                      <span className="ml-1 text-red-600">
+                        *
+                      </span>
+                    </label>
+
+                    <textarea
+                      value={reason}
+                      onChange={(event) =>
+                        setReason(
+                          event.target.value
+                        )
+                      }
+                      rows={4}
+                      placeholder={
+                        decision === 'rejected'
+                          ? 'Explain why this KYC submission is being rejected...'
+                          : 'Explain what the customer needs to correct or resubmit...'
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
+              </section>
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+            {/* Modal Footer */}
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 px-6 py-4 sm:flex-row sm:justify-end">
               <button
-                disabled={busyId === active.id}
-                onClick={() => handleAction(active.id, 'approved')}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 inline-flex items-center gap-2"
+                type="button"
+                onClick={closeReview}
+                disabled={actionLoading}
+                className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <ShieldCheck className="w-4 h-4" /> Approve & Activate
+                Cancel
               </button>
+
               <button
-                disabled={busyId === active.id}
-                onClick={() => handleAction(active.id, 'rejected')}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                type="button"
+                onClick={submitDecision}
+                disabled={
+                  actionLoading ||
+                  (decision !== 'approved' &&
+                    !reason.trim())
+                }
+                className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Reject
-              </button>
-              <button
-                disabled={busyId === active.id}
-                onClick={() => handleAction(active.id, 'pending')}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50"
-              >
-                Reset to Pending
+                {actionLoading
+                  ? 'Processing...'
+                  : decision === 'approved'
+                  ? 'Approve KYC'
+                  : decision === 'rejected'
+                  ? 'Reject KYC'
+                  : 'Request Resubmission'}
               </button>
             </div>
           </div>
-        )}
-      </Modal>
-    </AdminLayout>
+        </div>
+      )}
+    </div>
   );
 }
 
-function DocCard({ label, url, icon: Icon }: { label: string; url: string | null; icon: React.ComponentType<{ className?: string }> }) {
+function Info({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 overflow-hidden">
-      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-        <Icon className="w-4 h-4 text-slate-500" />
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-      </div>
-      <div className="aspect-[4/3] bg-slate-100 flex items-center justify-center">
-        {url ? (
-          <img src={url} alt={label} className="w-full h-full object-cover" />
-        ) : (
-          <div className="text-center text-slate-400">
-            <Icon className="w-8 h-8 mx-auto mb-1" />
-            <p className="text-xs">No document uploaded</p>
-          </div>
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+
+      <p className="mt-1 break-words text-sm font-medium text-gray-900">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function DocumentCard({
+  title,
+  url,
+}: {
+  title: string;
+  url: string | null | undefined;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+        <h4 className="text-sm font-semibold text-gray-900">
+          {title}
+        </h4>
+
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-semibold text-blue-600 hover:underline"
+          >
+            Open
+          </a>
         )}
       </div>
+
+      {url ? (
+        <div className="bg-gray-100 p-3">
+          <img
+            src={url}
+            alt={title}
+            className="max-h-80 w-full rounded-lg object-contain"
+            onError={(event) => {
+              event.currentTarget.style.display =
+                'none';
+            }}
+          />
+        </div>
+      ) : (
+        <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">
+          No document submitted
+        </div>
+      )}
     </div>
+  );
+}
+
+function DecisionButton({
+  active,
+  onClick,
+  title,
+  description,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border p-4 text-left transition ${
+        active
+          ? 'border-gray-900 bg-white shadow-sm'
+          : 'border-gray-200 bg-white hover:border-gray-400'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-3 w-3 rounded-full border ${
+            active
+              ? 'border-gray-900 bg-gray-900'
+              : 'border-gray-300 bg-white'
+          }`}
+        />
+
+        <span className="text-sm font-bold text-gray-900">
+          {title}
+        </span>
+      </div>
+
+      <p className="mt-2 text-xs leading-5 text-gray-500">
+        {description}
+      </p>
+    </button>
   );
 }

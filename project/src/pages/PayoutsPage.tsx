@@ -1,108 +1,154 @@
-import { Search, Bell, Clock, CreditCard, CheckCircle2, XCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import AdminLayout from '@/components/AdminLayout';
+import { CreditCard, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 export function PayoutsPage() {
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [stats, setStats] = useState({ pendingCount: 0, pendingValue: 0, completedCount: 0, failedCount: 0 });
+  const [loading, setLoading] = useState(true);
+
+  const fetchLivePayouts = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('withdrawal_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        setPayouts(data);
+        
+        const pending = data.filter(p => p.status === 'pending');
+        const completed = data.filter(p => p.status === 'completed');
+        const failed = data.filter(p => p.status === 'failed' || p.status === 'rejected');
+
+        setStats({
+          pendingCount: pending.length,
+          pendingValue: pending.reduce((acc, curr) => acc + Number(curr.amount), 0),
+          completedCount: completed.length,
+          failedCount: failed.length
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching payouts:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLivePayouts();
+  }, []);
+
+  const handlePayoutAction = async (id: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('withdrawal_requests')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+      fetchLivePayouts(); // Refresh the list
+    } catch (err: any) {
+      alert(err.message || "Failed to update payout status.");
+    }
+  };
+
   return (
-    <div className="flex-1 bg-slate-50 flex flex-col font-sans h-full overflow-y-auto">
-      <header className="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center sticky top-0 z-10">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Payouts & Withdrawals</h1>
-          <p className="text-sm text-slate-500 mt-1">Authorize or reject pending Vult payout requests</p>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="Search records..." className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-600 outline-none w-64" />
+    <AdminLayout title="Payouts & Withdrawals" subtitle="Authorize or reject pending withdrawal requests">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-start shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Pending Requests</p>
+            <h3 className="text-2xl font-bold text-slate-900">{stats.pendingCount}</h3>
           </div>
-          <button className="relative p-2 text-slate-400 hover:text-slate-600 transition">
-            <Bell size={20} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></span>
-          </button>
+          <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><Clock size={20} /></div>
         </div>
-      </header>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-start shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Pending Value</p>
+            <h3 className="text-2xl font-bold text-slate-900">{stats.pendingValue.toLocaleString()} SLE</h3>
+          </div>
+          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><CreditCard size={20} /></div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-start shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Completed</p>
+            <h3 className="text-2xl font-bold text-slate-900">{stats.completedCount}</h3>
+          </div>
+          <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={20} /></div>
+        </div>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-start shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Failed</p>
+            <h3 className="text-2xl font-bold text-slate-900">{stats.failedCount}</h3>
+          </div>
+          <div className="p-2 bg-red-50 text-red-600 rounded-lg"><XCircle size={20} /></div>
+        </div>
+      </div>
 
-      <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Pending Requests</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">3</div>
-            </div>
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><Clock size={20} /></div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Pending Value</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">19,000.00 SLE</div>
-            </div>
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><CreditCard size={20} /></div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Completed</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">1</div>
-            </div>
-            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CheckCircle2 size={20} /></div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Failed</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">1</div>
-            </div>
-            <div className="p-2 bg-red-50 text-red-600 rounded-lg"><XCircle size={20} /></div>
-          </div>
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900">Live Payout Queue</h3>
+          <button onClick={fetchLivePayouts} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">Refresh Data</button>
         </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100">
-                <th className="p-4 font-semibold">Requester</th>
-                <th className="p-4 font-semibold">Amount</th>
-                <th className="p-4 font-semibold">Provider</th>
-                <th className="p-4 font-semibold">Reference</th>
-                <th className="p-4 font-semibold">Status</th>
-                <th className="p-4 font-semibold">Submitted</th>
-                <th className="p-4 font-semibold text-right">Actions</th>
+        
+        {loading ? (
+          <div className="p-8 text-center text-slate-500">Loading payout records...</div>
+        ) : payouts.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">No withdrawal requests found.</div>
+        ) : (
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+              <tr>
+                <th className="px-6 py-4">Requester</th>
+                <th className="px-6 py-4">Amount</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {[
-                { name: 'Aisha Kamara', amt: '5,000.00 SLE', provider: 'vult', ref: 'VULT-7F3A-91', status: 'pending', time: '11m ago' },
-                { name: 'Ibrahim Koroma', amt: '12,000.00 SLE', provider: 'vult', ref: 'VULT-2B8C-44', status: 'pending', time: '36m ago' },
-                { name: 'Mohamed Sesay', amt: '2,000.00 SLE', provider: 'vult', ref: 'VULT-9D1E-07', status: 'pending', time: '56m ago' },
-                { name: 'Sankoh Abdul', amt: '320.00 SLE', provider: 'vult', ref: 'VULT-5K2M-33', status: 'failed', time: '3h ago', error: 'Flagged for duplicate vult reference.' },
-                { name: 'Fatmata Conteh', amt: '600.00 SLE', provider: 'vult', ref: 'VULT-1A7B-58', status: 'completed', time: '8h ago' }
-              ].map((p, i) => (
-                <tr key={i} className="hover:bg-slate-50 transition">
-                  <td className="p-4">
-                    <div className="font-bold text-slate-900">{p.name}</div>
-                    {p.error && <div className="text-xs text-red-500 mt-1 flex items-center gap-1"><XCircle size={12}/> {p.error}</div>}
+            <tbody className="divide-y divide-slate-100">
+              {payouts.map((req) => (
+                <tr key={req.id} className="hover:bg-slate-50 transition">
+                  <td className="px-6 py-4 font-bold text-slate-900">
+                    {req.user_name || 'Unknown User'}
+                    <div className="text-xs text-slate-400 font-normal mt-0.5">Ref: {req.reference_code || req.id.substring(0, 8)}</div>
                   </td>
-                  <td className="p-4 font-bold text-slate-900">{p.amt}</td>
-                  <td className="p-4"><span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-md font-bold uppercase">{p.provider}</span></td>
-                  <td className="p-4 text-slate-500 font-mono text-xs">{p.ref}</td>
-                  <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                      p.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : p.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
-                    }`}>{p.status}</span>
+                  <td className="px-6 py-4 font-bold text-slate-900">
+                    {Number(req.amount).toLocaleString()} SLE
                   </td>
-                  <td className="p-4 text-slate-500">{p.time}</td>
-                  <td className="p-4 text-right">
-                    {p.status === 'pending' ? (
+                  <td className="px-6 py-4">
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${
+                      req.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                      req.status === 'failed' || req.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                      'bg-amber-100 text-amber-800'
+                    }`}>
+                      {req.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-slate-500 text-xs">
+                    {new Date(req.created_at).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    {req.status === 'pending' ? (
                       <div className="flex justify-end gap-2">
-                        <button className="text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-100 transition">Authorize Payout</button>
-                        <button className="text-red-600 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 transition">Reject</button>
+                        <button onClick={() => handlePayoutAction(req.id, 'completed')} className="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition">Authorize</button>
+                        <button onClick={() => handlePayoutAction(req.id, 'rejected')} className="text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition">Reject</button>
                       </div>
                     ) : (
-                      <span className="text-slate-300">—</span>
+                      <span className="text-slate-400 text-xs">—</span>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        )}
       </div>
-    </div>
+    </AdminLayout>
   );
 }

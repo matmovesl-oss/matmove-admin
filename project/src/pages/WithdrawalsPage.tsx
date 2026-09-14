@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Smartphone,
   User,
+  DollarSign,
 } from 'lucide-react';
 
 type DisplayStatus =
@@ -44,10 +45,13 @@ const statusLabel: Record<DisplayStatus, string> = {
   failed: 'Failed',
 };
 
-function normalizeStatus(status: WithdrawalStatus | string): DisplayStatus {
+function normalizeStatus(
+  status: WithdrawalStatus | string,
+): DisplayStatus {
   if (status === 'processing') return 'processing';
   if (status === 'completed') return 'completed';
   if (status === 'failed') return 'failed';
+
   return 'pending';
 }
 
@@ -55,7 +59,10 @@ function getCurrencyLabel(currency?: string) {
   return currency === 'USD' ? 'USD' : 'SLE';
 }
 
-function formatMoney(amount: number, currency?: string) {
+function formatMoney(
+  amount: number,
+  currency?: string,
+) {
   if (getCurrencyLabel(currency) === 'USD') {
     return `$${Number(amount || 0).toLocaleString('en-US', {
       minimumFractionDigits: 2,
@@ -64,6 +71,13 @@ function formatMoney(amount: number, currency?: string) {
   }
 
   return formatSLE(amount);
+}
+
+function getPhone(item: {
+  phone?: string;
+  phone_number?: string;
+}) {
+  return item.phone || item.phone_number || 'Phone on file';
 }
 
 export default function WithdrawalsPage() {
@@ -76,59 +90,112 @@ export default function WithdrawalsPage() {
     refetch,
   } = useWithdrawals();
 
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [busyId, setBusyId] =
+    useState<string | null>(null);
+
+  const [err, setErr] =
+    useState<string | null>(null);
+
+  const [rejectTarget, setRejectTarget] =
+    useState<string | null>(null);
+
   const [notes, setNotes] = useState('');
-  const [filter, setFilter] = useState<'all' | DisplayStatus>('all');
+
+  const [filter, setFilter] =
+    useState<'all' | DisplayStatus>('all');
 
   const stats = useMemo(() => {
     const normalized = items.map((item) => ({
       ...item,
       normalizedStatus: normalizeStatus(item.status),
+      currency: getCurrencyLabel(
+        (item as typeof item & {
+          currency?: string;
+        }).currency,
+      ),
     }));
 
-    return {
-      pending: normalized.filter(
-        (item) => item.normalizedStatus === 'pending',
-      ).length,
+    const pendingItems = normalized.filter(
+      (item) =>
+        item.normalizedStatus === 'pending',
+    );
 
-      processing: normalized.filter(
-        (item) => item.normalizedStatus === 'processing',
-      ).length,
+    const processingItems = normalized.filter(
+      (item) =>
+        item.normalizedStatus === 'processing',
+    );
+
+    return {
+      pending: pendingItems.length,
+
+      processing: processingItems.length,
 
       completed: normalized.filter(
-        (item) => item.normalizedStatus === 'completed',
+        (item) =>
+          item.normalizedStatus === 'completed',
       ).length,
 
       failed: normalized.filter(
-        (item) => item.normalizedStatus === 'failed',
+        (item) =>
+          item.normalizedStatus === 'failed',
       ).length,
 
-      pendingValue: normalized
-        .filter((item) => item.normalizedStatus === 'pending')
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      pendingSle: pendingItems
+        .filter((item) => item.currency === 'SLE')
+        .reduce(
+          (sum, item) =>
+            sum + Number(item.amount || 0),
+          0,
+        ),
 
-      processingValue: normalized
-        .filter((item) => item.normalizedStatus === 'processing')
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      pendingUsd: pendingItems
+        .filter((item) => item.currency === 'USD')
+        .reduce(
+          (sum, item) =>
+            sum + Number(item.amount || 0),
+          0,
+        ),
+
+      processingSle: processingItems
+        .filter((item) => item.currency === 'SLE')
+        .reduce(
+          (sum, item) =>
+            sum + Number(item.amount || 0),
+          0,
+        ),
+
+      processingUsd: processingItems
+        .filter((item) => item.currency === 'USD')
+        .reduce(
+          (sum, item) =>
+            sum + Number(item.amount || 0),
+          0,
+        ),
     };
   }, [items]);
 
   const filteredItems = useMemo(() => {
-    if (filter === 'all') return items;
+    if (filter === 'all') {
+      return items;
+    }
 
     return items.filter(
-      (item) => normalizeStatus(item.status) === filter,
+      (item) =>
+        normalizeStatus(item.status) === filter,
     );
   }, [items, filter]);
 
   const rejectItem = useMemo(
-    () => items.find((item) => item.id === rejectTarget) || null,
+    () =>
+      items.find(
+        (item) => item.id === rejectTarget,
+      ) || null,
     [items, rejectTarget],
   );
 
-  const handleAuthorize = async (id: string) => {
+  const handleAuthorize = async (
+    id: string,
+  ) => {
     setErr(null);
     setBusyId(id);
 
@@ -189,7 +256,10 @@ export default function WithdrawalsPage() {
       title="Payouts & Withdrawals"
       subtitle="Review, authorize, and monitor customer withdrawal requests"
     >
-      {/* Financial summary */}
+      {/* =====================================================
+          FINANCIAL SUMMARY
+          ===================================================== */}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
         <StatCard
           label="Pending Requests"
@@ -199,9 +269,22 @@ export default function WithdrawalsPage() {
         />
 
         <StatCard
-          label="Pending Value"
-          value={formatSLE(stats.pendingValue)}
+          label="Pending SLE"
+          value={formatSLE(stats.pendingSle)}
           icon={Banknote}
+          tone="indigo"
+        />
+
+        <StatCard
+          label="Pending USD"
+          value={`$${stats.pendingUsd.toLocaleString(
+            'en-US',
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          )}`}
+          icon={DollarSign}
           tone="indigo"
         />
 
@@ -218,16 +301,84 @@ export default function WithdrawalsPage() {
           icon={CheckCircle2}
           tone="emerald"
         />
-
-        <StatCard
-          label="Failed"
-          value={String(stats.failed)}
-          icon={XCircle}
-          tone="indigo"
-        />
       </div>
 
-      {/* Important financial control notice */}
+      {/* =====================================================
+          PROCESSING / FAILED SUMMARY
+          ===================================================== */}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <RefreshCw className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                Processing SLE
+              </p>
+
+              <p className="text-xl font-bold text-blue-900 mt-1">
+                {formatSLE(stats.processingSle)}
+              </p>
+
+              <p className="text-xs text-blue-700 mt-1">
+                Reserved while awaiting final settlement
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <DollarSign className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                Processing USD
+              </p>
+
+              <p className="text-xl font-bold text-blue-900 mt-1">
+                ${stats.processingUsd.toLocaleString(
+                  'en-US',
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  },
+                )}
+              </p>
+
+              <p className="text-xs text-blue-700 mt-1">
+                Reserved while awaiting final settlement
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <XCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                Failed Withdrawals
+              </p>
+
+              <p className="text-xl font-bold text-red-900 mt-1">
+                {stats.failed}
+              </p>
+
+              <p className="text-xs text-red-700 mt-1">
+                Failed or rejected requests
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
+          FINANCIAL CONTROL NOTICE
+          ===================================================== */}
+
       <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-4">
         <div className="flex items-start gap-3">
           <ShieldAlert className="w-5 h-5 text-indigo-600 mt-0.5 shrink-0" />
@@ -238,16 +389,20 @@ export default function WithdrawalsPage() {
             </p>
 
             <p className="text-sm text-indigo-700 mt-1">
-              Authorizing a withdrawal moves it into processing. The
-              customer&apos;s reserved balance remains protected until the
-              payout provider confirms settlement. A failed or rejected
-              withdrawal releases the reservation.
+              Authorizing a withdrawal moves it into
+              processing. The customer&apos;s reserved balance
+              remains protected until the payout provider confirms
+              settlement. A failed or rejected withdrawal releases
+              the reservation.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Errors */}
+      {/* =====================================================
+          ERRORS
+          ===================================================== */}
+
       {(err || error) && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -256,7 +411,10 @@ export default function WithdrawalsPage() {
         </div>
       )}
 
-      {/* Toolbar */}
+      {/* =====================================================
+          TOOLBAR
+          ===================================================== */}
+
       <div className="mb-4 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex flex-wrap gap-2">
@@ -264,24 +422,36 @@ export default function WithdrawalsPage() {
               [
                 ['all', 'All', items.length],
                 ['pending', 'Pending', stats.pending],
-                ['processing', 'Processing', stats.processing],
-                ['completed', 'Completed', stats.completed],
+                [
+                  'processing',
+                  'Processing',
+                  stats.processing,
+                ],
+                [
+                  'completed',
+                  'Completed',
+                  stats.completed,
+                ],
                 ['failed', 'Failed', stats.failed],
               ] as const
-            ).map(([value, label, count]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setFilter(value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  filter === value
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {label} ({count})
-              </button>
-            ))}
+            ).map(
+              ([value, label, count]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    setFilter(value)
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    filter === value
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {label} ({count})
+                </button>
+              ),
+            )}
           </div>
 
           <button
@@ -295,12 +465,16 @@ export default function WithdrawalsPage() {
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
+
             Refresh
           </button>
         </div>
       </div>
 
-      {/* Withdrawal table */}
+      {/* =====================================================
+          WITHDRAWAL TABLE
+          ===================================================== */}
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
           <Spinner label="Loading withdrawal requests..." />
@@ -310,7 +484,11 @@ export default function WithdrawalsPage() {
             title={
               filter === 'all'
                 ? 'No withdrawal requests'
-                : `No ${statusLabel[filter as DisplayStatus]} withdrawals`
+                : `No ${
+                    statusLabel[
+                      filter as DisplayStatus
+                    ]
+                  } withdrawals`
             }
           />
         ) : (
@@ -354,12 +532,27 @@ export default function WithdrawalsPage() {
 
               <tbody className="divide-y divide-slate-100">
                 {filteredItems.map((w) => {
-                  const normalizedStatus = normalizeStatus(w.status);
-                  const currency = getCurrencyLabel(
-                    (w as typeof w & { currency?: string }).currency,
-                  );
+                  const normalizedStatus =
+                    normalizeStatus(w.status);
 
-                  const isBusy = busyId === w.id;
+                  const currency =
+                    getCurrencyLabel(
+                      (
+                        w as typeof w & {
+                          currency?: string;
+                        }
+                      ).currency,
+                    );
+
+                  const isBusy =
+                    busyId === w.id;
+
+                  const phone = getPhone(
+                    w as typeof w & {
+                      phone?: string;
+                      phone_number?: string;
+                    },
+                  );
 
                   return (
                     <tr
@@ -375,13 +568,17 @@ export default function WithdrawalsPage() {
 
                           <div className="min-w-0">
                             <p className="font-medium text-slate-900 truncate">
-                              {w.requester_name || 'Unknown customer'}
+                              {w.requester_name ||
+                                'Unknown customer'}
                             </p>
 
                             {w.admin_notes && (
                               <p className="text-xs text-amber-600 mt-1 flex items-start gap-1">
                                 <ShieldAlert className="w-3 h-3 mt-0.5 shrink-0" />
-                                <span>{w.admin_notes}</span>
+
+                                <span>
+                                  {w.admin_notes}
+                                </span>
                               </p>
                             )}
                           </div>
@@ -391,7 +588,10 @@ export default function WithdrawalsPage() {
                       {/* Amount */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         <p className="font-semibold text-slate-900">
-                          {formatMoney(w.amount, currency)}
+                          {formatMoney(
+                            w.amount,
+                            currency,
+                          )}
                         </p>
 
                         <p className="text-xs text-slate-500 mt-0.5">
@@ -403,11 +603,9 @@ export default function WithdrawalsPage() {
                       <td className="px-5 py-4 min-w-[150px]">
                         <div className="flex items-center gap-2 text-slate-700">
                           <Smartphone className="w-4 h-4 text-slate-400" />
+
                           <span>
-                            {(w as typeof w & { phone?: string }).phone ||
-                              (w as typeof w & { phone_number?: string })
-                                .phone_number ||
-                              'Phone on file'}
+                            {phone}
                           </span>
                         </div>
                       </td>
@@ -415,7 +613,8 @@ export default function WithdrawalsPage() {
                       {/* Provider */}
                       <td className="px-5 py-4">
                         <Badge tone="blue">
-                          {w.provider || 'Mobile Money'}
+                          {w.provider ||
+                            'Mobile Money'}
                         </Badge>
                       </td>
 
@@ -428,8 +627,18 @@ export default function WithdrawalsPage() {
 
                       {/* Status */}
                       <td className="px-5 py-4">
-                        <Badge tone={statusTone[normalizedStatus]}>
-                          {statusLabel[normalizedStatus]}
+                        <Badge
+                          tone={
+                            statusTone[
+                              normalizedStatus
+                            ]
+                          }
+                        >
+                          {
+                            statusLabel[
+                              normalizedStatus
+                            ]
+                          }
                         </Badge>
                       </td>
 
@@ -440,13 +649,16 @@ export default function WithdrawalsPage() {
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right whitespace-nowrap">
-                        {normalizedStatus === 'pending' ? (
+                        {normalizedStatus ===
+                        'pending' ? (
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
                               disabled={isBusy}
                               onClick={() =>
-                                handleAuthorize(w.id)
+                                handleAuthorize(
+                                  w.id,
+                                )
                               }
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50"
                             >
@@ -455,6 +667,7 @@ export default function WithdrawalsPage() {
                               ) : (
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                               )}
+
                               Authorize
                             </button>
 
@@ -462,19 +675,24 @@ export default function WithdrawalsPage() {
                               type="button"
                               disabled={isBusy}
                               onClick={() => {
-                                setRejectTarget(w.id);
+                                setRejectTarget(
+                                  w.id,
+                                );
                                 setNotes('');
                                 setErr(null);
                               }}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
                             >
                               <XCircle className="w-3.5 h-3.5" />
+
                               Reject
                             </button>
                           </div>
-                        ) : normalizedStatus === 'processing' ? (
+                        ) : normalizedStatus ===
+                          'processing' ? (
                           <span className="inline-flex items-center gap-1.5 text-xs text-blue-600">
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
+
                             Awaiting settlement
                           </span>
                         ) : (
@@ -492,7 +710,10 @@ export default function WithdrawalsPage() {
         )}
       </div>
 
-      {/* Processing explanation */}
+      {/* =====================================================
+          PROCESSING EXPLANATION
+          ===================================================== */}
+
       {stats.processing > 0 && (
         <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
           <div className="flex items-start gap-2">
@@ -500,23 +721,56 @@ export default function WithdrawalsPage() {
 
             <div className="text-sm text-blue-800">
               <p className="font-semibold">
-                {stats.processing} withdrawal
-                {stats.processing === 1 ? '' : 's'} awaiting
-                settlement
+                {stats.processing}{' '}
+                withdrawal
+                {stats.processing === 1
+                  ? ''
+                  : 's'} awaiting settlement
               </p>
 
-              <p className="mt-0.5">
-                {formatSLE(stats.processingValue)} is currently in
-                processing withdrawals. These reservations should remain
-                protected until the payment provider returns a final
-                result.
-              </p>
+              <div className="mt-1 space-y-0.5">
+                {stats.processingSle > 0 && (
+                  <p>
+                    SLE:{' '}
+                    <strong>
+                      {formatSLE(
+                        stats.processingSle,
+                      )}
+                    </strong>
+                  </p>
+                )}
+
+                {stats.processingUsd > 0 && (
+                  <p>
+                    USD:{' '}
+                    <strong>
+                      $
+                      {stats.processingUsd.toLocaleString(
+                        'en-US',
+                        {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        },
+                      )}
+                    </strong>
+                  </p>
+                )}
+
+                <p className="pt-1">
+                  These customer reservations should
+                  remain protected until the payment
+                  provider returns a final result.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Rejection modal */}
+      {/* =====================================================
+          REJECTION MODAL
+          ===================================================== */}
+
       <Modal
         open={Boolean(rejectTarget)}
         onClose={() => {
@@ -535,7 +789,8 @@ export default function WithdrawalsPage() {
             </p>
 
             <p className="font-medium text-slate-900 mt-0.5">
-              {rejectItem?.requester_name || 'Unknown customer'}
+              {rejectItem?.requester_name ||
+                'Unknown customer'}
             </p>
 
             {rejectItem && (
@@ -552,16 +807,31 @@ export default function WithdrawalsPage() {
             )}
           </div>
 
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <div className="flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+
+              <p className="text-sm text-amber-800">
+                Rejecting this request should release
+                the customer&apos;s reserved withdrawal
+                balance through the secure backend
+                workflow.
+              </p>
+            </div>
+          </div>
+
           <p className="text-sm text-slate-600">
-            Add an admin note explaining why this withdrawal is being
-            rejected. The secure backend operation should release any
-            reserved customer balance and record the rejection in the
-            audit trail.
+            Add an admin note explaining why this
+            withdrawal is being rejected. The secure
+            backend operation records the decision in
+            the audit trail.
           </p>
 
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) =>
+              setNotes(e.target.value)
+            }
             rows={4}
             disabled={Boolean(busyId)}
             placeholder="e.g. Duplicate payout reference detected. Please contact support."
@@ -592,6 +862,7 @@ export default function WithdrawalsPage() {
               ) : (
                 <XCircle className="w-4 h-4" />
               )}
+
               Confirm Rejection
             </button>
           </div>

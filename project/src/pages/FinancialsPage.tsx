@@ -1,130 +1,117 @@
-import { Search, Bell, Wallet, TrendingUp, Snowflake, Lock, Unlock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import AdminLayout from '@/components/AdminLayout';
+import { Wallet, TrendingUp, Lock } from 'lucide-react';
 
 export function FinancialsPage() {
-  return (
-    <div className="flex-1 bg-slate-50 flex flex-col font-sans h-full overflow-y-auto">
-      {/* Top Header */}
-      <header className="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center sticky top-0 z-10">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Financial & Wallet Ledger</h1>
-          <p className="text-sm text-slate-500 mt-1">System-wide balances, transactions, and wallet controls</p>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="Search records..." className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-600 outline-none w-64" />
-          </div>
-          <button className="relative p-2 text-slate-400 hover:text-slate-600 transition">
-            <Bell size={20} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></span>
-          </button>
-        </div>
-      </header>
+  const [wallets, setWallets] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalBalance: 0, activeCount: 0, frozenCount: 0 });
+  const [loading, setLoading] = useState(true);
 
-      {/* Main Content */}
-      <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
+  const fetchLiveWallets = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('wallets')
+        .select(`
+          id, balance, is_active,
+          profiles ( full_name, email )
+        `)
+        .order('balance', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        setWallets(data);
+        const total = data.reduce((acc, curr) => acc + Number(curr.balance), 0);
+        const active = data.filter(w => w.is_active !== false).length;
+        const frozen = data.filter(w => w.is_active === false).length;
         
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Total System Balance</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">91,270.00 SLE</div>
-            </div>
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><Wallet size={20} /></div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Active Wallets</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">4</div>
-            </div>
-            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={20} /></div>
-          </div>
+        setStats({ totalBalance: total, activeCount: active, frozenCount: frozen });
+      }
+    } catch (err) {
+      console.error('Error fetching wallets:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-            <div>
-              <span className="text-slate-500 text-sm font-medium">Frozen Wallets</span>
-              <div className="text-3xl font-bold text-slate-900 mt-2">2</div>
-            </div>
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Snowflake size={20} /></div>
+  useEffect(() => {
+    fetchLiveWallets();
+  }, []);
+
+  return (
+    <AdminLayout title="Financial & Wallet Ledger" subtitle="System-wide balances, transactions, and wallet controls">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Total System Balance</p>
+            <h3 className="text-3xl font-bold text-slate-900">{stats.totalBalance.toLocaleString()} SLE</h3>
           </div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Wallet size={24} /></div>
         </div>
-
-        {/* Data Tables */}
-        <div className="grid grid-cols-2 gap-6 items-start">
-          
-          {/* User Wallets */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900">User Wallets</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wider">
-                    <th className="p-4 font-semibold">Owner</th>
-                    <th className="p-4 font-semibold">Balance</th>
-                    <th className="p-4 font-semibold">Status</th>
-                    <th className="p-4 font-semibold text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {[
-                    { name: 'Aisha Kamara', id: 'w1', bal: '18,500.00 SLE', status: 'Active' },
-                    { name: 'Mohamed Sesay', id: 'w2', bal: '7,250.00 SLE', status: 'Active' },
-                    { name: 'Ibrahim Koroma', id: 'w4', bal: '64,000.00 SLE', status: 'Frozen' }
-                  ].map((w, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition">
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900">{w.name}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">{w.id}</div>
-                      </td>
-                      <td className="p-4 font-bold text-slate-700">{w.bal}</td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${w.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                          {w.status}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        {w.status === 'Active' ? (
-                          <button className="flex items-center gap-1.5 ml-auto text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-amber-100 transition">
-                            <Lock size={14} /> Freeze
-                          </button>
-                        ) : (
-                          <button className="flex items-center gap-1.5 ml-auto text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-100 transition">
-                            <Unlock size={14} /> Unfreeze
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Active Wallets</p>
+            <h3 className="text-3xl font-bold text-slate-900">{stats.activeCount}</h3>
           </div>
-
-          {/* Global Ledger */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-900">Global Ledger</h3>
-              <div className="flex gap-2">
-                {['All', 'Completed', 'Pending', 'Failed'].map(f => (
-                  <button key={f} className={`text-xs font-bold px-3 py-1.5 rounded-lg transition ${f === 'All' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="p-4">
-               <div className="text-center p-10 text-slate-400 text-sm font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  Ledger transaction list mapped here...
-               </div>
-            </div>
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={24} /></div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 flex justify-between items-center shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-500 mb-1">Frozen Wallets</p>
+            <h3 className="text-3xl font-bold text-slate-900">{stats.frozenCount}</h3>
           </div>
-
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Lock size={24} /></div>
         </div>
       </div>
-    </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900">Live User Wallets</h3>
+          <button onClick={fetchLiveWallets} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">Refresh Data</button>
+        </div>
+        
+        {loading ? (
+          <div className="p-8 text-center text-slate-500">Loading secure financial data...</div>
+        ) : (
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+              <tr>
+                <th className="px-6 py-4">Owner</th>
+                <th className="px-6 py-4">Balance</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {wallets.map((wallet) => (
+                <tr key={wallet.id} className="hover:bg-slate-50 transition">
+                  <td className="px-6 py-4">
+                    <p className="font-bold text-slate-900">{wallet.profiles?.full_name || 'Unknown User'}</p>
+                    <p className="text-xs text-slate-400">{wallet.profiles?.email}</p>
+                  </td>
+                  <td className="px-6 py-4 font-bold text-slate-900">
+                    {Number(wallet.balance).toLocaleString()} SLE
+                  </td>
+                  <td className="px-6 py-4">
+                    {wallet.is_active !== false ? (
+                      <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full uppercase">Active</span>
+                    ) : (
+                      <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full uppercase">Frozen</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button className="text-xs font-bold text-amber-600 hover:text-amber-800 transition flex items-center justify-end gap-1 ml-auto">
+                      <Lock size={14} /> {wallet.is_active !== false ? 'Freeze' : 'Unfreeze'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </AdminLayout>
   );
 }

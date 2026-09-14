@@ -21,41 +21,63 @@ import type {
   WithdrawalStatus,
 } from './types';
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const wait = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /*
  * --------------------------------------------------------------------------
  * KYC
  * --------------------------------------------------------------------------
+ *
+ * KYC review decisions are handled by the dedicated secure review workflow.
+ *
+ * Direct browser-side KYC writes are intentionally disabled.
  */
 
 export function useKycQueue() {
-  const [items, setItems] = useState<KycQueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] =
+    useState<KycQueueItem[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (!isSupabaseConfigured || !supabase) {
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
         await wait(300);
         setItems(mockKycQueue);
         return;
       }
 
-      const { data, error: err } = await supabase
-        .from('profiles')
-        .select('*, driver_profiles(*)')
-        .order('created_at', { ascending: false });
+      const { data, error: err } =
+        await supabase
+          .from('profiles')
+          .select(
+            '*, driver_profiles(*)'
+          )
+          .order('created_at', {
+            ascending: false,
+          });
 
       if (err) throw err;
 
-      setItems((data || []) as KycQueueItem[]);
+      setItems(
+        (data || []) as KycQueueItem[]
+      );
     } catch (e) {
       setError(
-        e instanceof Error ? e.message : 'Failed to load KYC queue'
+        e instanceof Error
+          ? e.message
+          : 'Failed to load KYC queue'
       );
 
       if (!isSupabaseConfigured) {
@@ -73,20 +95,12 @@ export function useKycQueue() {
   }, [fetch]);
 
   const updateStatus = useCallback(
-    async (id: string, status: KycStatus) => {
-      if (isSupabaseConfigured && supabase) {
-        const { error: err } = await supabase
-          .from('profiles')
-          .update({ kyc_status: status })
-          .eq('id', id);
-
-        if (err) throw err;
-      }
-
-      setItems((prev) =>
-        prev.map((p) =>
-          p.id === id ? { ...p, kyc_status: status } : p
-        )
+    async (
+      _id: string,
+      _status: KycStatus
+    ) => {
+      throw new Error(
+        'Direct KYC status changes are disabled. Use the secure KYC review workflow.'
       );
     },
     []
@@ -105,14 +119,6 @@ export function useKycQueue() {
  * --------------------------------------------------------------------------
  * WALLETS
  * --------------------------------------------------------------------------
- *
- * Wallet data is loaded from Supabase and enriched with customer profile
- * information.
- *
- * Financial values are never generated in the browser.
- *
- * When Supabase is configured, a live-data failure results in an explicit
- * error and empty financial datasets rather than mock balances.
  */
 
 type WalletRow = {
@@ -164,8 +170,12 @@ type AdminWalletControlResult = {
   action?: string;
 };
 
-const buildOwnerName = (profile?: ProfileRow) => {
-  if (!profile) return 'Unknown customer';
+const buildOwnerName = (
+  profile?: ProfileRow
+) => {
+  if (!profile) {
+    return 'Unknown customer';
+  }
 
   if (profile.full_name?.trim()) {
     return profile.full_name.trim();
@@ -179,13 +189,16 @@ const buildOwnerName = (profile?: ProfileRow) => {
     .join(' ')
     .trim();
 
-  return fullName || 'Unnamed customer';
+  return (
+    fullName || 'Unnamed customer'
+  );
 };
 
 const normalizeTransactionType = (
   value: string
 ): WalletTransaction['transaction_type'] => {
-  const normalized = value.toLowerCase();
+  const normalized =
+    value.toLowerCase();
 
   if (
     normalized === 'credit' ||
@@ -201,20 +214,32 @@ const normalizeTransactionType = (
 };
 
 export function useWallets() {
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [wallets, setWallets] =
+    useState<Wallet[]>([]);
+
+  const [transactions, setTransactions] =
+    useState<WalletTransaction[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (!isSupabaseConfigured || !supabase) {
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
         await wait(300);
         setWallets(mockWallets);
-        setTransactions(mockTransactions);
+        setTransactions(
+          mockTransactions
+        );
         return;
       }
 
@@ -228,14 +253,18 @@ export function useWallets() {
           .select(
             'wallet_id, user_id, currency, balance, reserved_balance, is_active, created_at, updated_at'
           )
-          .order('created_at', { ascending: false }),
+          .order('created_at', {
+            ascending: false,
+          }),
 
         supabase
           .from('wallet_transactions')
           .select(
             'id, wallet_id, user_id, amount, status, transaction_type, direction, created_at, currency, description, reference_code'
           )
-          .order('created_at', { ascending: false })
+          .order('created_at', {
+            ascending: false,
+          })
           .limit(100),
 
         supabase
@@ -243,7 +272,9 @@ export function useWallets() {
           .select(
             'id, full_name, first_name, last_name, phone, phone_number, role, kyc_status'
           )
-          .order('created_at', { ascending: false }),
+          .order('created_at', {
+            ascending: false,
+          }),
       ]);
 
       if (walletResponse.error) {
@@ -259,60 +290,81 @@ export function useWallets() {
       }
 
       const walletRows =
-        (walletResponse.data || []) as WalletRow[];
+        (walletResponse.data ||
+          []) as WalletRow[];
 
       const transactionRows =
-        (transactionResponse.data || []) as TransactionRow[];
+        (transactionResponse.data ||
+          []) as TransactionRow[];
 
       const profileRows =
-        (profileResponse.data || []) as ProfileRow[];
+        (profileResponse.data ||
+          []) as ProfileRow[];
 
-      const profilesById = new Map(
-        profileRows.map((profile) => [
-          profile.id,
-          profile,
-        ])
-      );
+      const profilesById =
+        new Map(
+          profileRows.map(
+            (profile) => [
+              profile.id,
+              profile,
+            ]
+          )
+        );
 
-      const walletById = new Map(
-        walletRows.map((wallet) => [
-          wallet.wallet_id,
-          wallet,
-        ])
-      );
+      const walletById =
+        new Map(
+          walletRows.map(
+            (wallet) => [
+              wallet.wallet_id,
+              wallet,
+            ]
+          )
+        );
 
-      const enrichedWallets = walletRows.map(
-        (wallet) => {
-          const profile =
-            profilesById.get(wallet.user_id);
+      const enrichedWallets =
+        walletRows.map(
+          (wallet) => {
+            const profile =
+              profilesById.get(
+                wallet.user_id
+              );
 
-          const balance =
-            Number(wallet.balance || 0);
+            const balance =
+              Number(
+                wallet.balance || 0
+              );
 
-          const reserved =
-            Number(wallet.reserved_balance || 0);
+            const reserved =
+              Number(
+                wallet.reserved_balance ||
+                  0
+              );
 
-          return {
-            ...wallet,
-            owner_name:
-              buildOwnerName(profile),
-            phone:
-              profile?.phone ||
-              profile?.phone_number ||
-              '',
-            role: profile?.role || '',
-            kyc_status:
-              profile?.kyc_status ||
-              'not_started',
-            reserved_balance: reserved,
-            available_balance:
-              Math.max(
-                0,
-                balance - reserved
-              ),
-          } as Wallet;
-        }
-      );
+            return {
+              ...wallet,
+              owner_name:
+                buildOwnerName(
+                  profile
+                ),
+              phone:
+                profile?.phone ||
+                profile?.phone_number ||
+                '',
+              role:
+                profile?.role || '',
+              kyc_status:
+                profile?.kyc_status ||
+                'not_started',
+              reserved_balance:
+                reserved,
+              available_balance:
+                Math.max(
+                  0,
+                  balance - reserved
+                ),
+            } as Wallet;
+          }
+        );
 
       const enrichedTransactions =
         transactionRows.map(
@@ -330,7 +382,9 @@ export function useWallets() {
               '';
 
             const profile =
-              profilesById.get(profileId);
+              profilesById.get(
+                profileId
+              );
 
             return {
               ...transaction,
@@ -339,7 +393,9 @@ export function useWallets() {
                   transaction.transaction_type
                 ),
               owner_name:
-                buildOwnerName(profile),
+                buildOwnerName(
+                  profile
+                ),
               currency:
                 transaction.currency ||
                 wallet?.currency ||
@@ -348,8 +404,13 @@ export function useWallets() {
           }
         );
 
-      setWallets(enrichedWallets);
-      setTransactions(enrichedTransactions);
+      setWallets(
+        enrichedWallets
+      );
+
+      setTransactions(
+        enrichedTransactions
+      );
     } catch (e) {
       const message =
         e instanceof Error
@@ -358,13 +419,11 @@ export function useWallets() {
 
       setError(message);
 
-      /*
-       * Never display mock financial data when the real backend is configured
-       * but unavailable.
-       */
       if (!isSupabaseConfigured) {
         setWallets(mockWallets);
-        setTransactions(mockTransactions);
+        setTransactions(
+          mockTransactions
+        );
       } else {
         setWallets([]);
         setTransactions([]);
@@ -377,142 +436,157 @@ export function useWallets() {
   useEffect(() => {
     fetch();
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
       return;
     }
 
-    const channel = supabase
-      .channel('admin-wallets-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'wallets',
-        },
-        () => {
-          void fetch();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'wallet_transactions',
-        },
-        () => {
-          void fetch();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profiles',
-        },
-        () => {
-          void fetch();
-        }
-      )
-      .subscribe();
+    const channel =
+      supabase
+        .channel(
+          'admin-wallets-realtime'
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'wallets',
+          },
+          () => {
+            void fetch();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'wallet_transactions',
+          },
+          () => {
+            void fetch();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'profiles',
+          },
+          () => {
+            void fetch();
+          }
+        )
+        .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(
+        channel
+      );
     };
   }, [fetch]);
 
-  /*
-   * ------------------------------------------------------------------------
-   * SECURE ADMIN WALLET CONTROL
-   * ------------------------------------------------------------------------
-   */
+  const toggleFreeze =
+    useCallback(
+      async (
+        walletId: string,
+        active: boolean,
+        reason = 'Admin wallet status change'
+      ) => {
+        if (
+          !isSupabaseConfigured ||
+          !supabase
+        ) {
+          setWallets((prev) =>
+            prev.map((wallet) =>
+              wallet.wallet_id ===
+              walletId
+                ? {
+                    ...wallet,
+                    is_active:
+                      active,
+                  }
+                : wallet
+            )
+          );
 
-  const toggleFreeze = useCallback(
-    async (
-      walletId: string,
-      active: boolean,
-      reason = 'Admin wallet status change'
-    ) => {
-      if (!isSupabaseConfigured || !supabase) {
-        setWallets((prev) =>
-          prev.map((wallet) =>
-            wallet.wallet_id === walletId
-              ? {
-                  ...wallet,
-                  is_active: active,
-                }
-              : wallet
-          )
-        );
+          return;
+        }
 
-        return;
-      }
-
-      const { data, error: rpcError } =
-        await supabase.rpc(
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
           'admin_set_wallet_active',
           {
-            p_wallet_id: walletId,
+            p_wallet_id:
+              walletId,
             p_is_active: active,
             p_reason: reason,
           }
         );
 
-      if (rpcError) {
-        throw new Error(
-          rpcError.message ||
-            'Failed to update wallet status.'
-        );
-      }
+        if (rpcError) {
+          throw new Error(
+            rpcError.message ||
+              'Failed to update wallet status.'
+          );
+        }
 
-      const result =
-        data as AdminWalletControlResult | null;
+        const result =
+          data as
+            | AdminWalletControlResult
+            | null;
 
-      if (!result?.success) {
-        throw new Error(
-          'The wallet control operation was not completed.'
-        );
-      }
+        if (!result?.success) {
+          throw new Error(
+            'The wallet control operation was not completed.'
+          );
+        }
 
-      setWallets((prev) =>
-        prev.map((wallet) =>
-          wallet.wallet_id === walletId
-            ? {
-                ...wallet,
-                is_active:
-                  result.is_active ??
-                  active,
-                balance:
-                  result.balance ??
-                  wallet.balance,
-                reserved_balance:
-                  result.reserved_balance ??
-                  wallet.reserved_balance,
-                available_balance:
-                  result.available_balance ??
-                  Math.max(
-                    0,
-                    Number(
-                      wallet.balance || 0
-                    ) -
+        setWallets((prev) =>
+          prev.map((wallet) =>
+            wallet.wallet_id ===
+            walletId
+              ? {
+                  ...wallet,
+                  is_active:
+                    result.is_active ??
+                    active,
+                  balance:
+                    result.balance ??
+                    wallet.balance,
+                  reserved_balance:
+                    result.reserved_balance ??
+                    wallet.reserved_balance,
+                  available_balance:
+                    result.available_balance ??
+                    Math.max(
+                      0,
                       Number(
-                        wallet.reserved_balance ||
+                        wallet.balance ||
                           0
-                      )
-                  ),
-                updated_at:
-                  new Date().toISOString(),
-              }
-            : wallet
-        )
-      );
+                      ) -
+                        Number(
+                          wallet.reserved_balance ||
+                            0
+                        )
+                    ),
+                  updated_at:
+                    new Date().toISOString(),
+                }
+              : wallet
+          )
+        );
 
-      await fetch();
-    },
-    [fetch]
-  );
+        await fetch();
+      },
+      [fetch]
+    );
 
   return {
     wallets,
@@ -528,24 +602,6 @@ export function useWallets() {
  * --------------------------------------------------------------------------
  * WITHDRAWALS
  * --------------------------------------------------------------------------
- *
- * All Admin withdrawal state changes go through SECURITY DEFINER RPCs.
- *
- * The browser NEVER directly changes withdrawal_requests.
- *
- * Workflow:
- *
- *   pending
- *      |
- *      +---- Admin rejects ----> failed
- *      |
- *      +---- Admin authorizes -> processing
- *                                  |
- *                                  +-- Provider success -> completed
- *                                  |
- *                                  +-- Provider failure -> failed
- *
- * Wallet funds remain reserved while a withdrawal is processing.
  */
 
 type AdminWithdrawalActionResult = {
@@ -557,34 +613,51 @@ type AdminWithdrawalActionResult = {
   amount?: number;
   currency?: 'SLE' | 'USD';
   provider?: string;
-  payment_transaction_id?: string | null;
+  payment_transaction_id?:
+    | string
+    | null;
   failure_code?: string | null;
   reserved_balance?: number;
   available_balance?: number;
 };
 
 export function useWithdrawals() {
-  const [items, setItems] = useState<WithdrawalRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] =
+    useState<WithdrawalRequest[]>(
+      []
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (!isSupabaseConfigured || !supabase) {
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
         await wait(300);
-        setItems(mockWithdrawals);
+        setItems(
+          mockWithdrawals
+        );
         return;
       }
 
-      const { data, error: err } = await supabase
-        .from('withdrawal_requests')
-        .select('*')
-        .order('created_at', {
-          ascending: false,
-        });
+      const { data, error: err } =
+        await supabase
+          .from(
+            'withdrawal_requests'
+          )
+          .select('*')
+          .order('created_at', {
+            ascending: false,
+          });
 
       if (err) throw err;
 
@@ -599,12 +672,10 @@ export function useWithdrawals() {
       );
 
       if (!isSupabaseConfigured) {
-        setItems(mockWithdrawals);
+        setItems(
+          mockWithdrawals
+        );
       } else {
-        /*
-         * Financial data must never fall back to fabricated values
-         * when Supabase is configured but unavailable.
-         */
         setItems([]);
       }
     } finally {
@@ -615,215 +686,186 @@ export function useWithdrawals() {
   useEffect(() => {
     fetch();
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
       return;
     }
 
-    /*
-     * Keep the withdrawal queue synchronized with authoritative database
-     * changes, including provider settlement events.
-     */
-    const channel = supabase
-      .channel('admin-withdrawals-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'withdrawal_requests',
-        },
-        () => {
-          void fetch();
-        }
-      )
-      .subscribe();
+    const channel =
+      supabase
+        .channel(
+          'admin-withdrawals-realtime'
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'withdrawal_requests',
+          },
+          () => {
+            void fetch();
+          }
+        )
+        .subscribe();
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(
+        channel
+      );
     };
   }, [fetch]);
 
-  /*
-   * ------------------------------------------------------------------------
-   * SECURE ADMIN AUTHORIZATION
-   * ------------------------------------------------------------------------
-   *
-   * Migration 012:
-   *
-   *   admin_authorize_withdrawal(uuid, text)
-   *
-   * The database performs:
-   * - authentication
-   * - Admin authorization
-   * - row locking
-   * - pending-state validation
-   * - wallet validation
-   * - reservation validation
-   * - payment transaction synchronization
-   * - processing-state transition
-   * - audit logging
-   *
-   * It does NOT debit the wallet. Settlement happens only after the
-   * payout provider gives an authoritative result.
-   */
+  const authorize =
+    useCallback(
+      async (
+        id: string,
+        reason = 'Withdrawal authorized by admin'
+      ) => {
+        if (!id) {
+          throw new Error(
+            'Withdrawal ID is required.'
+          );
+        }
 
-  const authorize = useCallback(
-    async (
-      id: string,
-      reason = 'Withdrawal authorized by admin'
-    ) => {
-      if (!id) {
-        throw new Error(
-          'Withdrawal ID is required.'
-        );
-      }
+        if (
+          !isSupabaseConfigured ||
+          !supabase
+        ) {
+          setItems((prev) =>
+            prev.map((w) =>
+              w.id === id
+                ? {
+                    ...w,
+                    status:
+                      'completed' as WithdrawalStatus,
+                  }
+                : w
+            )
+          );
 
-      if (!isSupabaseConfigured || !supabase) {
-        setItems((prev) =>
-          prev.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  status:
-                    'completed' as WithdrawalStatus,
-                }
-              : w
-          )
-        );
+          return;
+        }
 
-        return;
-      }
-
-      const { data, error: rpcError } =
-        await supabase.rpc(
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
           'admin_authorize_withdrawal',
           {
-            p_withdrawal_id: id,
+            p_withdrawal_id:
+              id,
             p_reason: reason,
           }
         );
 
-      if (rpcError) {
-        throw new Error(
-          rpcError.message ||
-            'Failed to authorize withdrawal.'
-        );
-      }
+        if (rpcError) {
+          throw new Error(
+            rpcError.message ||
+              'Failed to authorize withdrawal.'
+          );
+        }
 
-      const result =
-        data as AdminWithdrawalActionResult | null;
+        const result =
+          data as
+            | AdminWithdrawalActionResult
+            | null;
 
-      if (
-        !result?.success ||
-        result.withdrawal_id !== id
-      ) {
-        throw new Error(
-          'The withdrawal authorization was not completed.'
-        );
-      }
+        if (
+          !result?.success ||
+          result.withdrawal_id !== id
+        ) {
+          throw new Error(
+            'The withdrawal authorization was not completed.'
+          );
+        }
 
-      /*
-       * Refresh from the database rather than trusting a client-side
-       * reconstruction of the financial state.
-       */
-      await fetch();
-    },
-    [fetch]
-  );
+        await fetch();
+      },
+      [fetch]
+    );
 
-  /*
-   * ------------------------------------------------------------------------
-   * SECURE ADMIN REJECTION
-   * ------------------------------------------------------------------------
-   *
-   * Migration 012:
-   *
-   *   admin_reject_withdrawal(uuid, text)
-   *
-   * The database performs:
-   * - authentication
-   * - Admin authorization
-   * - row locking
-   * - pending-state validation
-   * - wallet locking
-   * - reservation validation
-   * - reservation release
-   * - failed-state transition
-   * - payment transaction synchronization
-   * - audit logging
-   */
+  const reject =
+    useCallback(
+      async (
+        id: string,
+        notes: string
+      ) => {
+        if (!id) {
+          throw new Error(
+            'Withdrawal ID is required.'
+          );
+        }
 
-  const reject = useCallback(
-    async (
-      id: string,
-      notes: string
-    ) => {
-      if (!id) {
-        throw new Error(
-          'Withdrawal ID is required.'
-        );
-      }
+        const reason =
+          notes.trim();
 
-      const reason = notes.trim();
+        if (!reason) {
+          throw new Error(
+            'A rejection reason is required.'
+          );
+        }
 
-      if (!reason) {
-        throw new Error(
-          'A rejection reason is required.'
-        );
-      }
+        if (
+          !isSupabaseConfigured ||
+          !supabase
+        ) {
+          setItems((prev) =>
+            prev.map((w) =>
+              w.id === id
+                ? {
+                    ...w,
+                    status:
+                      'failed' as WithdrawalStatus,
+                    admin_notes:
+                      reason,
+                  }
+                : w
+            )
+          );
 
-      if (!isSupabaseConfigured || !supabase) {
-        setItems((prev) =>
-          prev.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  status:
-                    'failed' as WithdrawalStatus,
-                  admin_notes: reason,
-                }
-              : w
-          )
-        );
+          return;
+        }
 
-        return;
-      }
-
-      const { data, error: rpcError } =
-        await supabase.rpc(
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
           'admin_reject_withdrawal',
           {
-            p_withdrawal_id: id,
+            p_withdrawal_id:
+              id,
             p_reason: reason,
           }
         );
 
-      if (rpcError) {
-        throw new Error(
-          rpcError.message ||
-            'Failed to reject withdrawal.'
-        );
-      }
+        if (rpcError) {
+          throw new Error(
+            rpcError.message ||
+              'Failed to reject withdrawal.'
+          );
+        }
 
-      const result =
-        data as AdminWithdrawalActionResult | null;
+        const result =
+          data as
+            | AdminWithdrawalActionResult
+            | null;
 
-      if (
-        !result?.success ||
-        result.withdrawal_id !== id
-      ) {
-        throw new Error(
-          'The withdrawal rejection was not completed.'
-        );
-      }
+        if (
+          !result?.success ||
+          result.withdrawal_id !== id
+        ) {
+          throw new Error(
+            'The withdrawal rejection was not completed.'
+          );
+        }
 
-      /*
-       * Refresh from the authoritative database state.
-       */
-      await fetch();
-    },
-    [fetch]
-  );
+        await fetch();
+      },
+      [fetch]
+    );
 
   return {
     items,
@@ -839,19 +881,85 @@ export function useWithdrawals() {
  * --------------------------------------------------------------------------
  * USERS
  * --------------------------------------------------------------------------
+ *
+ * User records are live backend data.
+ *
+ * Role changes now use the secure Admin-only RPC:
+ *
+ *   admin_change_user_role(...)
+ *
+ * The browser never directly writes to:
+ *
+ *   user_roles
+ *   profiles.role
+ *
+ * The database performs:
+ *
+ *   - Admin authorization
+ *   - target validation
+ *   - customer-role validation
+ *   - privileged-account protection
+ *   - role synchronization
+ *   - wallet creation
+ *   - audit logging
  */
 
+type AdminRoleChangeResult = {
+  success?: boolean;
+  changed?: boolean;
+  profile_id?: string;
+  old_role?: string | null;
+  new_role?: string;
+  roles?: string[];
+};
+
+const normalizeAdminRole = (
+  role: Role
+): 'rider' | 'driver' | 'merchant' => {
+  const normalized =
+    String(role)
+      .trim()
+      .toLowerCase();
+
+  if (
+    normalized === 'rider' ||
+    normalized === 'driver' ||
+    normalized === 'merchant'
+  ) {
+    return normalized;
+  }
+
+  /*
+   * The current database intentionally does not permit the Admin role
+   * through the customer-role governance RPC.
+   *
+   * If an old UI/type still sends an unsupported value, fail clearly
+   * before making a database request.
+   */
+  throw new Error(
+    'Only Rider, Driver, or Merchant can be assigned through customer role management.'
+  );
+};
+
 export function useUsers() {
-  const [items, setItems] = useState<KycQueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] =
+    useState<KycQueueItem[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      if (!isSupabaseConfigured || !supabase) {
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
         await wait(300);
         setItems(mockKycQueue);
         return;
@@ -891,36 +999,140 @@ export function useUsers() {
 
   useEffect(() => {
     fetch();
+
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
+      return;
+    }
+
+    const channel =
+      supabase
+        .channel(
+          'admin-users-realtime'
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'profiles',
+          },
+          () => {
+            void fetch();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_roles',
+          },
+          () => {
+            void fetch();
+          }
+        )
+        .subscribe();
+
+    return () => {
+      void supabase.removeChannel(
+        channel
+      );
+    };
   }, [fetch]);
 
-  const changeRole = useCallback(
-    async (
-      id: string,
-      role: Role
-    ) => {
-      if (isSupabaseConfigured && supabase) {
-        const { error: err } =
-          await supabase
-            .from('profiles')
-            .update({ role })
-            .eq('id', id);
+  /*
+   * ------------------------------------------------------------------------
+   * SECURE ADMIN ROLE CHANGE
+   * ------------------------------------------------------------------------
+   */
 
-        if (err) throw err;
-      }
+  const changeRole =
+    useCallback(
+      async (
+        id: string,
+        role: Role
+      ) => {
+        if (!id) {
+          throw new Error(
+            'User ID is required.'
+          );
+        }
 
-      setItems((prev) =>
-        prev.map((u) =>
-          u.id === id
-            ? {
-                ...u,
-                role,
-              }
-            : u
-        )
-      );
-    },
-    []
-  );
+        const customerRole =
+          normalizeAdminRole(
+            role
+          );
+
+        /*
+         * Local/mock mode is retained for development compatibility.
+         * Production Supabase mode always uses the secure RPC.
+         */
+        if (
+          !isSupabaseConfigured ||
+          !supabase
+        ) {
+          setItems((prev) =>
+            prev.map((user) =>
+              user.id === id
+                ? {
+                    ...user,
+                    role:
+                      customerRole,
+                  }
+                : user
+            )
+          );
+
+          return;
+        }
+
+        const {
+          data,
+          error: rpcError,
+        } = await supabase.rpc(
+          'admin_change_user_role',
+          {
+            p_profile_id: id,
+            p_new_role:
+              customerRole,
+            p_reason:
+              `Customer role changed to ${customerRole} through Admin Users.`,
+          }
+        );
+
+        if (rpcError) {
+          throw new Error(
+            rpcError.message ||
+              'Failed to change user role.'
+          );
+        }
+
+        const result =
+          data as
+            | AdminRoleChangeResult
+            | null;
+
+        if (
+          !result?.success ||
+          result.profile_id !== id
+        ) {
+          throw new Error(
+            'The user role change was not completed.'
+          );
+        }
+
+        /*
+         * Do not manufacture the resulting user record in the browser.
+         *
+         * Fetch the authoritative backend state after the RPC succeeds.
+         */
+        await fetch();
+      },
+      [fetch]
+    );
 
   return {
     items,
@@ -955,7 +1167,10 @@ export function useAuditLogs() {
     setError(null);
 
     try {
-      if (!isSupabaseConfigured || !supabase) {
+      if (
+        !isSupabaseConfigured ||
+        !supabase
+      ) {
         await wait(300);
         setAudit(mockAuditLogs);
         setFraud(mockFraudLogs);
@@ -981,8 +1196,13 @@ export function useAuditLogs() {
             .limit(50),
         ]);
 
-      if (aRes.error) throw aRes.error;
-      if (fRes.error) throw fRes.error;
+      if (aRes.error) {
+        throw aRes.error;
+      }
+
+      if (fRes.error) {
+        throw fRes.error;
+      }
 
       setAudit(
         (aRes.data || []) as AuditLog[]
@@ -1013,45 +1233,55 @@ export function useAuditLogs() {
   useEffect(() => {
     fetch();
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (
+      !isSupabaseConfigured ||
+      !supabase
+    ) {
       return;
     }
 
-    const channel = supabase
-      .channel('audit-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'audit_logs',
-        },
-        (payload: { new: unknown }) => {
-          setAudit((prev) =>
-            [
-              payload.new as AuditLog,
-              ...prev,
-            ].slice(0, 100)
-          );
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'fraud_logs',
-        },
-        (payload: { new: unknown }) => {
-          setFraud((prev) =>
-            [
-              payload.new as FraudLog,
-              ...prev,
-            ].slice(0, 50)
-          );
-        }
-      )
-      .subscribe();
+    const channel =
+      supabase
+        .channel(
+          'audit-realtime'
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'audit_logs',
+          },
+          (payload: {
+            new: unknown;
+          }) => {
+            setAudit((prev) =>
+              [
+                payload.new as AuditLog,
+                ...prev,
+              ].slice(0, 100)
+            );
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'fraud_logs',
+          },
+          (payload: {
+            new: unknown;
+          }) => {
+            setFraud((prev) =>
+              [
+                payload.new as FraudLog,
+                ...prev,
+              ].slice(0, 50)
+            );
+          }
+        )
+        .subscribe();
 
     return () => {
       void supabase.removeChannel(
@@ -1074,10 +1304,11 @@ export function useAuditLogs() {
  * LEGACY TRANSACTION STATUS HELPER
  * --------------------------------------------------------------------------
  *
- * Kept for compatibility with existing pages.
+ * Financial transaction status changes should ultimately be controlled by
+ * secure backend operations.
  *
- * Financial transaction status changes should ultimately move to secure
- * backend RPCs rather than direct browser writes.
+ * This compatibility helper remains for existing pages but should not be
+ * used for authoritative payment settlement.
  */
 
 export function useTxnStatusUpdate() {
@@ -1093,13 +1324,16 @@ export function useTxnStatusUpdate() {
         return;
       }
 
-      const { error: err } =
-        await supabase
-          .from('wallet_transactions')
-          .update({ status })
-          .eq('id', id);
+      const {
+        error: err,
+      } = await supabase
+        .from('wallet_transactions')
+        .update({ status })
+        .eq('id', id);
 
-      if (err) throw err;
+      if (err) {
+        throw err;
+      }
     },
     []
   );
