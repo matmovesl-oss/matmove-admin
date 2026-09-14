@@ -1,257 +1,149 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, Bell, Clock, TrendingUp, Banknote, AlertOctagon, FileCheck, Wallet, Users, RefreshCw } from 'lucide-react';
+import AdminLayout from '@/components/AdminLayout';
+import { Clock, TrendingUp, CreditCard, AlertCircle, FileCheck, Wallet, Users } from 'lucide-react';
 
 export function ComplianceDashboard() {
   const [stats, setStats] = useState({
     pendingKyc: 0,
-    approvedKyc: 0,
     totalBalance: 0,
-    pendingPayoutsCount: 0,
+    pendingPayouts: 0,
     pendingPayoutsValue: 0,
-    userCount: 0,
-    highRiskAlerts: 0,
+    kycApprovals: 0,
+    activeWallets: 0,
+    userCount: 0
   });
-  const [recentWithdrawals, setRecentWithdrawals] = useState<any[]>([]);
-  const [recentFraudLogs, setRecentFraudLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchLiveDashboardData = async () => {
+  const fetchLiveMetrics = async () => {
     setLoading(true);
     try {
-      // 1. Fetch KYC Counts
-      const { count: pendingKycCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('kyc_status', 'pending');
+      // 1. Fetch Profiles (Users + KYC)
+      const { data: profiles } = await supabase.from('profiles').select('kyc_status');
+      // 2. Fetch Wallets
+      const { data: wallets } = await supabase.from('wallets').select('balance, is_active');
+      // 3. Fetch Payouts
+      const { data: payouts } = await supabase.from('withdrawal_requests').select('amount, status');
 
-      const { count: approvedKycCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('kyc_status', 'approved');
+      let pendingKycCount = 0;
+      let approvedKycCount = 0;
+      if (profiles) {
+        pendingKycCount = profiles.filter(p => p.kyc_status === 'pending').length;
+        approvedKycCount = profiles.filter(p => p.kyc_status === 'approved').length;
+      }
 
-      const { count: totalUsersCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true });
+      let totalBal = 0;
+      let activeW = 0;
+      if (wallets) {
+        totalBal = wallets.reduce((sum, w) => sum + Number(w.balance || 0), 0);
+        activeW = wallets.filter(w => w.is_active !== false).length;
+      }
 
-      // 2. Fetch System Balances 
-      const { data: walletsData } = await supabase.from('wallets').select('balance');
-      const systemBalanceSum = walletsData 
-        ? walletsData.reduce((acc, w) => acc + (Number(w.balance) || 0), 0)
-        : 0;
-
-      // 3. Fetch Withdrawal Requests
-      const { data: payoutsData, count: pendingPayoutsCnt } = await supabase
-        .from('withdrawal_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      const pendingValue = payoutsData
-        ? payoutsData
-            .filter((p) => p.status === 'pending')
-            .reduce((acc, p) => acc + (Number(p.amount) || 0), 0)
-        : 0;
-
-      // 4. Fetch Fraud Logs
-      const { data: fraudData } = await supabase
-        .from('fraud_logs')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      const highRiskTotal = fraudData 
-        ? fraudData.filter((f) => f.risk === 'high' || f.risk === 'High Risk').length 
-        : 0;
+      let pendingPay = 0;
+      let pendingPayVal = 0;
+      if (payouts) {
+        const pendingReqs = payouts.filter(p => p.status === 'pending');
+        pendingPay = pendingReqs.length;
+        pendingPayVal = pendingReqs.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      }
 
       setStats({
-        pendingKyc: pendingKycCount || 0,
-        approvedKyc: approvedKycCount || 0,
-        totalBalance: systemBalanceSum,
-        pendingPayoutsCount: pendingPayoutsCnt || 0,
-        pendingPayoutsValue: pendingValue,
-        userCount: totalUsersCount || 0,
-        highRiskAlerts: highRiskTotal,
+        pendingKyc: pendingKycCount,
+        totalBalance: totalBal,
+        pendingPayouts: pendingPay,
+        pendingPayoutsValue: pendingPayVal,
+        kycApprovals: approvedKycCount,
+        activeWallets: activeW,
+        userCount: profiles?.length || 0
       });
-
-      if (payoutsData) setRecentWithdrawals(payoutsData.slice(0, 4));
-      if (fraudData) setRecentFraudLogs(fraudData.slice(0, 4));
-
     } catch (err) {
-      console.error("Error fetching live dashboard metrics:", err);
+      console.error("Error fetching dashboard metrics:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchLiveDashboardData();
+    fetchLiveMetrics();
   }, []);
 
   return (
-    <div className="flex-1 bg-slate-50 flex flex-col font-sans h-full overflow-y-auto">
-      {/* Top Header */}
-      <header className="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center sticky top-0 z-10">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Compliance Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-1">Executive overview of MatMove platform health</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="Search records..." className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-600 outline-none w-64" />
-          </div>
-          <button 
-            onClick={fetchLiveDashboardData}
-            className="p-2 text-slate-500 hover:text-slate-700 bg-slate-100 rounded-xl transition flex items-center gap-2 text-xs font-bold"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <div className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg flex items-center gap-1.5">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div> Live Supabase Data
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Dashboard */}
-      <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
-
-        {/* Primary Metrics Grid */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-slate-500 text-sm font-medium">Pending KYC</span>
-              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><Clock size={18} /></div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-slate-900">{stats.pendingKyc}</div>
-              <div className="text-xs text-slate-400 mt-1">Awaiting review</div>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-slate-500 text-sm font-medium">Total System Balance</span>
-              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><TrendingUp size={18} /></div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-slate-900">{stats.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} SLE</div>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-slate-500 text-sm font-medium">Pending Payouts</span>
-              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Banknote size={18} /></div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-slate-900">{stats.pendingPayoutsValue.toLocaleString('en-US', { minimumFractionDigits: 2 })} SLE</div>
-              <div className="text-xs text-slate-400 mt-1">{stats.pendingPayoutsCount} requests</div>
-            </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-slate-500 text-sm font-medium">High-Risk Alerts</span>
-              <div className="p-2 bg-red-50 text-red-600 rounded-lg"><AlertOctagon size={18} /></div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-slate-900">{stats.highRiskAlerts}</div>
-              <div className="text-xs text-slate-400 mt-1">Requires attention</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Secondary Metrics Grid */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
-             <div>
-               <div className="p-2 bg-slate-50 text-amber-500 rounded-lg w-min mb-3"><FileCheck size={18} /></div>
-               <span className="text-slate-500 text-sm font-medium block">KYC Approvals</span>
-               <div className="text-2xl font-bold text-slate-900 mt-1">{stats.approvedKyc}</div>
-             </div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
-             <div>
-               <div className="p-2 bg-slate-50 text-indigo-500 rounded-lg w-min mb-3"><Wallet size={18} /></div>
-               <span className="text-slate-500 text-sm font-medium block">Active Wallets</span>
-               <div className="text-2xl font-bold text-slate-900 mt-1">{stats.userCount}</div>
-             </div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
-             <div>
-               <div className="p-2 bg-slate-50 text-emerald-500 rounded-lg w-min mb-3"><Banknote size={18} /></div>
-               <span className="text-slate-500 text-sm font-medium block">Pending Requests</span>
-               <div className="text-2xl font-bold text-slate-900 mt-1">{stats.pendingPayoutsCount}</div>
-             </div>
-          </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
-             <div>
-               <div className="p-2 bg-slate-50 text-indigo-400 rounded-lg w-min mb-3"><Users size={18} /></div>
-               <span className="text-slate-500 text-sm font-medium block">User Directory</span>
-               <div className="text-2xl font-bold text-slate-900 mt-1">{stats.userCount}</div>
-             </div>
-          </div>
-        </div>
-
-        {/* Live Lists Grid */}
-        <div className="grid grid-cols-2 gap-6">
-          {/* Withdrawal Requests */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-900">Recent Withdrawal Requests</h3>
-              <span className="text-xs text-slate-400 font-medium">Live Feed</span>
-            </div>
-            <div className="p-2 flex-1">
-              {recentWithdrawals.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 text-sm">No withdrawal requests recorded yet.</div>
-              ) : (
-                recentWithdrawals.map((w, i) => (
-                  <div key={i} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl transition cursor-pointer">
-                    <div>
-                      <div className="font-bold text-sm text-slate-900">{w.user_name || 'Requester'}</div>
-                      <div className="text-xs text-slate-400 font-mono mt-0.5">{w.reference_code || w.id}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-sm text-slate-900">{Number(w.amount).toFixed(2)} SLE</div>
-                      <div className={`text-[10px] uppercase font-bold px-2 py-0.5 inline-block rounded mt-1 ${
-                        w.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {w.status}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Fraud Alerts */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-900">Recent Fraud Alerts</h3>
-              <span className="text-xs text-slate-400 font-medium">Live Feed</span>
-            </div>
-            <div className="p-2 flex-1">
-              {recentFraudLogs.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 text-sm">No fraud activity logged.</div>
-              ) : (
-                recentFraudLogs.map((a, i) => (
-                  <div key={i} className="flex gap-3 items-start p-3 hover:bg-slate-50 rounded-xl transition cursor-pointer">
-                    <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${a.risk === 'high' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <div className="font-bold text-sm text-slate-900">{a.user_name || 'System Alert'}</div>
-                        <div className="text-xs text-slate-400">{a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">{a.description || a.activity_type}</div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
+    <AdminLayout title="Compliance Dashboard" subtitle="Executive overview of MatMove platform health">
+      <div className="mb-6 flex justify-end">
+        <button onClick={fetchLiveMetrics} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full text-xs font-bold border border-emerald-200">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          Live Supabase Data
+        </button>
       </div>
-    </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">Pending KYC</span>
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg"><Clock size={18} /></div>
+          </div>
+          <div className="text-4xl font-bold text-slate-900">{loading ? '-' : stats.pendingKyc}</div>
+          <span className="text-xs text-slate-400 mt-2 block">Awaiting review</span>
+        </div>
+        
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">Total System Balance</span>
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><TrendingUp size={18} /></div>
+          </div>
+          <div className="text-4xl font-bold text-slate-900">{loading ? '-' : stats.totalBalance.toLocaleString()} SLE</div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">Pending Payouts</span>
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CreditCard size={18} /></div>
+          </div>
+          <div className="text-4xl font-bold text-slate-900">{loading ? '-' : stats.pendingPayoutsValue.toLocaleString()} SLE</div>
+          <span className="text-xs text-slate-400 mt-2 block">{stats.pendingPayouts} requests</span>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">High-Risk Alerts</span>
+            <div className="p-2 bg-rose-50 text-rose-600 rounded-lg"><AlertCircle size={18} /></div>
+          </div>
+          <div className="text-4xl font-bold text-slate-900">0</div>
+          <span className="text-xs text-slate-400 mt-2 block">Requires attention</span>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">KYC Approvals</span>
+            <div className="p-2 bg-slate-50 text-slate-600 rounded-lg"><FileCheck size={18} /></div>
+          </div>
+          <div className="text-3xl font-bold text-slate-900">{loading ? '-' : stats.kycApprovals}</div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">Active Wallets</span>
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Wallet size={18} /></div>
+          </div>
+          <div className="text-3xl font-bold text-slate-900">{loading ? '-' : stats.activeWallets}</div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">Pending Requests</span>
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CreditCard size={18} /></div>
+          </div>
+          <div className="text-3xl font-bold text-slate-900">{loading ? '-' : stats.pendingPayouts}</div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-4">
+            <span className="text-slate-500 text-sm font-medium">User Directory</span>
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Users size={18} /></div>
+          </div>
+          <div className="text-3xl font-bold text-slate-900">{loading ? '-' : stats.userCount}</div>
+        </div>
+      </div>
+    </AdminLayout>
   );
 }
