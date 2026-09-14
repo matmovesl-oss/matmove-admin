@@ -128,7 +128,7 @@ const getCustomerName = (profile: Profile | null) => {
   return fullName || 'Unnamed customer';
 };
 
-export default function KycPage() {
+export function KycPage() {
   const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
