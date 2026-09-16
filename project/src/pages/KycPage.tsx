@@ -185,8 +185,17 @@ export function KycPage() {
     setError(null);
 
     try {
-      const { error: updateError } = await supabase.from('profiles').update({ kyc_status: decision }).eq('id', selected.profile_id);
-      if (updateError) throw updateError;
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ kyc_status: decision })
+        .eq('id', selected.profile_id);
+        
+      if (updateError) {
+        // STRICT ERROR ALERT: This will tell us if Supabase RLS is blocking the approval
+        alert(`Supabase Error: ${updateError.message}. Please check your RLS policies on the profiles table.`);
+        throw updateError;
+      }
+      
       closeReview();
       await loadSubmissions(true);
     } catch (err: any) {
