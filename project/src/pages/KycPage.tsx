@@ -1,90 +1,37 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
+import { Download, FileText, RefreshCw } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
 type TargetRole = 'rider' | 'driver' | 'merchant';
 
-type Profile = {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  full_name: string | null;
-  phone: string | null;
-  phone_number: string | null;
-  email: string | null;
-  date_of_birth: string | null;
-  nationality: string | null;
-  country: string | null;
-  residential_address: string | null;
-  city: string | null;
-  address: string | null;
-  kyc_status: string | null;
-  role: string | null;
-  vehicle_type: string | null;
-  plate_number: string | null;
-  driver_license_no: string | null;
-  business_name: string | null;
-  business_type: string | null;
-  tax_id: string | null;
-  id_card_url: string | null;
-  selfie_url: string | null;
-  license_doc_url: string | null;
-  business_doc_url: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
+type Profile = { id: string; first_name: string | null; last_name: string | null; full_name: string | null; phone: string | null; phone_number: string | null; email: string | null; date_of_birth: string | null; nationality: string | null; country: string | null; residential_address: string | null; city: string | null; address: string | null; kyc_status: string | null; role: string | null; vehicle_type: string | null; plate_number: string | null; driver_license_no: string | null; business_name: string | null; business_type: string | null; tax_id: string | null; id_card_url: string | null; selfie_url: string | null; license_doc_url: string | null; business_doc_url: string | null; created_at: string | null; updated_at: string | null; };
+type KycSubmission = { id: string; profile_id: string | null; target_role: TargetRole | null; status: KycStatus | null; rejection_reason: string | null; submitted_at: string | null; created_at: string | null; profile: Profile | null; };
 
-type KycSubmission = {
-  id: string;
-  profile_id: string | null;
-  target_role: TargetRole | null;
-  status: KycStatus | null;
-  rejection_reason: string | null;
-  submitted_at: string | null;
-  created_at: string | null;
-  profile: Profile | null;
-};
+const statusLabel = (status: KycStatus | null) => { switch (status) { case 'approved': return 'Approved'; case 'rejected': return 'Rejected'; case 'resubmission_required': return 'Resubmission Required'; case 'pending': default: return 'Pending'; } };
+const roleLabel = (role: TargetRole | null) => { switch (role) { case 'driver': return 'Driver'; case 'merchant': return 'Merchant'; case 'rider': return 'Rider'; default: return 'Customer'; } };
+const statusClass = (status: KycStatus | null) => { switch (status) { case 'approved': return 'bg-green-100 text-green-700'; case 'rejected': return 'bg-red-100 text-red-700'; case 'resubmission_required': return 'bg-yellow-100 text-yellow-700'; case 'pending': default: return 'bg-blue-100 text-blue-700'; } };
+const formatDate = (value: string | null) => { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString(); };
+const getCustomerName = (profile: Profile | null) => { if (!profile) return 'Unknown customer'; const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(); return fullName || 'Unnamed customer'; };
 
-const statusLabel = (status: KycStatus | null) => {
-  switch (status) {
-    case 'approved': return 'Approved';
-    case 'rejected': return 'Rejected';
-    case 'resubmission_required': return 'Resubmission Required';
-    case 'pending': default: return 'Pending';
+// SECURE DEVICE DOWNLOAD LOGIC
+const downloadFile = async (url: string, filename: string) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename || 'kyc_document';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    alert('Failed to download document securely.');
   }
-};
-
-const roleLabel = (role: TargetRole | null) => {
-  switch (role) {
-    case 'driver': return 'Driver';
-    case 'merchant': return 'Merchant';
-    case 'rider': return 'Rider';
-    default: return 'Customer';
-  }
-};
-
-const statusClass = (status: KycStatus | null) => {
-  switch (status) {
-    case 'approved': return 'bg-green-100 text-green-700';
-    case 'rejected': return 'bg-red-100 text-red-700';
-    case 'resubmission_required': return 'bg-yellow-100 text-yellow-700';
-    case 'pending': default: return 'bg-blue-100 text-blue-700';
-  }
-};
-
-const formatDate = (value: string | null) => {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString();
-};
-
-const getCustomerName = (profile: Profile | null) => {
-  if (!profile) return 'Unknown customer';
-  const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim();
-  return fullName || 'Unnamed customer';
 };
 
 export function KycPage() {
@@ -107,31 +54,14 @@ export function KycPage() {
     setError(null);
 
     try {
-      const { data, error: queryError } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('role', ['driver', 'merchant'])
-        .order('updated_at', { ascending: false });
-
+      const { data, error: queryError } = await supabase.from('profiles').select('*').in('role', ['driver', 'merchant']).order('updated_at', { ascending: false });
       if (queryError) throw queryError;
 
       const normalized = (data ?? []).map((profile: any) => ({
-        id: profile.id,
-        profile_id: profile.id,
-        target_role: profile.role,
-        status: profile.kyc_status || 'pending',
-        rejection_reason: null, 
-        submitted_at: profile.updated_at || profile.created_at,
-        created_at: profile.created_at,
-        profile: profile
+        id: profile.id, profile_id: profile.id, target_role: profile.role, status: profile.kyc_status || 'pending', rejection_reason: null, submitted_at: profile.updated_at || profile.created_at, created_at: profile.created_at, profile: profile
       }));
-
       setSubmissions(normalized);
-    } catch (err: any) {
-      setError(err?.message || 'Unable to load KYC submissions.');
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError(err?.message || 'Unable to load KYC submissions.'); } finally { setLoading(false); }
   };
 
   useEffect(() => { loadSubmissions(); }, []);
@@ -143,11 +73,9 @@ export function KycPage() {
       const name = getCustomerName(profile).toLowerCase();
       const phone = profile?.phone || profile?.phone_number || '';
       const email = profile?.email || '';
-
       const matchesSearch = !query || name.includes(query) || phone.toLowerCase().includes(query) || email.toLowerCase().includes(query);
       const matchesStatus = statusFilter === 'all' || submission.status === statusFilter;
       const matchesRole = roleFilter === 'all' || submission.target_role === roleFilter;
-
       return matchesSearch && matchesStatus && matchesRole;
     });
   }, [submissions, search, statusFilter, roleFilter]);
@@ -163,46 +91,21 @@ export function KycPage() {
   }, [submissions]);
 
   const openReview = (submission: KycSubmission, selectedDecision: KycDecision = 'approved') => {
-    setSelected(submission);
-    setDecision(selectedDecision);
-    setReason(selectedDecision === 'approved' ? '' : submission.rejection_reason || '');
+    setSelected(submission); setDecision(selectedDecision); setReason(selectedDecision === 'approved' ? '' : submission.rejection_reason || '');
   };
 
-  const closeReview = () => {
-    if (actionLoading) return;
-    setSelected(null);
-    setReason('');
-    setDecision('approved');
-  };
+  const closeReview = () => { if (actionLoading) return; setSelected(null); setReason(''); setDecision('approved'); };
 
   const submitDecision = async () => {
     if (!supabase || !selected) return;
-    if ((decision === 'rejected' || decision === 'resubmission_required') && !reason.trim()) {
-      setError('A reason is required for rejection or resubmission.');
-      return;
-    }
-    setActionLoading(true);
-    setError(null);
+    if ((decision === 'rejected' || decision === 'resubmission_required') && !reason.trim()) { setError('A reason is required for rejection or resubmission.'); return; }
+    setActionLoading(true); setError(null);
 
     try {
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ kyc_status: decision })
-        .eq('id', selected.profile_id);
-        
-      if (updateError) {
-        // STRICT ERROR ALERT: This will tell us if Supabase RLS is blocking the approval
-        alert(`Supabase Error: ${updateError.message}. Please check your RLS policies on the profiles table.`);
-        throw updateError;
-      }
-      
-      closeReview();
-      await loadSubmissions(true);
-    } catch (err: any) {
-      setError(err?.message || 'Unable to complete the KYC review.');
-    } finally {
-      setActionLoading(false);
-    }
+      const { error: updateError } = await supabase.from('profiles').update({ kyc_status: decision }).eq('id', selected.profile_id);
+      if (updateError) { alert(`Supabase Error: ${updateError.message}. Please check your RLS policies on the profiles table.`); throw updateError; }
+      closeReview(); await loadSubmissions(true);
+    } catch (err: any) { setError(err?.message || 'Unable to complete the KYC review.'); } finally { setActionLoading(false); }
   };
 
   const profile = selected?.profile ?? null;
@@ -212,8 +115,7 @@ export function KycPage() {
       <div className="space-y-6 mt-6">
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button>
+            <span>{error}</span><button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button>
           </div>
         )}
 
@@ -273,16 +175,11 @@ export function KycPage() {
                     const phone = itemProfile?.phone || itemProfile?.phone_number || '—';
                     return (
                       <tr key={submission.id} className="hover:bg-gray-50">
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <div className="font-medium text-gray-900">{customerName}</div>
-                          <div className="text-sm text-gray-500">{phone}</div>
-                        </td>
+                        <td className="whitespace-nowrap px-6 py-4"><div className="font-medium text-gray-900">{customerName}</div><div className="text-sm text-gray-500">{phone}</div></td>
                         <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{roleLabel(submission.target_role)}</td>
                         <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{formatDate(submission.submitted_at)}</td>
                         <td className="whitespace-nowrap px-6 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(submission.status)}`}>{statusLabel(submission.status)}</span></td>
-                        <td className="whitespace-nowrap px-6 py-4 text-right">
-                          <button onClick={() => openReview(submission)} className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">Review</button>
-                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right"><button onClick={() => openReview(submission)} className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">Review</button></td>
                       </tr>
                     );
                   })
@@ -342,10 +239,10 @@ export function KycPage() {
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" url={profile?.id_card_url} />
-                    <DocumentCard title="Selfie" url={profile?.selfie_url} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={profile?.license_doc_url} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={profile?.business_doc_url} />}
+                    <DocumentCard title="ID Card" url={profile?.id_card_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_ID_Card`} />
+                    <DocumentCard title="Selfie" url={profile?.selfie_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Selfie`} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={profile?.license_doc_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_License`} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={profile?.business_doc_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Business_Doc`} />}
                   </div>
                 </section>
 
@@ -383,15 +280,28 @@ function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-gray-900">{value}</p></div>;
 }
 
-function DocumentCard({ title, url }: { title: string; url: string | null | undefined; }) {
+function DocumentCard({ title, url, fileName }: { title: string; url: string | null | undefined; fileName?: string }) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-        <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
-        {url && <a href={url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600 hover:underline">Open</a>}
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
+        <div className="flex items-center gap-2">
+          <FileText size={16} className="text-indigo-600" />
+          <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
+        </div>
+        {url && (
+          <button 
+            onClick={(e) => { e.preventDefault(); downloadFile(url, fileName || `${title.replace(/\s+/g, '_')}_document`); }} 
+            className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100"
+          >
+            <Download size={14} /> Download
+          </button>
+        )}
       </div>
       {url ? (
-        <div className="bg-gray-100 p-3"><img src={url} alt={title} className="max-h-80 w-full rounded-lg object-contain" /></div>
+        <div className="bg-white p-6 flex flex-col items-center justify-center border-t border-gray-100">
+           <FileText size={48} className="text-slate-200 mb-3" />
+           <p className="text-xs font-medium text-slate-500 text-center">Document securely attached.<br/>Click download to view on your device.</p>
+        </div>
       ) : (
         <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>
       )}

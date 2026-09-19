@@ -1,58 +1,68 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Wallet, ArrowRightLeft, Users, FileText, LogOut } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Outlet } from 'react-router-dom';
+import { Menu, LogOut, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-const NAV_ITEMS = [
-  { path: '/', label: 'Compliance Dashboard', icon: LayoutDashboard },
-  { path: '/kyc', label: 'KYC & Onboarding', icon: CheckSquare },
-  { path: '/financials', label: 'Financial & Wallets', icon: Wallet },
-  { path: '/payouts', label: 'Payouts & Withdrawals', icon: ArrowRightLeft },
-  { path: '/staff', label: 'User & Staff Governance', icon: Users },
-  { path: '/logs', label: 'System & Audit Logs', icon: FileText },
-];
+import Sidebar from './Sidebar';
 
 export function Layout() {
-  const handleLogout = async () => await supabase.auth.signOut();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [adminRole, setAdminRole] = useState<string | null>(null);
+  const [adminName, setAdminName] = useState<string>('Admin');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAdminProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data } = await supabase
+          .from('profiles')
+          .select('role, full_name')
+          .eq('id', user.id)
+          .single();
+
+        if (data) {
+          setAdminRole(data.role); // e.g., 'super_admin', 'admin_finance', etc.
+          setAdminName(data.full_name || 'Admin');
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin role', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAdminProfile();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
+  }
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
-      <aside className="w-72 bg-[#0f172a] text-slate-300 flex flex-col">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-indigo-600 p-2 rounded-xl flex items-center justify-center">
-            <img src="/logo.png" alt="MatMove" className="w-6 h-6 object-contain" />
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden relative">
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} adminRole={adminRole} adminName={adminName} />
+      
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-72 h-screen">
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 lg:hidden">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
+              <Menu size={20} />
+            </button>
+            <h1 className="text-lg font-bold text-slate-900">MatMove Admin</h1>
           </div>
-          <div>
-            <h1 className="font-bold text-white text-lg leading-tight">MatMove</h1>
-            <p className="text-[11px] text-slate-400 tracking-wider uppercase font-medium">Admin Console</p>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
-                  isActive ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 hover:text-white'
-                }`
-              }
-            >
-              <item.icon size={18} />
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="p-6 border-t border-slate-800">
-          <button onClick={handleLogout} className="flex items-center justify-center gap-2 w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-xl font-semibold transition-colors">
-            <LogOut size={16} /> Logout Admin
+          <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 transition">
+            <LogOut size={20} />
           </button>
+        </header>
+        
+        <div className="flex-1 overflow-auto relative bg-slate-50">
+          <Outlet />
         </div>
-      </aside>
-
-      <main className="flex-1 overflow-auto flex flex-col h-screen">
-        <Outlet />
       </main>
     </div>
   );

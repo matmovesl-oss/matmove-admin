@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useWallets, useWithdrawals } from '../lib/hooks';
-import AdminLayout from '../components/AdminLayout'; // Corrected import
-import {
-  CheckCircle2, XCircle, Search, RefreshCw, FileText, Truck, Store, User, ShieldCheck, ZoomIn, X, Clock3, Users, AlertTriangle, Activity, MapPin, Phone, Mail, CalendarDays, BadgeCheck, Ban, ExternalLink, Wallet, LockKeyhole, UnlockKeyhole, ArrowDownToLine, ArrowUpFromLine, CircleDollarSign, Loader2,
-} from 'lucide-react';
+import AdminLayout from '../components/AdminLayout'; 
+import { CheckCircle2, XCircle, Search, RefreshCw, FileText, Truck, Store, User, ShieldCheck, Download, X, Clock3, Users, AlertTriangle, Activity, MapPin, Phone, Mail, CalendarDays, BadgeCheck, Ban, Wallet, LockKeyhole, UnlockKeyhole, ArrowDownToLine, ArrowUpFromLine, CircleDollarSign, Loader2 } from 'lucide-react';
 
 type CustomerRole = 'rider' | 'driver' | 'merchant';
 type AccountRole = CustomerRole | 'admin' | 'corporate' | string;
@@ -12,107 +10,43 @@ type ProfileKycStatus = 'not_started' | 'draft' | 'submitted' | 'under_review' |
 type OperationalKycStatus = 'pending' | 'approved' | 'rejected';
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 
-interface UserProfile {
-  id: string; email?: string; full_name?: string; phone_number?: string; phone?: string; role?: AccountRole; kyc_status?: ProfileKycStatus; created_at: string; updated_at?: string; address?: string; residential_address?: string; city?: string; vehicle_type?: string; plate_number?: string; driver_license_no?: string; business_name?: string; business_type?: string; tax_id?: string; [key: string]: unknown;
-}
-
+interface UserProfile { id: string; email?: string; full_name?: string; phone_number?: string; phone?: string; role?: AccountRole; kyc_status?: ProfileKycStatus; created_at: string; updated_at?: string; address?: string; residential_address?: string; city?: string; vehicle_type?: string; plate_number?: string; driver_license_no?: string; business_name?: string; business_type?: string; tax_id?: string; [key: string]: unknown; }
 interface KycSubmission { id: string; profile_id: string; target_role?: CustomerRole | string; status?: ProfileKycStatus; rejection_reason?: string; submitted_at?: string; reviewed_at?: string; reviewer_id?: string; created_at?: string; updated_at?: string; }
 interface KycDocument { id: string; submission_id: string; document_type: string; file_name?: string; storage_path: string; file_size_bytes?: number; created_at?: string; }
 interface KycReviewResult { submission_id: string; profile_id: string; target_role: string; previous_status: string; new_status: string; reviewed_by: string; reviewed_at: string; }
 type Filter = 'pending' | 'approved' | 'rejected' | 'all';
-interface PreviewDocument { url: string; title: string; fileName?: string; }
 
-function normalizeRole(role?: string): AccountRole {
-  if (!role) return 'rider';
-  if (role === 'vendor') return 'merchant';
-  if (role === 'client') return 'rider';
-  return role;
-}
+function normalizeRole(role?: string): AccountRole { if (!role) return 'rider'; if (role === 'vendor') return 'merchant'; if (role === 'client') return 'rider'; return role; }
+function roleLabel(role?: string) { const normalized = normalizeRole(role); switch (normalized) { case 'rider': return 'Rider'; case 'driver': return 'Driver'; case 'merchant': return 'Merchant'; case 'admin': return 'Admin'; case 'corporate': return 'Corporate'; default: return normalized.charAt(0).toUpperCase() + normalized.slice(1); } }
+function isCustomerRole(role?: string): role is CustomerRole { const normalized = normalizeRole(role); return normalized === 'rider' || normalized === 'driver' || normalized === 'merchant'; }
+function operationalStatus(status?: string): OperationalKycStatus { if (status === 'approved') return 'approved'; if (status === 'rejected') return 'rejected'; return 'pending'; }
+function statusLabel(status?: string) { switch (operationalStatus(status)) { case 'approved': return 'Approved'; case 'rejected': return 'Declined'; default: return 'Pending'; } }
+function statusClasses(status?: string) { switch (operationalStatus(status)) { case 'approved': return 'bg-emerald-100 text-emerald-700 border-emerald-200'; case 'rejected': return 'bg-red-100 text-red-700 border-red-200'; default: return 'bg-amber-100 text-amber-700 border-amber-200'; } }
+function formatDate(value?: string) { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
+function formatDateTime(value?: string) { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+function getLatestSubmission(submissions: KycSubmission[], userId: string) { return submissions.filter((submission) => submission.profile_id === userId).sort((a, b) => { const aDate = new Date(a.submitted_at || a.created_at || 0).getTime(); const bDate = new Date(b.submitted_at || b.created_at || 0).getTime(); return bDate - aDate; })[0] || null; }
+function getEffectiveKycStatus(profile?: UserProfile | null, submission?: KycSubmission | null) { return operationalStatus(submission?.status || profile?.kyc_status); }
+function humanizeDocumentType(value: string) { const normalized = value.replace(/_/g, ' '); return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+function formatSleAmount(value: number) { return `SLE ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`; }
+function formatUsdAmount(value: number) { return `USD ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`; }
 
-function roleLabel(role?: string) {
-  const normalized = normalizeRole(role);
-  switch (normalized) {
-    case 'rider': return 'Rider';
-    case 'driver': return 'Driver';
-    case 'merchant': return 'Merchant';
-    case 'admin': return 'Admin';
-    case 'corporate': return 'Corporate';
-    default: return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+// SECURE DEVICE DOWNLOAD LOGIC
+const downloadSecureFile = async (url: string, filename: string) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename || 'admin_kyc_document';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    alert('Failed to download document.');
   }
-}
-
-function isCustomerRole(role?: string): role is CustomerRole {
-  const normalized = normalizeRole(role);
-  return normalized === 'rider' || normalized === 'driver' || normalized === 'merchant';
-}
-
-function operationalStatus(status?: string): OperationalKycStatus {
-  if (status === 'approved') return 'approved';
-  if (status === 'rejected') return 'rejected';
-  return 'pending';
-}
-
-function statusLabel(status?: string) {
-  switch (operationalStatus(status)) {
-    case 'approved': return 'Approved';
-    case 'rejected': return 'Declined';
-    default: return 'Pending';
-  }
-}
-
-function statusClasses(status?: string) {
-  switch (operationalStatus(status)) {
-    case 'approved': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    case 'rejected': return 'bg-red-100 text-red-700 border-red-200';
-    default: return 'bg-amber-100 text-amber-700 border-amber-200';
-  }
-}
-
-function formatDate(value?: string) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatDateTime(value?: string) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function getLatestSubmission(submissions: KycSubmission[], userId: string) {
-  return submissions.filter((submission) => submission.profile_id === userId).sort((a, b) => {
-    const aDate = new Date(a.submitted_at || a.created_at || 0).getTime();
-    const bDate = new Date(b.submitted_at || b.created_at || 0).getTime();
-    return bDate - aDate;
-  })[0] || null;
-}
-
-function getEffectiveKycStatus(profile?: UserProfile | null, submission?: KycSubmission | null) {
-  return operationalStatus(submission?.status || profile?.kyc_status);
-}
-
-function humanizeDocumentType(value: string) {
-  const normalized = value.replace(/_/g, ' ');
-  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatFileSize(bytes?: number) {
-  if (!bytes || bytes <= 0) return 'Size unavailable';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatSleAmount(value: number) {
-  return `SLE ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`;
-}
-
-function formatUsdAmount(value: number) {
-  return `USD ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`;
-}
+};
 
 export default function AdminDashboard() {
   const { wallets, loading: walletsLoading, error: walletsError, refetch: refetchWallets } = useWallets();
@@ -126,7 +60,6 @@ export default function AdminDashboard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>('pending');
   const [searchTerm, setSearchTerm] = useState('');
-  const [previewDocument, setPreviewDocument] = useState<PreviewDocument | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState(false);
@@ -134,8 +67,7 @@ export default function AdminDashboard() {
   const [financialRefreshing, setFinancialRefreshing] = useState(false);
 
   const fetchProfiles = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage('');
+    setLoading(true); setErrorMessage('');
     try {
       const [profileResponse, submissionResponse, documentResponse] = await Promise.all([
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),
@@ -491,7 +423,7 @@ export default function AdminDashboard() {
                     {selectedDocuments.map((document) => {
                       const url = documentUrls[document.id];
                       return (
-                        <DocumentCard key={document.id} document={document} signedUrl={url} onPreview={() => { if (!url) return; setPreviewDocument({ url, title: humanizeDocumentType(document.document_type), fileName: document.file_name }); }} />
+                        <DocumentCard key={document.id} document={document} signedUrl={url} />
                       );
                     })}
                   </div>
@@ -523,20 +455,6 @@ export default function AdminDashboard() {
               <button onClick={handleReject} disabled={actionLoading || !rejectionReason.trim()} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-bold">
                 {actionLoading && <RefreshCw size={16} className="animate-spin" />} Confirm Decline
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {previewDocument && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] p-5 shadow-2xl relative flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <div><h3 className="font-bold text-slate-900 text-lg">{previewDocument.title}</h3></div>
-              <button onClick={() => setPreviewDocument(null)} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition"><X size={20} /></button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-auto rounded-xl border border-slate-200 flex items-center justify-center bg-slate-950 p-4">
-              <img src={previewDocument.url} alt={previewDocument.title} className="max-w-full max-h-[75vh] object-contain" />
             </div>
           </div>
         </div>
@@ -581,17 +499,27 @@ function InfoCard({ label, value, icon }: { label: string; value?: string; icon?
   return (<div className="bg-slate-50 border border-slate-100 rounded-xl p-4"><div className="flex items-center gap-2 text-xs text-slate-400 font-medium">{icon}<span>{label}</span></div><div className="text-sm font-bold text-slate-800 mt-2 break-words">{value || '—'}</div></div>);
 }
 
-function DocumentCard({ document, signedUrl, onPreview }: { document: KycDocument; signedUrl?: string; onPreview: () => void; }) {
+function DocumentCard({ document, signedUrl }: { document: KycDocument; signedUrl?: string; }) {
   return (
-    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
-      <div className="flex justify-between items-start mb-3 gap-3">
-        <div className="flex items-start gap-2 min-w-0">
-          <FileText size={15} className="text-indigo-600 mt-0.5 shrink-0" />
-          <div className="min-w-0"><span className="text-xs font-bold text-slate-700 block">{humanizeDocumentType(document.document_type)}</span></div>
+    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 flex flex-col justify-between h-full">
+      <div>
+        <div className="flex items-start gap-2 min-w-0 mb-2">
+          <FileText size={16} className="text-indigo-600 mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <span className="text-sm font-bold text-slate-900 block">{humanizeDocumentType(document.document_type)}</span>
+            <span className="text-[10px] text-slate-500 block mt-0.5 truncate">{document.file_name || 'Uploaded document'}</span>
+          </div>
         </div>
-        {signedUrl && <button onClick={onPreview} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center gap-1 shrink-0"><ZoomIn size={14} /> View</button>}
       </div>
-      {signedUrl ? <button type="button" onClick={onPreview} className="w-full block"><img src={signedUrl} alt="Document" className="w-full h-44 object-cover rounded-lg border border-slate-200 cursor-pointer hover:opacity-95 transition" /></button> : <div className="h-44 bg-slate-100 rounded-lg flex flex-col items-center justify-center text-slate-400 text-xs font-semibold"><RefreshCw size={24} className="mb-2 animate-spin text-slate-300" /> Generating preview...</div>}
+      <div className="mt-4 pt-4 border-t border-slate-200">
+        {signedUrl ? (
+          <button type="button" onClick={() => downloadSecureFile(signedUrl, document.file_name || 'document')} className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 py-2.5 rounded-lg text-xs font-bold transition shadow-sm">
+            <Download size={14} /> Download to Device
+          </button>
+        ) : (
+          <div className="w-full flex items-center justify-center gap-2 bg-slate-200 text-slate-400 py-2.5 rounded-lg text-xs font-bold"><RefreshCw size={14} className="animate-spin" /> Securing file...</div>
+        )}
+      </div>
     </div>
   );
 }
