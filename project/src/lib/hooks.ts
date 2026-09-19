@@ -153,3 +153,53 @@ export function useWithdrawals() {
 
   return { items, loading, error, refetch: fetch, authorize, reject };
 }
+
+// --- AUDIT / FRAUD LOGS HOOK ---
+export function useAuditLogs() {
+  const [audit, setAudit] = useState<AuditLog[]>([]);
+  const [fraud, setFraud] = useState<FraudLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetch = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const [aRes, fRes] = await Promise.all([
+        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('fraud_logs').select('*').order('created_at', { ascending: false }).limit(50),
+      ]);
+
+      if (aRes.error) throw aRes.error;
+      if (fRes.error) throw fRes.error;
+
+      setAudit((aRes.data || []) as AuditLog[]);
+      setFraud((fRes.data || []) as FraudLog[]);
+    } catch (e: any) {
+      setError(e.message || 'Failed to load audit logs');
+      setAudit([]); setFraud([]);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    fetch();
+    const channel = supabase.channel('audit-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, (payload) => {
+        setAudit((prev) => [payload.new as AuditLog, ...prev].slice(0, 100));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fraud_logs' }, (payload) => {
+        setFraud((prev) => [payload.new as FraudLog, ...prev].slice(0, 50));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetch]);
+
+  return { audit, fraud, loading, error, refetch: fetch };
+}
+
+// --- LEGACY TXN HELPER ---
+export function useTxnStatusUpdate() {
+  return useCallback(async (id: string, status: TxnStatus) => {
+    const { error: err } = await supabase.from('wallet_transactions').update({ status }).eq('id', id);
+    if (err) throw err;
+  }, []);
+}
