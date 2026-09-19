@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import AdminLayout from '@/components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout'; // Corrected import
 import { Radar, Car, Package, CalendarClock, MapPin, Navigation, Clock, User, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 
 export default function DispatchRadarPage() {
@@ -142,7 +142,6 @@ export default function DispatchRadarPage() {
                 </div>
               </div>
 
-              {/* Assignment Controls */}
               <div className="border-t border-slate-100 pt-5 mt-auto bg-slate-50 -mx-6 -mb-6 p-6 rounded-b-2xl">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Assign to Verified Driver</label>
                 <div className="flex gap-2">

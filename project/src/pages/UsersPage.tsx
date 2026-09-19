@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import AdminLayout from '@/components/AdminLayout';
+import AdminLayout from '@/components/AdminLayout'; // Corrected import
 import Modal from '@/components/Modal';
 import { supabase } from '@/lib/supabase';
 import { Users, Search, RefreshCw, Loader2, UserPlus, ShieldAlert, CheckCircle2 } from 'lucide-react';
@@ -38,8 +38,6 @@ export default function UsersPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Standard practice: Add to an invites table, which triggers a backend Edge Function to create the auth user
-      // so the Admin doesn't get logged out of their own session.
       const { error } = await supabase.from('admin_user_invites').insert({
         email: newUser.email,
         full_name: newUser.fullName,
