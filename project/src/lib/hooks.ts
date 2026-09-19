@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase';
-import type {
-  AuditLog,
-  FraudLog,
-  KycQueueItem,
-  KycStatus,
-  Role,
-  TxnStatus,
-  Wallet,
-  WalletTransaction,
-  WithdrawalRequest,
-  WithdrawalStatus,
-} from './types';
+import type { AuditLog, FraudLog, KycQueueItem, KycStatus, Role, TxnStatus, Wallet, WalletTransaction, WithdrawalRequest, WithdrawalStatus } from './types';
 
 // --- KYC HOOK ---
 export function useKycQueue() {
@@ -32,15 +21,11 @@ export function useKycQueue() {
   }, []);
 
   useEffect(() => { fetch(); }, [fetch]);
-
   return { items, loading, error, refetch: fetch };
 }
 
 // --- WALLETS HOOK ---
-type WalletRow = { wallet_id: string; user_id: string; currency: 'SLE' | 'USD'; balance: number; reserved_balance?: number | null; is_active: boolean; created_at: string; updated_at?: string | null; };
-type ProfileRow = { id: string; full_name?: string | null; first_name?: string | null; last_name?: string | null; phone?: string | null; phone_number?: string | null; role?: string | null; kyc_status?: string | null; };
-
-const buildOwnerName = (profile?: ProfileRow) => {
+const buildOwnerName = (profile?: any) => {
   if (!profile) return 'Unknown customer';
   if (profile.full_name?.trim()) return profile.full_name.trim();
   const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
@@ -66,14 +51,17 @@ export function useWallets() {
       if (txnRes.error) throw txnRes.error;
       if (profileRes.error) throw profileRes.error;
 
-      const profileMap = new Map(profileRes.data.map((p: any) => [p.id, p]));
+      const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
-      const enrichedWallets = walletRes.data.map((w: any) => {
+      const enrichedWallets = (walletRes.data || []).map((w: any) => {
+        const actualId = w.wallet_id || w.id || 'unknown_id';
         const p = profileMap.get(w.user_id);
         const balance = Number(w.balance || 0);
         const reserved = Number(w.reserved_balance || 0);
         return {
           ...w,
+          wallet_id: actualId,
+          id: actualId,
           owner_name: buildOwnerName(p),
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
@@ -82,7 +70,7 @@ export function useWallets() {
         };
       });
 
-      const enrichedTxns = txnRes.data.map((t: any) => ({
+      const enrichedTxns = (txnRes.data || []).map((t: any) => ({
         ...t,
         owner_name: buildOwnerName(profileMap.get(t.user_id))
       }));
@@ -168,31 +156,14 @@ export function useAuditLogs() {
         supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(100),
         supabase.from('fraud_logs').select('*').order('created_at', { ascending: false }).limit(50),
       ]);
-
-      if (aRes.error) throw aRes.error;
-      if (fRes.error) throw fRes.error;
-
       setAudit((aRes.data || []) as AuditLog[]);
       setFraud((fRes.data || []) as FraudLog[]);
     } catch (e: any) {
-      setError(e.message || 'Failed to load audit logs');
       setAudit([]); setFraud([]);
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    fetch();
-    const channel = supabase.channel('audit-realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, (payload) => {
-        setAudit((prev) => [payload.new as AuditLog, ...prev].slice(0, 100));
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fraud_logs' }, (payload) => {
-        setFraud((prev) => [payload.new as FraudLog, ...prev].slice(0, 50));
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetch]);
-
+  useEffect(() => { fetch(); }, [fetch]);
   return { audit, fraud, loading, error, refetch: fetch };
 }
 
