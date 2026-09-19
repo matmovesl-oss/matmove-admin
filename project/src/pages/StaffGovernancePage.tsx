@@ -1,104 +1,157 @@
-import { Search, Bell, User, Truck, Store, Shield, UserCog } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import AdminLayout from '@/components/AdminLayout';
+import Modal from '@/components/Modal';
+import { supabase } from '@/lib/supabase';
+import { Search, RefreshCw, Loader2, UserPlus, ShieldCheck } from 'lucide-react';
 
-export function StaffGovernancePage() {
+export default function StaffGovernancePage() {
+  const [staff, setStaff] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  
+  // Add Staff State
+  const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+  const [newStaff, setNewStaff] = useState({ email: '', fullName: '', role: 'admin_dispatch', defaultPassword: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchStaff = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('role', ['super_admin', 'admin_finance', 'admin_compliance', 'admin_dispatch']) // STRICTLY STAFF ONLY
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setStaff(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchStaff(); }, []);
+
+  const handleAddStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.from('admin_user_invites').insert({
+        email: newStaff.email,
+        full_name: newStaff.fullName,
+        role: newStaff.role,
+        temp_password: newStaff.defaultPassword
+      });
+
+      if (error) throw error;
+      alert(`Invitation generated for ${newStaff.email}! They can log in with the default password you set to access their specific department.`);
+      setIsAddStaffOpen(false);
+      setNewStaff({ email: '', fullName: '', role: 'admin_dispatch', defaultPassword: '' });
+      fetchStaff();
+    } catch (err: any) {
+      alert(`Note: To create staff silently, ensure the 'admin_user_invites' table and Edge Function are deployed. Error: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredStaff = staff.filter(u => 
+    (u.full_name?.toLowerCase().includes(search.toLowerCase()) || '') || 
+    (u.email?.toLowerCase().includes(search.toLowerCase()) || '')
+  );
+
   return (
-    <div className="flex-1 bg-slate-50 flex flex-col font-sans h-full overflow-y-auto">
-      <header className="bg-white border-b border-slate-200 px-8 py-5 flex justify-between items-center sticky top-0 z-10">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">User & Staff Governance</h1>
-          <p className="text-sm text-slate-500 mt-1">Master directory and role management</p>
+    <AdminLayout title="Staff & Department Governance" subtitle="Manage internal employees and RBAC assignments">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input type="text" placeholder="Search staff..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600 outline-none" />
         </div>
-        <div className="flex items-center gap-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="Search records..." className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-600 outline-none w-64" />
-          </div>
-          <button className="relative p-2 text-slate-400 hover:text-slate-600 transition">
-            <Bell size={20} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full border border-white"></span>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button onClick={fetchStaff} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium">
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
+          </button>
+          <button onClick={() => setIsAddStaffOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-sm font-bold flex-1 sm:flex-none shadow-sm">
+            <UserPlus size={16} /> Hire Staff
           </button>
         </div>
-      </header>
-
-      <div className="p-8 max-w-7xl mx-auto w-full space-y-6">
-        {/* Role Stats */}
-        <div className="grid grid-cols-5 gap-4">
-          {[
-            { label: 'rider', count: 1, icon: User },
-            { label: 'driver', count: 3, icon: Truck },
-            { label: 'vendor', count: 1, icon: Store },
-            { label: 'ops manager', count: 1, icon: UserCog },
-            { label: 'super admin', count: 0, icon: Shield }
-          ].map((stat, i) => (
-            <div key={i} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start">
-              <div>
-                <span className="text-slate-500 text-sm font-medium capitalize">{stat.label}</span>
-                <div className="text-2xl font-bold text-slate-900 mt-1">{stat.count}</div>
-              </div>
-              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><stat.icon size={18} /></div>
-            </div>
-          ))}
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-2 mb-4">
-          {['All', 'Rider', 'Driver', 'Vendor', 'Ops Manager', 'Super Admin'].map(f => (
-            <button key={f} className={`text-sm font-bold px-4 py-2 rounded-xl transition ${f === 'All' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-              {f}
-            </button>
-          ))}
-        </div>
-
-        {/* Directory Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-100">
-                <th className="p-4 font-semibold">Name</th>
-                <th className="p-4 font-semibold">Phone</th>
-                <th className="p-4 font-semibold">Current Role</th>
-                <th className="p-4 font-semibold">Joined</th>
-                <th className="p-4 font-semibold text-right">Change Role</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {[
-                { init: 'AK', name: 'Aisha Kamara', phone: '+232 77 123 456', role: 'driver', time: '21m ago' },
-                { init: 'MS', name: 'Mohamed Sesay', phone: '+232 78 998 112', role: 'driver', time: '1h ago' },
-                { init: 'FC', name: 'Fatmata Conteh', phone: '+232 76 445 778', role: 'rider', time: '1d ago' },
-                { init: 'IK', name: 'Ibrahim Koroma', phone: '+232 79 332 110', role: 'vendor', time: '1h ago', color: 'emerald' },
-                { init: 'HB', name: 'Hawa Bangura', phone: '+232 77 880 220', role: 'ops manager', time: '2d ago', color: 'amber' },
-                { init: 'SA', name: 'Sankoh Abdul', phone: '+232 78 667 443', role: 'driver', time: '3h ago' }
-              ].map((u, i) => (
-                <tr key={i} className="hover:bg-slate-50 transition">
-                  <td className="p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                      {u.init}
-                    </div>
-                    <div className="font-bold text-slate-900">{u.name}</div>
-                  </td>
-                  <td className="p-4 text-slate-600 font-medium">{u.phone}</td>
-                  <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                      u.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' : u.color === 'amber' ? 'bg-amber-50 text-amber-600' : 'bg-indigo-50 text-indigo-600'
-                    }`}>{u.role}</span>
-                  </td>
-                  <td className="p-4 text-slate-500">{u.time}</td>
-                  <td className="p-4 text-right">
-                    <select className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-32 p-2 ml-auto outline-none cursor-pointer">
-                      <option>{u.role.charAt(0).toUpperCase() + u.role.slice(1)}</option>
-                      <option>Rider</option>
-                      <option>Driver</option>
-                      <option>Vendor</option>
-                      <option>Ops Manager</option>
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
-    </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24} /> Loading staff records...</div>
+        ) : (
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
+                <tr><th className="px-6 py-4 font-medium">Employee</th><th className="px-6 py-4 font-medium">Department Role</th><th className="px-6 py-4 font-medium">Work Email</th><th className="px-6 py-4 font-medium">Clearance</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredStaff.map(user => (
+                  <tr key={user.id} className="hover:bg-slate-50 transition">
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-slate-900">{user.full_name || 'No Name'}</div>
+                      <div className="text-xs text-slate-400 font-mono mt-0.5">{user.id.slice(0, 12)}...</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="bg-slate-900 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
+                        {user.role.replace('admin_', '')}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4"><div className="text-slate-700">{user.email || 'No Email'}</div></td>
+                    <td className="px-6 py-4">
+                      <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><ShieldCheck size={14}/> Verified Admin</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal open={isAddStaffOpen} onClose={() => !isSubmitting && setIsAddStaffOpen(false)} title="Create Staff Account" maxWidth="max-w-md">
+        <form onSubmit={handleAddStaff} className="space-y-4">
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-6">
+            <p className="text-xs text-amber-800 leading-relaxed font-semibold">
+              WARNING: The role you select dictates exactly which tabs this employee can see in their sidebar (RBAC). 
+            </p>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Employee Full Name</label>
+            <input required type="text" value={newStaff.fullName} onChange={e => setNewStaff({...newStaff, fullName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500" placeholder="e.g. Jane Doe" />
+          </div>
+          
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Work Email</label>
+            <input required type="email" value={newStaff.email} onChange={e => setNewStaff({...newStaff, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500" placeholder="jane.doe@matmove.com" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Department Assignment (RBAC)</label>
+            <select value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500 font-semibold">
+              <option value="admin_dispatch">Dispatch Unit (Radar Access)</option>
+              <option value="admin_compliance">Compliance Unit (KYC Access)</option>
+              <option value="admin_finance">Finance Unit (Wallets & Payouts)</option>
+              <option value="super_admin">Super Admin (All Access)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Set Default Password</label>
+            <input required type="text" value={newStaff.defaultPassword} onChange={e => setNewStaff({...newStaff, defaultPassword: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500 font-mono" placeholder="e.g. MatMoveStaff2024!" />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
+            <button type="button" onClick={() => setIsAddStaffOpen(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-sm">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="flex items-center gap-2 px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-sm disabled:opacity-50">
+              {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />} Authorize Staff
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </AdminLayout>
   );
 }
