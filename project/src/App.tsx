@@ -5,12 +5,13 @@ import { ComplianceDashboard } from './pages/ComplianceDashboard';
 import { KycPage } from './pages/KycPage';
 import { FinancialsPage } from './pages/FinancialsPage';
 import { PayoutsPage } from './pages/PayoutsPage';
-import { UsersPage } from './pages/UsersPage';
+import UsersPage from './pages/UsersPage'; // Updated import
 import { LogsPage } from './pages/LogsPage';
 
 import WalletsPage from './pages/WalletsPage';
 import WithdrawalsPage from './pages/WithdrawalsPage';
 import AuditPage from './pages/AuditPage';
+import DispatchRadarPage from './pages/DispatchRadarPage'; // New Dispatch Page
 
 export default function App() {
   return (
@@ -20,6 +21,9 @@ export default function App() {
           {/* Main dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<ComplianceDashboard />} />
+          
+          {/* Dispatch Control Room */}
+          <Route path="/dispatch" element={<DispatchRadarPage />} />
 
           {/* KYC & onboarding */}
           <Route path="/kyc" element={<KycPage />} />

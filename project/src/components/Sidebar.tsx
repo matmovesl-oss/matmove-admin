@@ -7,6 +7,8 @@ import {
   ScrollText,
   ShieldCheck,
   X,
+  Radar,
+  Activity
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -15,10 +17,12 @@ interface SidebarProps {
 }
 
 const nav = [
+  { to: '/dashboard', label: 'Overview', icon: Activity },
+  { to: '/dispatch', label: 'Dispatch Radar', icon: Radar },
   { to: '/kyc', label: 'KYC & Onboarding', icon: FileCheck },
   { to: '/wallets', label: 'Financial & Wallets', icon: Wallet },
   { to: '/withdrawals', label: 'Payouts & Withdrawals', icon: Banknote },
-  { to: '/users', label: 'User & Staff Governance', icon: Users },
+  { to: '/users', label: 'User Governance', icon: Users },
   { to: '/audit', label: 'System & Audit Logs', icon: ScrollText },
 ];
 
@@ -74,6 +78,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               >
                 <Icon className="w-5 h-5 shrink-0" />
                 <span>{item.label}</span>
+                {item.to === '/dispatch' && (
+                  <span className="ml-auto relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                )}
               </NavLink>
             );
           })}
