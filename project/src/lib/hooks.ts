@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import type { AuditLog, FraudLog, KycQueueItem, KycStatus, Role, TxnStatus, Wallet, WalletTransaction, WithdrawalRequest, WithdrawalStatus } from './types';
 
-// --- KYC HOOK ---
 export function useKycQueue() {
   const [items, setItems] = useState<KycQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,17 +13,13 @@ export function useKycQueue() {
       const { data, error: err } = await supabase.from('profiles').select('*, driver_profiles(*)').order('created_at', { ascending: false });
       if (err) throw err;
       setItems((data || []) as KycQueueItem[]);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load KYC queue');
-      setItems([]);
-    } finally { setLoading(false); }
+    } catch (e: any) { setError(e.message); setItems([]); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetch(); }, [fetch]);
   return { items, loading, error, refetch: fetch };
 }
 
-// --- WALLETS HOOK ---
 const buildOwnerName = (profile?: any) => {
   if (!profile) return 'Unknown customer';
   if (profile.full_name?.trim()) return profile.full_name.trim();
@@ -32,6 +27,7 @@ const buildOwnerName = (profile?: any) => {
   return fullName || 'Unnamed customer';
 };
 
+// --- UNIFIED WALLETS HOOK ---
 export function useWallets() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -41,9 +37,10 @@ export function useWallets() {
   const fetch = useCallback(async () => {
     setLoading(true); setError(null);
     try {
+      // Explicitly select exact columns based on your schema
       const [walletRes, txnRes, profileRes] = await Promise.all([
-        supabase.from('wallets').select('*').order('created_at', { ascending: false }),
-        supabase.from('wallet_transactions').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('wallets').select('id, user_id, currency, balance, reserved_balance, is_frozen, created_at, metadata').order('created_at', { ascending: false }),
+        supabase.from('wallet_transactions').select('*').order('created_at', { ascending: false }).limit(200),
         supabase.from('profiles').select('id, full_name, first_name, last_name, phone, phone_number, role, kyc_status').order('created_at', { ascending: false }),
       ]);
 
@@ -54,14 +51,15 @@ export function useWallets() {
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
-        const actualId = w.wallet_id || w.id || 'unknown_id';
         const p = profileMap.get(w.user_id);
         const balance = Number(w.balance || 0);
         const reserved = Number(w.reserved_balance || 0);
+        
         return {
           ...w,
-          wallet_id: actualId,
-          id: actualId,
+          wallet_id: w.id, 
+          is_active: !w.is_frozen, // Map is_frozen to is_active for UI compatibility
+          monime_account_id: w.metadata?.monime_account_id || null, // Extract virtual account
           owner_name: buildOwnerName(p),
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
@@ -78,7 +76,7 @@ export function useWallets() {
       setWallets(enrichedWallets as Wallet[]);
       setTransactions(enrichedTxns as WalletTransaction[]);
     } catch (e: any) {
-      setError(e.message || 'Failed to load wallet data');
+      setError(e.message || 'Failed to load wallet data. Check RLS policies.');
       setWallets([]); setTransactions([]);
     } finally { setLoading(false); }
   }, []);
@@ -93,8 +91,9 @@ export function useWallets() {
   }, [fetch]);
 
   const toggleFreeze = useCallback(async (walletId: string, active: boolean) => {
-    const { error: rpcError } = await supabase.rpc('admin_set_wallet_active', { p_wallet_id: walletId, p_is_active: active, p_reason: 'Admin toggle' });
-    if (rpcError) throw new Error(rpcError.message);
+    // Inverse active to is_frozen for DB update
+    const { error: err } = await supabase.from('wallets').update({ is_frozen: !active }).eq('id', walletId);
+    if (err) throw new Error(err.message);
     await fetch();
   }, [fetch]);
 
@@ -113,17 +112,12 @@ export function useWithdrawals() {
       const { data, error: err } = await supabase.from('withdrawal_requests').select('*').order('created_at', { ascending: false });
       if (err) throw err;
       setItems((data || []) as WithdrawalRequest[]);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load withdrawals');
-      setItems([]);
-    } finally { setLoading(false); }
+    } catch (e: any) { setError(e.message); setItems([]); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     fetch();
-    const channel = supabase.channel('admin-withdrawals')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawal_requests' }, fetch)
-      .subscribe();
+    const channel = supabase.channel('admin-withdrawals').on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawal_requests' }, fetch).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetch]);
 
@@ -158,16 +152,13 @@ export function useAuditLogs() {
       ]);
       setAudit((aRes.data || []) as AuditLog[]);
       setFraud((fRes.data || []) as FraudLog[]);
-    } catch (e: any) {
-      setAudit([]); setFraud([]);
-    } finally { setLoading(false); }
+    } catch (e: any) { setAudit([]); setFraud([]); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetch(); }, [fetch]);
   return { audit, fraud, loading, error, refetch: fetch };
 }
 
-// --- LEGACY TXN HELPER ---
 export function useTxnStatusUpdate() {
   return useCallback(async (id: string, status: TxnStatus) => {
     const { error: err } = await supabase.from('wallet_transactions').update({ status }).eq('id', id);
