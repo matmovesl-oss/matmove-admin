@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom';
-import { FileCheck, Wallet, Banknote, Users, ScrollText, ShieldCheck, X, Radar, Activity, BriefcaseBusiness } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { FileCheck, Wallet, Banknote, Users, ScrollText, ShieldCheck, X, Radar, Activity, BriefcaseBusiness, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   open: boolean;
@@ -18,6 +19,20 @@ const nav = [
 ];
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      // Force redirect to login page after secure sign out
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('Error signing out:', err);
+      alert('Failed to sign out. Please try again.');
+    }
+  };
+
   return (
     <>
       {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={onClose} aria-hidden />}
@@ -46,6 +61,15 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             );
           })}
         </nav>
+
+        <div className="p-4 border-t border-slate-800">
+          <button 
+            onClick={handleSignOut}
+            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-slate-800 text-slate-300 rounded-lg hover:bg-red-500/10 hover:text-red-400 transition-colors text-sm font-bold"
+          >
+            <LogOut size={16} /> Sign Out
+          </button>
+        </div>
       </aside>
     </>
   );

@@ -7,6 +7,7 @@ import Badge from '@/components/Badge';
 export function FinancialsPage() {
   const [wallets, setWallets] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [monimeBalances, setMonimeBalances] = useState<Record<string, number>>({});
   const [stats, setStats] = useState({ totalBalance: 0, activeCount: 0, frozenCount: 0 });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -14,7 +15,6 @@ export function FinancialsPage() {
   const fetchLiveLedgers = async () => {
     setLoading(true);
     try {
-      // 1. Fetch Wallets from Supabase (for owner info and freeze status)
       const { data: localWallets, error } = await supabase
         .from('wallets')
         .select(`id, balance, is_active, status, metadata, profiles ( full_name, email, phone, role )`)
@@ -26,27 +26,44 @@ export function FinancialsPage() {
       if (localWallets) {
         setWallets(localWallets);
         
-        // 2. Fetch True Master Balance from our new Monime API route
+        let monimeMasterBalance = 0;
+        let activeCount = 0;
+        let frozenCount = 0;
+
+        localWallets.forEach(w => {
+           if (w.status === 'frozen' || w.is_active === false) frozenCount++;
+           else activeCount++;
+        });
+
         try {
            const res = await fetch('/api/get-space-balance');
            const data = await res.json();
-           if (data.masterSleBalance !== undefined) {
+           
+           if (data.accounts) {
+             const trueBalances: Record<string, number> = {};
+             data.accounts.forEach((acc: any) => {
+               const val = acc.balance?.available?.value || 0;
+               trueBalances[acc.id] = val / 100;
+               monimeMasterBalance += val;
+             });
+             
+             setMonimeBalances(trueBalances);
+             
              setStats({ 
-               totalBalance: data.masterSleBalance, 
-               activeCount: data.activeWalletsCount, 
-               frozenCount: data.frozenWalletsCount 
+               totalBalance: monimeMasterBalance / 100, 
+               activeCount, 
+               frozenCount 
              });
            }
         } catch (apiErr) {
            console.error("Monime true sync failed, falling back to local");
            setStats({
              totalBalance: localWallets.reduce((acc, curr) => acc + Number(curr.balance), 0),
-             activeCount: localWallets.filter(w => w.status !== 'frozen').length,
-             frozenCount: localWallets.filter(w => w.status === 'frozen').length
+             activeCount,
+             frozenCount
            });
         }
 
-        // 3. Fetch All Gateway Transactions
         try {
            const txRes = await fetch('/api/get-all-transactions', { method: 'POST' });
            const txData = await txRes.json();
@@ -85,9 +102,9 @@ export function FinancialsPage() {
   };
 
   return (
-    <AdminLayout title="Financial & Wallet Control Center" subtitle="Master Ledger for Supabase, Monime, and Flot synced balances.">
+    <AdminLayout title="Financial & Wallet Control Center" subtitle="Master Ledger for Monime synced balances.">
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap mt-6">
-        <div><p className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Synchronized via Monime & Flot Webhooks</p></div>
+        <div><p className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Synchronized via Monime Webhooks</p></div>
         <button type="button" onClick={fetchLiveLedgers} disabled={loading} className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Ledger</button>
       </div>
 
@@ -112,17 +129,20 @@ export function FinancialsPage() {
             <h3 className="font-semibold text-slate-900">Unified Customer Wallets</h3>
             <p className="text-xs text-slate-500 mt-1">{stats.activeCount} of {wallets.length} active accounts</p>
           </div>
-          {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Syncing with Monime...</div> : (
+          {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Syncing with Monime Ledger...</div> : (
             <div className="overflow-x-auto max-h-[620px] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0 z-10">
-                  <tr><th className="text-left px-5 py-3 font-medium">Customer / Role</th><th className="text-left px-5 py-3 font-medium">Gateway ID</th><th className="text-left px-5 py-3 font-medium">Balance</th><th className="text-left px-5 py-3 font-medium">Status</th><th className="text-right px-5 py-3 font-medium">Action</th></tr>
+                  <tr><th className="text-left px-5 py-3 font-medium">Customer / Role</th><th className="text-left px-5 py-3 font-medium">Gateway ID</th><th className="text-left px-5 py-3 font-medium">True Balance</th><th className="text-left px-5 py-3 font-medium">Status</th><th className="text-right px-5 py-3 font-medium">Action</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {wallets.map((wallet: any) => {
                     const isFrozen = wallet.status === 'frozen' || wallet.is_active === false;
                     const isBusy = busyId === wallet.id;
                     const monimeId = wallet.metadata?.monime_account_id || 'Pending Setup';
+                    
+                    // Prioritize live Monime balance, fallback to local
+                    const trueBalance = monimeBalances[monimeId] !== undefined ? monimeBalances[monimeId] : Number(wallet.balance || 0);
                     
                     return (
                       <tr key={wallet.id} className="hover:bg-slate-50">
@@ -136,12 +156,12 @@ export function FinancialsPage() {
                         </td>
                         <td className="px-5 py-3"><div className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block border border-slate-200">{monimeId}</div></td>
                         <td className="px-5 py-3">
-                          <p className="font-bold text-slate-900">{Number(wallet.balance).toLocaleString()} SLE</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Wallet: {wallet.id.slice(0,8)}...</p>
+                          <p className="font-bold text-slate-900">{trueBalance.toLocaleString()} SLE</p>
+                          <p className="text-[10px] text-emerald-600 mt-0.5 font-bold">LIVE SYNC</p>
                         </td>
                         <td className="px-5 py-3">{!isFrozen ? <Badge tone="emerald">Active</Badge> : <Badge tone="amber">Frozen</Badge>}</td>
                         <td className="px-5 py-3 text-right">
-                          <button type="button" disabled={isBusy} onClick={() => handleToggleFreeze(wallet.id, wallet.status)} className={`px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50 ${!isFrozen ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}>
+                          <button type="button" disabled={isBusy} onClick={() => handleToggleFreeze(wallet.id, wallet.status)} className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center justify-end gap-1.5 ml-auto transition ${!isFrozen ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
                             {!isFrozen ? <Lock className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
                             {isBusy ? 'Updating...' : !isFrozen ? 'Freeze' : 'Unfreeze'}
                           </button>
@@ -158,7 +178,7 @@ export function FinancialsPage() {
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
             <h3 className="font-semibold text-slate-900">Gateway Transactions</h3>
-            <p className="text-xs text-slate-500 mt-1">Live Monime, Flot, and internal movements</p>
+            <p className="text-xs text-slate-500 mt-1">Live Monime internal movements</p>
           </div>
           {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Loading ledger...</div> : transactions.length === 0 ? <div className="p-12 text-center text-slate-500">No transactions found.</div> : (
             <div className="overflow-x-auto max-h-[620px] overflow-y-auto">

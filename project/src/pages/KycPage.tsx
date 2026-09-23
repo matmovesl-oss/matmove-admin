@@ -86,7 +86,7 @@ export function KycPage() {
 
     try {
       const { error: updateError } = await supabase.from('profiles').update({ kyc_status: decision }).eq('id', selected.profile_id);
-      if (updateError) { alert(`Supabase Error: ${updateError.message}. Please check your RLS policies on the profiles table.`); throw updateError; }
+      if (updateError) throw updateError;
       closeReview(); await loadSubmissions(true);
     } catch (err: any) { setError(err?.message || 'Unable to complete the KYC review.'); } finally { setActionLoading(false); }
   };
@@ -252,7 +252,7 @@ export function KycPage() {
         )}
 
         {previewDoc && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4">
             <div className="relative w-full max-w-4xl bg-transparent flex flex-col items-center">
               <button onClick={() => setPreviewDoc(null)} className="absolute -top-12 right-0 text-white hover:text-gray-300 transition"><X size={36} /></button>
               {previewDoc.toLowerCase().includes('.pdf') ? (
@@ -272,7 +272,10 @@ function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-gray-900">{value}</p></div>;
 }
 
+// INLINE IMAGE PREVIEW UPDATE
 function DocumentCard({ title, url, onView }: { title: string; url: string | null | undefined; onView: () => void }) {
+  const isPdf = url?.toLowerCase().includes('.pdf');
+  
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white group cursor-pointer transition hover:shadow-md" onClick={() => url && onView()}>
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
@@ -282,15 +285,21 @@ function DocumentCard({ title, url, onView }: { title: string; url: string | nul
         </div>
         {url && (
           <button className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
-            <Eye size={14} /> View
+            <Eye size={14} /> Enlarge
           </button>
         )}
       </div>
       {url ? (
-        <div className="bg-white p-6 flex flex-col items-center justify-center border-t border-gray-100 relative">
-           <FileText size={48} className="text-slate-200 mb-3 group-hover:scale-110 transition-transform" />
-           <p className="text-xs font-medium text-indigo-500 text-center uppercase tracking-widest">Click to Preview</p>
-        </div>
+        isPdf ? (
+          <div className="bg-white p-6 flex flex-col items-center justify-center relative">
+             <FileText size={48} className="text-red-400 mb-3 group-hover:scale-110 transition-transform" />
+             <p className="text-xs font-medium text-indigo-500 text-center uppercase tracking-widest">PDF Document</p>
+          </div>
+        ) : (
+          <div className="relative h-40 w-full bg-slate-100 overflow-hidden flex items-center justify-center">
+            <img src={url} alt={title} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" />
+          </div>
+        )
       ) : (
         <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>
       )}
