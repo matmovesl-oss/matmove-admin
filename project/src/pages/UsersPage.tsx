@@ -13,26 +13,16 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      // Fetch ALL profiles to guarantee no data is hidden
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
+      // FETCH ALL to bypass case-sensitivity issues
+      const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       
-      // Filter out admins locally to ensure case-insensitive matching
       const customers = (data || []).filter(u => {
-        const roleStr = (u.role || '').toLowerCase();
-        return roleStr === 'rider' || roleStr === 'driver' || roleStr === 'merchant';
+        const role = (u.role || '').toLowerCase();
+        return role === 'rider' || role === 'driver' || role === 'merchant';
       });
-
       setUsers(customers);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchUsers(); }, []);
@@ -58,7 +48,7 @@ export default function UsersPage() {
         {loading ? (
           <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24} /> Loading all customers...</div>
         ) : users.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">No customers found in database.</div>
+          <div className="p-12 text-center text-slate-400">No customers found.</div>
         ) : (
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm text-left">
@@ -95,7 +85,6 @@ export default function UsersPage() {
               <div><h2 className="text-xl font-bold text-slate-900">Customer Documents</h2><p className="mt-1 text-sm text-slate-500">{selectedUser.full_name} · {String(selectedUser.role).toUpperCase()}</p></div>
               <button onClick={() => setSelectedUser(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
             </div>
-            
             <div className="p-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                  <DocumentCard title="ID Card" url={selectedUser.id_card_url} onView={() => setPreviewDoc(selectedUser.id_card_url)} />

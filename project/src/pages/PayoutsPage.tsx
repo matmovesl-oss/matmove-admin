@@ -12,10 +12,8 @@ export function PayoutsPage() {
     try {
       const res = await fetch('/api/get-payouts');
       const data = await res.json();
-      
       if (data.payouts) {
          setPayouts(data.payouts);
-         
          let pendingVal = 0;
          const pending = data.payouts.filter((p:any) => p.status === 'pending' || p.status === 'processing');
          pending.forEach((p:any) => pendingVal += (p.amount?.value || 0));
@@ -68,7 +66,6 @@ export function PayoutsPage() {
             <tbody className="divide-y divide-slate-100">
               {payouts.map((req) => {
                  const statusTone = req.status === 'completed' ? 'emerald' : req.status === 'failed' ? 'red' : 'amber';
-                 // Exact Monime Schema: req.amount.value, req.source.financialAccountId, req.destination.phoneNumber / accountNumber, req.createTime[cite: 25]
                  const amtSLE = (req.amount?.value || 0) / 100;
                  return (
                   <tr key={req.id} className="hover:bg-slate-50">
