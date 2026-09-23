@@ -68,6 +68,7 @@ export function PayoutsPage() {
             <tbody className="divide-y divide-slate-100">
               {payouts.map((req) => {
                  const statusTone = req.status === 'completed' ? 'emerald' : req.status === 'failed' ? 'red' : 'amber';
+                 // Exact Monime Schema: req.amount.value, req.source.financialAccountId, req.destination.phoneNumber / accountNumber, req.createTime[cite: 25]
                  const amtSLE = (req.amount?.value || 0) / 100;
                  return (
                   <tr key={req.id} className="hover:bg-slate-50">

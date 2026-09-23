@@ -10,17 +10,18 @@ export function FinancialsPage() {
   const [monimeBalances, setMonimeBalances] = useState<Record<string, number>>({});
   const [stats, setStats] = useState({ totalBalance: 0, activeCount: 0, frozenCount: 0 });
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const fetchLiveLedgers = async () => {
     setLoading(true);
     setApiError(null);
     try {
+      // 1. Fetch Supabase Wallets to get the User Names & Roles
       const { data: localWallets, error } = await supabase
         .from('wallets')
         .select(`id, is_active, status, metadata, profiles ( full_name, email, phone, role )`)
-        .eq('currency', 'SLE');
+        .eq('currency', 'SLE')
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -35,35 +36,42 @@ export function FinancialsPage() {
            else activeCount++;
         });
 
-        // STRICT MONIME FETCH - No Local Fallbacks
-        const res = await fetch('/api/get-space-balance');
-        const data = await res.json();
-        
-        if (!res.ok) throw new Error(data.error || "Failed to connect to Monime API. Check Vercel Env Vars.");
-        
-        if (data.accounts) {
-          const trueBalances: Record<string, number> = {};
-          let monimeMasterBalance = 0;
-          data.accounts.forEach((acc: any) => {
-            const val = acc.balance?.available?.value || 0;
-            trueBalances[acc.id] = val / 100;
-            monimeMasterBalance += val;
-          });
+        // 2. Fetch True Master Balance from Monime API
+        try {
+          const res = await fetch('/api/get-space-balance');
+          const data = await res.json();
           
-          setMonimeBalances(trueBalances);
-          setStats({ 
-            totalBalance: monimeMasterBalance / 100, 
-            activeCount, 
-            frozenCount 
-          });
+          if (!res.ok) throw new Error(data.error || "Failed to fetch Monime API");
+          
+          if (data.accounts) {
+            const trueBalances: Record<string, number> = {};
+            data.accounts.forEach((acc: any) => {
+              // Exact Monime Schema: acc.balance.available.value
+              const val = acc.balance?.available?.value || 0;
+              trueBalances[acc.id] = val / 100;
+            });
+            
+            setMonimeBalances(trueBalances);
+            setStats({ 
+              totalBalance: data.masterSleBalance || 0, 
+              activeCount, 
+              frozenCount 
+            });
+          }
+        } catch (apiErr: any) {
+          setApiError(apiErr.message);
         }
 
-        const txRes = await fetch('/api/get-all-transactions', { method: 'POST' });
-        const txData = await txRes.json();
-        if (txData.transactions) setTransactions(txData.transactions);
+        // 3. Fetch True Monime Transactions
+        try {
+          const txRes = await fetch('/api/get-all-transactions', { method: 'POST' });
+          const txData = await txRes.json();
+          if (txData.transactions) setTransactions(txData.transactions);
+        } catch (txErr) {
+          console.error(txErr);
+        }
       }
     } catch (err: any) {
-      console.error('Monime Sync Error:', err);
       setApiError(err.message);
     } finally {
       setLoading(false);
@@ -77,22 +85,19 @@ export function FinancialsPage() {
      const newStatus = isFrozen ? 'active' : 'frozen';
      if (!window.confirm(`Are you sure you want to ${newStatus.toUpperCase()} this wallet?`)) return;
 
-     setBusyId(walletId);
      try {
        const { error } = await supabase.from('wallets').update({ status: newStatus, is_active: isFrozen }).eq('id', walletId);
        if (error) throw error;
        fetchLiveLedgers();
      } catch (err: any) {
        alert("Failed to update status: " + err.message);
-     } finally {
-       setBusyId(null);
      }
   };
 
   return (
     <AdminLayout title="Financial & Wallet Control Center" subtitle="Master Ledger strictly synced with Monime API.">
       <div className="flex items-center justify-between gap-3 mb-5 flex-wrap mt-6">
-        <div><p className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Strict Monime API Mode Active</p></div>
+        <div><p className="text-sm font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">Live Monime Sync Active</p></div>
         <button type="button" onClick={fetchLiveLedgers} disabled={loading} className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Ledger</button>
       </div>
 
@@ -121,8 +126,8 @@ export function FinancialsPage() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
-            <h3 className="font-semibold text-slate-900">Monime Account Ledgers</h3>
-            <p className="text-xs text-slate-500 mt-1">{stats.activeCount} of {wallets.length} active accounts</p>
+            <h3 className="font-semibold text-slate-900">Unified Customer Wallets</h3>
+            <p className="text-xs text-slate-500 mt-1">Names from Supabase • Balances from Monime</p>
           </div>
           {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Syncing with Monime API...</div> : (
             <div className="overflow-x-auto max-h-[620px] overflow-y-auto">
@@ -147,13 +152,12 @@ export function FinancialsPage() {
                         <td className="px-5 py-3"><div className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded inline-block border border-slate-200">{monimeId}</div></td>
                         <td className="px-5 py-3">
                           <p className="font-bold text-slate-900">{trueBalance.toLocaleString()} SLE</p>
-                          <p className="text-[10px] text-emerald-600 mt-0.5 font-bold uppercase tracking-widest">LIVE API</p>
                         </td>
                         <td className="px-5 py-3">{!isFrozen ? <Badge tone="emerald">Active</Badge> : <Badge tone="amber">Frozen</Badge>}</td>
                         <td className="px-5 py-3 text-right">
-                          <button type="button" disabled={busyId === wallet.id} onClick={() => handleToggleFreeze(wallet.id, wallet.status)} className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center justify-end gap-1.5 ml-auto transition ${!isFrozen ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                          <button type="button" onClick={() => handleToggleFreeze(wallet.id, wallet.status)} className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center justify-end gap-1.5 ml-auto transition ${!isFrozen ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
                             {!isFrozen ? <Lock className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
-                            {busyId === wallet.id ? 'Wait...' : !isFrozen ? 'Freeze' : 'Unfreeze'}
+                            {!isFrozen ? 'Freeze' : 'Unfreeze'}
                           </button>
                         </td>
                       </tr>
@@ -178,6 +182,7 @@ export function FinancialsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {transactions.map((tx: any) => {
+                    // Exact Monime Schema: tx.type, tx.amount.value, tx.financialAccount.id, tx.timestamp[cite: 24]
                     const isCredit = tx.type === 'credit';
                     const amountSLE = (tx.amount?.value || 0) / 100;
                     return (
