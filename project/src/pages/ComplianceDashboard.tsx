@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Clock, TrendingUp, CreditCard, AlertCircle, FileCheck, Wallet, Users } from 'lucide-react';
+import { Clock, TrendingUp, CreditCard, AlertCircle, FileCheck, Wallet, Users, Loader2 } from 'lucide-react';
 
 export function ComplianceDashboard() {
   const [stats, setStats] = useState({
@@ -18,43 +18,52 @@ export function ComplianceDashboard() {
   const fetchLiveMetrics = async () => {
     setLoading(true);
     try {
-      // 1. Fetch Profiles (Users + KYC)
-      const { data: profiles } = await supabase.from('profiles').select('kyc_status');
-      // 2. Fetch Wallets
-      const { data: wallets } = await supabase.from('wallets').select('balance, is_active');
-      // 3. Fetch Payouts
-      const { data: payouts } = await supabase.from('withdrawal_requests').select('amount, status');
+      // 1. Fetch Local Profiles & Wallets
+      const { data: profiles } = await supabase.from('profiles').select('kyc_status, role');
+      const { data: wallets } = await supabase.from('wallets').select('balance, is_active').eq('currency', 'SLE');
 
       let pendingKycCount = 0;
       let approvedKycCount = 0;
+      let users = 0;
+
       if (profiles) {
-        pendingKycCount = profiles.filter(p => p.kyc_status === 'pending').length;
-        approvedKycCount = profiles.filter(p => p.kyc_status === 'approved').length;
+        pendingKycCount = profiles.filter(p => p.kyc_status === 'pending' && ['driver', 'merchant'].includes(String(p.role).toLowerCase())).length;
+        approvedKycCount = profiles.filter(p => p.kyc_status === 'approved' && ['driver', 'merchant'].includes(String(p.role).toLowerCase())).length;
+        users = profiles.filter(p => ['rider', 'driver', 'merchant'].includes(String(p.role).toLowerCase())).length;
       }
 
-      let totalBal = 0;
-      let activeW = 0;
-      if (wallets) {
-        totalBal = wallets.reduce((sum, w) => sum + Number(w.balance || 0), 0);
-        activeW = wallets.filter(w => w.is_active !== false).length;
-      }
+      let activeW = wallets ? wallets.filter(w => w.is_active !== false).length : 0;
+      let localFallbackBal = wallets ? wallets.reduce((sum, w) => sum + Number(w.balance || 0), 0) : 0;
 
-      let pendingPay = 0;
+      // 2. Fetch True Monime Data
+      let monimeTotalBal = localFallbackBal;
+      let pendingPayCount = 0;
       let pendingPayVal = 0;
-      if (payouts) {
-        const pendingReqs = payouts.filter(p => p.status === 'pending');
-        pendingPay = pendingReqs.length;
-        pendingPayVal = pendingReqs.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-      }
+
+      try {
+        const balRes = await fetch('/api/get-space-balance');
+        const balData = await balRes.json();
+        if (balData.masterSleBalance !== undefined) monimeTotalBal = balData.masterSleBalance;
+      } catch (e) { console.error("Monime balance fetch failed"); }
+
+      try {
+        const payRes = await fetch('/api/get-payouts');
+        const payData = await payRes.json();
+        if (payData.payouts) {
+          const pendingReqs = payData.payouts.filter((p:any) => p.status === 'pending' || p.status === 'processing');
+          pendingPayCount = pendingReqs.length;
+          pendingPayVal = pendingReqs.reduce((sum:number, p:any) => sum + (p.amount?.value || 0), 0) / 100;
+        }
+      } catch (e) { console.error("Monime payout fetch failed"); }
 
       setStats({
         pendingKyc: pendingKycCount,
-        totalBalance: totalBal,
-        pendingPayouts: pendingPay,
+        totalBalance: monimeTotalBal,
+        pendingPayouts: pendingPayCount,
         pendingPayoutsValue: pendingPayVal,
         kycApprovals: approvedKycCount,
         activeWallets: activeW,
-        userCount: profiles?.length || 0
+        userCount: users
       });
     } catch (err) {
       console.error("Error fetching dashboard metrics:", err);
@@ -63,16 +72,14 @@ export function ComplianceDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchLiveMetrics();
-  }, []);
+  useEffect(() => { fetchLiveMetrics(); }, []);
 
   return (
     <AdminLayout title="Compliance Dashboard" subtitle="Executive overview of MatMove platform health">
-      <div className="mb-6 flex justify-end">
-        <button onClick={fetchLiveMetrics} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full text-xs font-bold border border-emerald-200">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          Live Supabase Data
+      <div className="mb-6 flex justify-end mt-6">
+        <button onClick={fetchLiveMetrics} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full text-xs font-bold border border-emerald-200 hover:bg-emerald-100 transition">
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>}
+          Live Monime Data
         </button>
       </div>
 
