@@ -6,7 +6,7 @@ import { KycPage } from './pages/KycPage';
 import { FinancialsPage } from './pages/FinancialsPage';
 import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage'; 
-import StaffGovernancePage from './pages/StaffGovernancePage'; // Enforces the Staff Page split
+import { StaffGovernancePage } from './pages/StaffGovernancePage'; // Enforces the Staff Page split
 import { LogsPage } from './pages/LogsPage';
 
 import WalletsPage from './pages/WalletsPage';
