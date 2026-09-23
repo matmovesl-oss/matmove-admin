@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { CreditCard, CheckCircle2, XCircle, Clock, RefreshCw, Loader2 } from 'lucide-react';
 
-export default function PayoutsPage() {
+export function PayoutsPage() {
   const [payouts, setPayouts] = useState<any[]>([]);
   const [stats, setStats] = useState({ pendingCount: 0, pendingValue: 0, completedCount: 0, failedCount: 0 });
   const [loading, setLoading] = useState(true);

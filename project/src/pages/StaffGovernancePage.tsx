@@ -4,7 +4,7 @@ import Modal from '@/components/Modal';
 import { supabase } from '@/lib/supabase';
 import { Search, RefreshCw, Loader2, UserPlus, ShieldCheck } from 'lucide-react';
 
-export default function StaffGovernancePage() {
+export function StaffGovernancePage() {
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

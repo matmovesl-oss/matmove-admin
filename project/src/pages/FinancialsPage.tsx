@@ -4,7 +4,7 @@ import AdminLayout from '@/components/AdminLayout';
 import { Wallet, TrendingUp, Lock, RefreshCw, Loader2, Search, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import Badge from '@/components/Badge';
 
-export default function FinancialsPage() {
+export function FinancialsPage() {
   const [wallets, setWallets] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [stats, setStats] = useState({ totalBalance: 0, activeCount: 0, frozenCount: 0 });
