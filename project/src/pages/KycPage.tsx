@@ -16,10 +16,21 @@ const statusClass = (status: KycStatus | null) => { switch (status) { case 'appr
 const formatDate = (value: string | null) => { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString(); };
 const getCustomerName = (profile: Profile | null) => { if (!profile) return 'Unknown customer'; const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(); return fullName || 'Unnamed customer'; };
 
-// SECURE DEVICE DOWNLOAD LOGIC
+// SECURE DEVICE DOWNLOAD LOGIC (Fixes Vercel 404 NOT_FOUND Notepad errors)
 const downloadFile = async (url: string, filename: string) => {
   try {
+    if (url.startsWith('data:')) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
     const response = await fetch(url);
+    if (!response.ok) throw new Error('Network response was not ok');
     const blob = await response.blob();
     const blobUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -30,7 +41,9 @@ const downloadFile = async (url: string, filename: string) => {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(blobUrl);
   } catch (err) {
-    alert('Failed to download document securely.');
+    console.error(err);
+    // Fallback if CORS blocks the blob fetch
+    window.open(url, '_blank');
   }
 };
 
@@ -239,10 +252,10 @@ export function KycPage() {
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" url={profile?.id_card_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_ID_Card`} />
-                    <DocumentCard title="Selfie" url={profile?.selfie_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Selfie`} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={profile?.license_doc_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_License`} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={profile?.business_doc_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Business_Doc`} />}
+                    <DocumentCard title="ID Card" url={profile?.id_card_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_ID_Card.png`} />
+                    <DocumentCard title="Selfie" url={profile?.selfie_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Selfie.png`} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={profile?.license_doc_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_License.png`} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={profile?.business_doc_url} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Business_Doc.pdf`} />}
                   </div>
                 </section>
 

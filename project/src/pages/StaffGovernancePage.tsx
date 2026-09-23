@@ -20,7 +20,7 @@ export default function StaffGovernancePage() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .in('role', ['super_admin', 'admin_finance', 'admin_compliance', 'admin_dispatch']) // STRICTLY STAFF ONLY
+        .in('role', ['super_admin', 'admin_finance', 'admin_compliance', 'admin_dispatch'])
         .order('created_at', { ascending: false });
       if (error) throw error;
       setStaff(data || []);
@@ -37,20 +37,33 @@ export default function StaffGovernancePage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('admin_user_invites').insert({
-        email: newStaff.email,
-        full_name: newStaff.fullName,
-        role: newStaff.role,
-        temp_password: newStaff.defaultPassword
+      // 1. First, create the Auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+         email: newStaff.email,
+         password: newStaff.defaultPassword,
+         options: {
+           data: {
+             full_name: newStaff.fullName,
+             role: newStaff.role
+           }
+         }
       });
+      if (authError) throw authError;
 
-      if (error) throw error;
-      alert(`Invitation generated for ${newStaff.email}! They can log in with the default password you set to access their specific department.`);
+      // 2. Mark profile with must_change_password flag for first-time login
+      if (authData.user) {
+         await supabase.from('profiles').update({ 
+           must_change_password: true,
+           role: newStaff.role
+         }).eq('id', authData.user.id);
+      }
+
+      alert(`Staff account generated for ${newStaff.email}! They will be forced to change the default password on first login.`);
       setIsAddStaffOpen(false);
       setNewStaff({ email: '', fullName: '', role: 'admin_dispatch', defaultPassword: '' });
       fetchStaff();
     } catch (err: any) {
-      alert(`Note: To create staff silently, ensure the 'admin_user_invites' table and Edge Function are deployed. Error: ${err.message}`);
+      alert(`Error creating staff: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -142,6 +155,7 @@ export default function StaffGovernancePage() {
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Set Default Password</label>
             <input required type="text" value={newStaff.defaultPassword} onChange={e => setNewStaff({...newStaff, defaultPassword: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500 font-mono" placeholder="e.g. MatMoveStaff2024!" />
+            <p className="text-[10px] text-slate-400 mt-1">They will be forced to change this upon first login.</p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
