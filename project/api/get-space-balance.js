@@ -5,16 +5,15 @@ export default async function handler(req, res) {
 
   try {
     const supabase = createClient(
-      process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
+      process.env.VITE_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    // 1. Fetch live accounts from Monime with balances
-    const monimeRes = await fetch('https://api.monime.io/v1/financial-accounts?withBalance=true&limit=50', {
+    const monimeRes = await fetch('https://api.monime.io/v1/financial-accounts?withBalance=true&limit=100', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${process.env.MONIME_API_KEY}`,
-        'Monime-Space-Id': process.env.MONIME_SPACE_ID,
+        'Authorization': `Bearer ${process.env.VITE_MONIME_API_KEY}`,
+        'Monime-Space-Id': process.env.VITE_MONIME_SPACE_ID,
         'Monime-Version': 'caph.2025-08-23'
       }
     });
@@ -23,29 +22,19 @@ export default async function handler(req, res) {
     const accounts = rawData.result?.items || rawData.result || [];
 
     let totalSleCents = 0;
-
     accounts.forEach(acc => {
-      if (acc.balance?.available?.value) {
-        totalSleCents += acc.balance.available.value;
-      }
+      if (acc.balance?.available?.value) totalSleCents += acc.balance.available.value;
     });
 
-    const masterSleBalance = totalSleCents / 100;
-
-    // 2. Fetch frozen count from Supabase
-    const { count: frozenCount } = await supabase
-      .from('wallets')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'frozen');
+    const { count: frozenCount } = await supabase.from('wallets').select('*', { count: 'exact', head: true }).eq('status', 'frozen');
 
     return res.status(200).json({
-      masterSleBalance,
+      masterSleBalance: totalSleCents / 100,
       activeWalletsCount: accounts.length,
       frozenWalletsCount: frozenCount || 0,
       accounts
     });
   } catch (error) {
-    console.error('Master Balance Sync Error:', error.message);
     return res.status(500).json({ error: error.message });
   }
 }

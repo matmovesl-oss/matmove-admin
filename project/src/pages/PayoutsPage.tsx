@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { CreditCard, CheckCircle2, XCircle, Clock, RefreshCw, Loader2 } from 'lucide-react';
 
-export function PayoutsPage() {
+export default function PayoutsPage() {
   const [payouts, setPayouts] = useState<any[]>([]);
   const [stats, setStats] = useState({ pendingCount: 0, pendingValue: 0, completedCount: 0, failedCount: 0 });
   const [loading, setLoading] = useState(true);
@@ -10,29 +10,21 @@ export function PayoutsPage() {
   const fetchLivePayouts = async () => {
     setLoading(true);
     try {
-      const monimeRes = await fetch('https://api.monime.io/v1/payouts?limit=50', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_MONIME_API_KEY}`,
-          'Monime-Space-Id': import.meta.env.VITE_MONIME_SPACE_ID,
-          'Monime-Version': 'caph.2025-08-23'
-        }
-      });
-      const rawData = await monimeRes.json();
+      const res = await fetch('/api/get-payouts');
+      const data = await res.json();
       
-      if (monimeRes.ok && rawData.result) {
-         const data = rawData.result.items || rawData.result;
-         setPayouts(data);
+      if (data.payouts) {
+         setPayouts(data.payouts);
          
          let pendingVal = 0;
-         const pending = data.filter((p:any) => p.status === 'pending' || p.status === 'processing');
+         const pending = data.payouts.filter((p:any) => p.status === 'pending' || p.status === 'processing');
          pending.forEach((p:any) => pendingVal += (p.amount?.value || 0));
 
          setStats({
            pendingCount: pending.length,
            pendingValue: pendingVal / 100,
-           completedCount: data.filter((p:any) => p.status === 'completed').length,
-           failedCount: data.filter((p:any) => p.status === 'failed').length
+           completedCount: data.payouts.filter((p:any) => p.status === 'completed').length,
+           failedCount: data.payouts.filter((p:any) => p.status === 'failed').length
          });
       }
     } catch (err) { console.error(err); } finally { setLoading(false); }
@@ -41,7 +33,7 @@ export function PayoutsPage() {
   useEffect(() => { fetchLivePayouts(); }, []);
 
   return (
-    <AdminLayout title="Monime Payouts & Withdrawals" subtitle="Live disbursement tracking directly from Monime Ledger">
+    <AdminLayout title="Payouts & Withdrawals" subtitle="Live disbursement tracking directly from Monime Ledger">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 mt-6">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 flex justify-between items-start shadow-sm">
           <div><p className="text-sm font-medium text-slate-500 mb-1">Processing Queue</p><h3 className="text-2xl font-bold text-slate-900">{stats.pendingCount}</h3></div>
