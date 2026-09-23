@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { Loader2 } from 'lucide-react';
 
-// Import all your pages
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
@@ -13,19 +12,18 @@ import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage';
 import { StaffGovernancePage } from './pages/StaffGovernancePage';
 import { LogsPage } from './pages/LogsPage';
+import { ComplianceDashboard } from './pages/ComplianceDashboard';
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Check active session on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsInitializing(false);
     });
 
-    // Listen for sign in / sign out events
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -33,7 +31,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Show a loading spinner while Supabase checks the session
   if (isInitializing) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900">
@@ -42,7 +39,6 @@ export default function App() {
     );
   }
 
-  // FORCE LOGIN: If no session exists, ONLY show the Login page
   if (!session) {
     return (
       <BrowserRouter>
@@ -53,12 +49,11 @@ export default function App() {
     );
   }
 
-  // AUTHORIZED: Admin is logged in, show the full dashboard
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<ComplianceDashboard />} />
         <Route path="/dispatch" element={<DispatchRadarPage />} />
         <Route path="/kyc" element={<KycPage />} />
         <Route path="/wallets" element={<FinancialsPage />} />
@@ -66,7 +61,6 @@ export default function App() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/staff" element={<StaffGovernancePage />} />
         <Route path="/audit" element={<LogsPage />} />
-        {/* Fallback for unknown routes */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

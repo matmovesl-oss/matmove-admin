@@ -16,7 +16,7 @@ export default function LoginPage() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      // If successful, the App.tsx wrapper will automatically detect the session and route to the dashboard.
+      window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'Invalid login credentials.');
       setLoading(false);
@@ -38,31 +38,18 @@ export default function LoginPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-800 py-8 px-4 shadow sm:rounded-xl sm:px-10 border border-slate-700">
           <form className="space-y-6" onSubmit={handleLogin}>
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-lg text-sm text-center">
-                {error}
-              </div>
-            )}
-            
+            {error && <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-lg text-sm text-center">{error}</div>}
             <div>
               <label className="block text-sm font-medium text-slate-300">Email address</label>
-              <div className="mt-1">
-                <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="appearance-none block w-full px-3 py-2 border border-slate-600 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-slate-900 text-white" />
-              </div>
+              <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-600 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-slate-900 text-white" />
             </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-300">Password</label>
-              <div className="mt-1">
-                <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="appearance-none block w-full px-3 py-2 border border-slate-600 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-slate-900 text-white" />
-              </div>
+              <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-600 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-slate-900 text-white" />
             </div>
-
-            <div>
-              <button type="submit" disabled={loading} className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900 disabled:opacity-50 transition">
-                {loading ? <Loader2 size={18} className="animate-spin" /> : 'Sign In'}
-              </button>
-            </div>
+            <button type="submit" disabled={loading} className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900 disabled:opacity-50 transition">
+              {loading ? <Loader2 size={18} className="animate-spin" /> : 'Sign In'}
+            </button>
           </form>
         </div>
       </div>

@@ -59,27 +59,29 @@ export function PayoutsPage() {
           </button>
         </div>
         {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Syncing payouts...</div> : payouts.length === 0 ? <div className="p-8 text-center text-slate-500">No withdrawal requests found in Monime.</div> : (
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-              <tr><th className="px-6 py-4">Transaction ID</th><th className="px-6 py-4">Source Account</th><th className="px-6 py-4">Destination</th><th className="px-6 py-4">Amount</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Date</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {payouts.map((req) => {
-                 const statusTone = req.status === 'completed' ? 'emerald' : req.status === 'failed' ? 'red' : 'amber';
-                 const amtSLE = (req.amount?.value || 0) / 100;
-                 return (
-                  <tr key={req.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-mono text-[10px] text-slate-600">{req.id}</td>
-                    <td className="px-6 py-4 font-mono text-[10px] text-slate-600">{req.source?.financialAccountId || 'Master Float'}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900">{req.destination?.phoneNumber || req.destination?.accountNumber || 'Unknown'}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900">{amtSLE.toLocaleString()} SLE</td>
-                    <td className="px-6 py-4"><span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-${statusTone}-100 text-${statusTone}-800`}>{req.status}</span></td>
-                    <td className="px-6 py-4 text-slate-500 text-xs">{new Date(req.createTime).toLocaleString()}</td>
-                  </tr>
-                 );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+                <tr><th className="px-6 py-4">Transaction ID</th><th className="px-6 py-4">Source Account</th><th className="px-6 py-4">Destination</th><th className="px-6 py-4">Amount</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Date</th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {payouts.map((req) => {
+                   const statusTone = req.status === 'completed' ? 'emerald' : req.status === 'failed' ? 'red' : 'amber';
+                   const amtSLE = (req.amount?.value || 0) / 100;
+                   return (
+                    <tr key={req.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 font-mono text-[10px] text-slate-600">{req.id}</td>
+                      <td className="px-6 py-4 font-mono text-[10px] text-slate-600">{req.source?.financialAccountId || 'Master Float'}</td>
+                      <td className="px-6 py-4 font-bold text-slate-900">{req.destination?.phoneNumber || req.destination?.accountNumber || 'Unknown'}</td>
+                      <td className="px-6 py-4 font-bold text-slate-900">{amtSLE.toLocaleString()} SLE</td>
+                      <td className="px-6 py-4"><span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-${statusTone}-100 text-${statusTone}-800`}>{req.status}</span></td>
+                      <td className="px-6 py-4 text-slate-500 text-xs">{new Date(req.createTime).toLocaleString()}</td>
+                    </tr>
+                   );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </AdminLayout>
