@@ -20,10 +20,17 @@ export function StaffGovernancePage() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .in('role', ['super_admin', 'admin_finance', 'admin_compliance', 'admin_dispatch'])
         .order('created_at', { ascending: false });
+        
       if (error) throw error;
-      setStaff(data || []);
+      
+      // Filter locally to find ANY user with an admin role
+      const admins = (data || []).filter(u => {
+        const roleStr = (u.role || '').toLowerCase();
+        return roleStr.includes('admin');
+      });
+
+      setStaff(admins);
     } catch (err) {
       console.error(err);
     } finally {
@@ -37,7 +44,6 @@ export function StaffGovernancePage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // 1. First, create the Auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
          email: newStaff.email,
          password: newStaff.defaultPassword,
@@ -50,7 +56,6 @@ export function StaffGovernancePage() {
       });
       if (authError) throw authError;
 
-      // 2. Mark profile with must_change_password flag for first-time login
       if (authData.user) {
          await supabase.from('profiles').update({ 
            must_change_password: true,
@@ -76,7 +81,7 @@ export function StaffGovernancePage() {
 
   return (
     <AdminLayout title="Staff & Department Governance" subtitle="Manage internal employees and RBAC assignments">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 mt-6">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input type="text" placeholder="Search staff..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600 outline-none" />
@@ -94,6 +99,8 @@ export function StaffGovernancePage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24} /> Loading staff records...</div>
+        ) : staff.length === 0 ? (
+          <div className="p-12 text-center text-slate-400">No staff accounts found.</div>
         ) : (
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm text-left">

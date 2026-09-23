@@ -13,13 +13,21 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
+      // Fetch ALL profiles to guarantee no data is hidden
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .in('role', ['rider', 'driver', 'merchant']) // STRICTLY CUSTOMERS ONLY
         .order('created_at', { ascending: false });
+        
       if (error) throw error;
-      setUsers(data || []);
+      
+      // Filter out admins locally to ensure case-insensitive matching
+      const customers = (data || []).filter(u => {
+        const roleStr = (u.role || '').toLowerCase();
+        return roleStr === 'rider' || roleStr === 'driver' || roleStr === 'merchant';
+      });
+
+      setUsers(customers);
     } catch (err) {
       console.error(err);
     } finally {
@@ -35,7 +43,7 @@ export default function UsersPage() {
   );
 
   return (
-    <AdminLayout title="Customer Governance" subtitle="Monitor and manage Riders, Drivers, and Merchants">
+    <AdminLayout title="Customer Governance" subtitle="Monitor and manage all Riders, Drivers, and Merchants">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 mt-6">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -48,7 +56,9 @@ export default function UsersPage() {
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24} /> Loading customers...</div>
+          <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24} /> Loading all customers...</div>
+        ) : users.length === 0 ? (
+          <div className="p-12 text-center text-slate-400">No customers found in database.</div>
         ) : (
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm text-left">
@@ -82,7 +92,7 @@ export default function UsersPage() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
-              <div><h2 className="text-xl font-bold text-slate-900">Customer Documents</h2><p className="mt-1 text-sm text-slate-500">{selectedUser.full_name} · {selectedUser.role.toUpperCase()}</p></div>
+              <div><h2 className="text-xl font-bold text-slate-900">Customer Documents</h2><p className="mt-1 text-sm text-slate-500">{selectedUser.full_name} · {String(selectedUser.role).toUpperCase()}</p></div>
               <button onClick={() => setSelectedUser(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
             </div>
             
@@ -116,7 +126,6 @@ export default function UsersPage() {
 
 function DocumentCard({ title, url, onView }: { title: string; url: string | null | undefined; onView: () => void }) {
   const isPdf = url?.toLowerCase().includes('.pdf');
-  
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group cursor-pointer transition hover:shadow-md" onClick={() => url && onView()}>
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
