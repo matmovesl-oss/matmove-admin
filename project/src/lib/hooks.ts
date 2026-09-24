@@ -27,7 +27,7 @@ const buildOwnerName = (profile?: any) => {
   return fullName || 'Unnamed customer';
 };
 
-// --- UNIFIED WALLETS HOOK (THE MONIME GATEWAY) ---
+// --- MONIME GATEWAY WALLETS HOOK ---
 export function useWallets() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -46,16 +46,17 @@ export function useWallets() {
       if (walletRes.error) throw walletRes.error;
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
-      // MONIME GATEWAY INTEGRATION
+      // FETCH LIVE MONIME BALANCES
       let monimeBalances: Record<string, number> = {};
       try {
         const apiRes = await fetch('/api/get-space-balance');
         if (apiRes.ok) {
           const apiData = await apiRes.json();
-          apiData.accounts?.forEach((acc: any) => {
-            if (acc.balance?.available?.value !== undefined) {
-              // Ensure perfect ID mapping by trimming whitespace
-              monimeBalances[String(acc.id).trim()] = acc.balance.available.value / 100;
+          (apiData.accounts || []).forEach((acc: any) => {
+            const accId = String(acc.id || '').trim();
+            const val = acc.balance?.available?.value ?? acc.balance?.value;
+            if (accId && val !== undefined) {
+              monimeBalances[accId] = Number(val) / 100; // Convert cents to SLE/USD
             }
           });
         }
@@ -65,7 +66,7 @@ export function useWallets() {
         const p = profileMap.get(w.user_id);
         const monimeId = w.metadata?.monime_account_id ? String(w.metadata.monime_account_id).trim() : null;
         
-        // GATEWAY LOGIC: Override Supabase balance with Live Monime API balance
+        // GATEWAY RECONCILIATION: Use Monime API balance if gateway ID exists, else fallback to Supabase
         const apiBal = monimeId ? monimeBalances[monimeId] : undefined;
         const trueBalance = apiBal !== undefined ? apiBal : Number(w.balance || 0);
         const reserved = Number(w.reserved_balance || 0);
@@ -79,7 +80,7 @@ export function useWallets() {
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: trueBalance, // OVERRIDING Supabase column with TRUE GATEWAY BALANCE
+          balance: trueBalance,
           available_balance: Math.max(0, trueBalance - reserved)
         };
       });
@@ -132,7 +133,7 @@ export function useWithdrawals() {
         const apiRes = await fetch('/api/get-payouts');
         if (apiRes.ok) {
           const apiData = await apiRes.json();
-          apiData.payouts?.forEach((p: any) => {
+          (apiData.payouts || []).forEach((p: any) => {
              if (p.metadata?.withdrawal_id) monimeStatuses[p.metadata.withdrawal_id] = p.status;
           });
         }

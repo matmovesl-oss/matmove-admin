@@ -1,18 +1,14 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, Eye, X, Download } from 'lucide-react';
+import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, Eye, X, ExternalLink } from 'lucide-react';
 
 const getStorageUrl = (path: string | null | undefined) => {
   if (!path) return null;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(path);
+  const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
   return data.publicUrl;
-};
-
-// FIX: Securely opens file in a new tab instead of forcing a blob/journal download
-const downloadFile = (url: string) => {
-  window.open(url, '_blank', 'noopener,noreferrer');
 };
 
 function Info({ label, value }: { label: string; value: string; }) {
@@ -107,7 +103,6 @@ export default function UsersPage() {
             </div>
             
             <div className="p-6 space-y-6">
-              {/* FULL KYC DETAILS REPLICATED HERE */}
               <section>
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Customer Information</h3>
                 <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
@@ -184,15 +179,15 @@ function DocumentCard({ title, url, onView }: { title: string; url: string | nul
             <button onClick={() => onView()} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
               <Eye size={14} /> Preview
             </button>
-            <button onClick={(e) => { e.preventDefault(); downloadFile(url); }} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-              <Download size={14} /> View / Save
-            </button>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+              <ExternalLink size={14} /> Open Link
+            </a>
           </div>
         )}
       </div>
       {url ? (
         <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView()}>
-          <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" />
+          <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
         </div>
       ) : (
         <div className="flex h-32 items-center justify-center bg-slate-50 text-sm text-slate-400">No document submitted</div>

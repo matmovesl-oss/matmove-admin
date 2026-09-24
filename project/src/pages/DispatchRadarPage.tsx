@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Loader2, MapPin, Navigation, RefreshCw, Car, Package, AlertCircle } from 'lucide-react';
+import { Loader2, MapPin, Navigation, RefreshCw, Car, Package } from 'lucide-react';
 
 export default function DispatchRadarPage() {
   const [bookings, setBookings] = useState<any[]>([]);
@@ -10,8 +10,6 @@ export default function DispatchRadarPage() {
   const fetchBookings = async () => {
     setLoading(true);
     try {
-      // FIX: Explicitly queries the 'bookings' table with NO STATUS FILTERS. 
-      // It will pull every single ride, delivery, and schedule ever created.
       const { data, error } = await supabase
         .from('bookings')
         .select(`*, profiles!rider_id(full_name, phone)`)

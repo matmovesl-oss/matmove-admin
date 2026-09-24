@@ -1,46 +1,31 @@
-import { createClient } from '@supabase/supabase-js';
-
-export default async function handler(req, res) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    const supabase = createClient(
-      process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
+    const apiKey = process.env.MONIME_API_KEY || process.env.VITE_MONIME_API_KEY;
+    const spaceId = process.env.MONIME_SPACE_ID || process.env.VITE_MONIME_SPACE_ID;
 
-    const monimeRes = await fetch('https://api.monime.io/v1/financial-accounts?withBalance=true&limit=50', {
+    if (!apiKey || !spaceId) {
+      return res.status(500).json({ error: 'Monime API key or Space ID missing in environment variables.' });
+    }
+
+    const monimeRes = await fetch('https://api.monime.io/v1/financial-accounts?withBalance=true&limit=100', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${process.env.MONIME_API_KEY || process.env.VITE_MONIME_API_KEY}`,
-        'Monime-Space-Id': process.env.MONIME_SPACE_ID || process.env.VITE_MONIME_SPACE_ID,
+        'Authorization': `Bearer ${apiKey}`,
+        'Monime-Space-Id': spaceId,
         'Monime-Version': 'caph.2025-08-23'
       }
     });
 
     const rawData = await monimeRes.json();
-    if (!monimeRes.ok) throw new Error(rawData.message || "Failed to fetch accounts from Monime");
+    if (!monimeRes.ok) {
+      return res.status(monimeRes.status).json({ error: rawData.message || 'Failed to fetch Monime accounts' });
+    }
 
-    // Monime Schema: result is an array of FinancialAccount objects
-    const accounts = rawData.result || [];
-    let totalSleCents = 0;
-
-    accounts.forEach(acc => {
-      // Monime Schema: balance.available.value
-      if (acc.balance && acc.balance.available && acc.balance.available.value) {
-        totalSleCents += acc.balance.available.value;
-      }
-    });
-
-    const { count: frozenCount } = await supabase.from('wallets').select('*', { count: 'exact', head: true }).eq('status', 'frozen');
-
-    return res.status(200).json({
-      masterSleBalance: totalSleCents / 100,
-      activeWalletsCount: accounts.length,
-      frozenWalletsCount: frozenCount || 0,
-      accounts
-    });
-  } catch (error) {
+    const accounts = rawData.result || rawData.data || (Array.isArray(rawData) ? rawData : []);
+    return res.status(200).json({ accounts });
+  } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
 }
