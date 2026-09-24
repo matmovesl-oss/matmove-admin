@@ -1,19 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 
-import DashboardPage from './pages/DashboardPage'; // Restored correct dashboard
+import DashboardPage from './pages/DashboardPage';
 import { KycPage } from './pages/KycPage';
 import { FinancialsPage } from './pages/FinancialsPage';
 import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage'; 
-import StaffGovernancePage from './pages/StaffGovernancePage';
+import { StaffGovernancePage } from './pages/StaffGovernancePage'; // FIX: Added { } brackets here!
 import { LogsPage } from './pages/LogsPage';
 
 import WalletsPage from './pages/WalletsPage';
 import WithdrawalsPage from './pages/WithdrawalsPage';
 import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
-import { PricingPage } from './pages/PricingPage'; // NEW: Vehicle Pricing
+import { PricingPage } from './pages/PricingPage'; 
 
 export default function App() {
   return (
@@ -23,7 +23,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/dispatch" element={<DispatchRadarPage />} />
-          <Route path="/pricing" element={<PricingPage />} /> {/* NEW ROUTE */}
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/kyc" element={<KycPage />} />
           <Route path="/wallets" element={<WalletsPage />} />
           <Route path="/withdrawals" element={<WithdrawalsPage />} />
