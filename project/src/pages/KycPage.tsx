@@ -16,10 +16,6 @@ const statusClass = (status: KycStatus | null) => { switch (status) { case 'appr
 const formatDate = (value: string | null) => { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString(); };
 const getCustomerName = (profile: Profile | null) => { if (!profile) return 'Unknown customer'; const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(); return fullName || 'Unnamed customer'; };
 
-const downloadFile = (url: string) => {
-  window.open(url, '_blank', 'noopener,noreferrer');
-};
-
 export function KycPage() {
   const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,16 +61,6 @@ export function KycPage() {
     });
   }, [submissions, search, statusFilter, roleFilter]);
 
-  const stats = useMemo(() => {
-    return {
-      total: submissions.length,
-      pending: submissions.filter((item) => item.status === 'pending').length,
-      approved: submissions.filter((item) => item.status === 'approved').length,
-      rejected: submissions.filter((item) => item.status === 'rejected').length,
-      resubmission: submissions.filter((item) => item.status === 'resubmission_required').length,
-    };
-  }, [submissions]);
-
   const openReview = (submission: KycSubmission, selectedDecision: KycDecision = 'approved') => {
     setSelected(submission); setDecision(selectedDecision); setReason(selectedDecision === 'approved' ? '' : submission.rejection_reason || '');
   };
@@ -103,14 +89,6 @@ export function KycPage() {
             <span>{error}</span><button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button>
           </div>
         )}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-xl border border-gray-200 bg-white p-5"><p className="text-sm text-gray-500">Total</p><p className="mt-1 text-2xl font-bold text-gray-900">{stats.total}</p></div>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-5"><p className="text-sm text-blue-700">Pending</p><p className="mt-1 text-2xl font-bold text-blue-800">{stats.pending}</p></div>
-          <div className="rounded-xl border border-green-200 bg-green-50 p-5"><p className="text-sm text-green-700">Approved</p><p className="mt-1 text-2xl font-bold text-green-800">{stats.approved}</p></div>
-          <div className="rounded-xl border border-red-200 bg-red-50 p-5"><p className="text-sm text-red-700">Rejected</p><p className="mt-1 text-2xl font-bold text-red-800">{stats.rejected}</p></div>
-          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-5"><p className="text-sm text-yellow-700">Resubmission</p><p className="mt-1 text-2xl font-bold text-yellow-800">{stats.resubmission}</p></div>
-        </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -270,10 +248,11 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
   useEffect(() => {
     if (!path) return;
     if (path.startsWith('http')) { setUrl(path); return; }
-    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
     
-    // SECURE FIX: Creates a temporary signed URL because the bucket is Private.
-    supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 3600).then(({ data }) => {
+    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+    // SECURE FIX: Ask Supabase to decrypt the private bucket and issue a temporary 1-hour Signed URL
+    supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 3600).then(({ data, error }) => {
+      if (error) console.error("Signed URL Error:", error.message);
       if (data?.signedUrl) setUrl(data.signedUrl);
     });
   }, [path]);

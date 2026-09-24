@@ -52,11 +52,18 @@ export function useWallets() {
         const apiRes = await fetch('/api/get-space-balance');
         if (apiRes.ok) {
           const apiData = await apiRes.json();
+          console.log("MONIME API RAW SYNC DATA:", apiData.accounts); // Check your browser console (F12) to see this!
+          
           (apiData.accounts || []).forEach((acc: any) => {
             const accId = String(acc.id || '').trim();
-            const val = acc.balance?.available?.value ?? acc.balance?.value;
+            // Robust parsing for Monime's minor currency units (cents)
+            let val = undefined;
+            if (acc.balance?.available?.value !== undefined) val = acc.balance.available.value;
+            else if (acc.balance?.value !== undefined) val = acc.balance.value;
+            else if (typeof acc.balance === 'number') val = acc.balance;
+
             if (accId && val !== undefined) {
-              monimeBalances[accId] = Number(val) / 100; // Convert cents to SLE/USD
+              monimeBalances[accId] = Number(val) / 100;
             }
           });
         }
@@ -66,9 +73,12 @@ export function useWallets() {
         const p = profileMap.get(w.user_id);
         const monimeId = w.metadata?.monime_account_id ? String(w.metadata.monime_account_id).trim() : null;
         
-        // GATEWAY RECONCILIATION: Use Monime API balance if gateway ID exists, else fallback to Supabase
-        const apiBal = monimeId ? monimeBalances[monimeId] : undefined;
-        const trueBalance = apiBal !== undefined ? apiBal : Number(w.balance || 0);
+        // GATEWAY RECONCILIATION: Map exact ID to Monime response
+        let trueBalance = Number(w.balance || 0);
+        if (monimeId && monimeBalances[monimeId] !== undefined) {
+           trueBalance = monimeBalances[monimeId]; // Override Supabase with TRUE Monime balance
+        }
+        
         const reserved = Number(w.reserved_balance || 0);
         
         return {
@@ -80,7 +90,7 @@ export function useWallets() {
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: trueBalance,
+          balance: trueBalance, // The synchronized balance
           available_balance: Math.max(0, trueBalance - reserved)
         };
       });

@@ -30,7 +30,7 @@ export default function DispatchRadarPage() {
   }, []);
 
   return (
-    <AdminLayout title="Dispatch Radar" subtitle="Live feed of all ride requests, deliveries, and schedules">
+    <AdminLayout title="Dispatch Radar Feed" subtitle="Live tracking of all incoming requests (Rides, Deliveries, and Schedules)">
       <div className="flex justify-end mb-6 mt-6">
         <button onClick={fetchBookings} disabled={loading} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-sm">
           {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh Radar
