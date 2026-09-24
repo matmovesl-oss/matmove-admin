@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Download, FileText, Eye, X } from 'lucide-react';
+import { Download, FileText, Eye, X, ExternalLink } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -16,14 +16,6 @@ const statusClass = (status: KycStatus | null) => { switch (status) { case 'appr
 const formatDate = (value: string | null) => { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString(); };
 const getCustomerName = (profile: Profile | null) => { if (!profile) return 'Unknown customer'; const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(); return fullName || 'Unnamed customer'; };
 
-const getStorageUrl = (path: string | null | undefined) => {
-  if (!path) return null;
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(path);
-  return data.publicUrl;
-};
-
-// FIX: Securely opens file in a new tab instead of forcing a blob/journal download
 const downloadFile = (url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
@@ -222,10 +214,10 @@ export function KycPage() {
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" url={getStorageUrl(profile?.id_card_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.id_card_url))} />
-                    <DocumentCard title="Selfie" url={getStorageUrl(profile?.selfie_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.selfie_url))} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={getStorageUrl(profile?.license_doc_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.license_doc_url))} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={getStorageUrl(profile?.business_doc_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.business_doc_url))} />}
+                    <DocumentCard title="ID Card" path={profile?.id_card_url} onView={setPreviewDoc} />
+                    <DocumentCard title="Selfie" path={profile?.selfie_url} onView={setPreviewDoc} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} onView={setPreviewDoc} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} onView={setPreviewDoc} />}
                   </div>
                 </section>
 
@@ -272,7 +264,20 @@ function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-gray-900">{value}</p></div>;
 }
 
-function DocumentCard({ title, url, onView }: { title: string; url: string | null | undefined; onView: () => void }) {
+function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) return;
+    if (path.startsWith('http')) { setUrl(path); return; }
+    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+    
+    // SECURE FIX: Creates a temporary signed URL because the bucket is Private.
+    supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 3600).then(({ data }) => {
+      if (data?.signedUrl) setUrl(data.signedUrl);
+    });
+  }, [path]);
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white group transition hover:shadow-md">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
@@ -282,18 +287,18 @@ function DocumentCard({ title, url, onView }: { title: string; url: string | nul
         </div>
         {url && (
           <div className="flex gap-2">
-            <button onClick={() => onView()} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+            <button onClick={() => onView(url)} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
               <Eye size={14} /> Preview
             </button>
-            <button onClick={(e) => { e.preventDefault(); downloadFile(url); }} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-              <Download size={14} /> View / Save
-            </button>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+              <ExternalLink size={14} /> Open Link
+            </a>
           </div>
         )}
       </div>
       {url ? (
-        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView()}>
-          <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" />
+        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView(url)}>
+          <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
         </div>
       ) : (
         <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>

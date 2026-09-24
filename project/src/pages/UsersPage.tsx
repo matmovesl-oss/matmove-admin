@@ -3,14 +3,6 @@ import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
 import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, Eye, X, ExternalLink } from 'lucide-react';
 
-const getStorageUrl = (path: string | null | undefined) => {
-  if (!path) return null;
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
-  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
-  return data.publicUrl;
-};
-
 function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-slate-900">{value}</p></div>;
 }
@@ -143,10 +135,10 @@ export default function UsersPage() {
               <section>
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Submitted Documents</h3>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                   <DocumentCard title="ID Card" url={getStorageUrl(selectedUser.id_card_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.id_card_url))} />
-                   <DocumentCard title="Selfie" url={getStorageUrl(selectedUser.selfie_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.selfie_url))} />
-                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" url={getStorageUrl(selectedUser.license_doc_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.license_doc_url))} />}
-                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" url={getStorageUrl(selectedUser.business_doc_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.business_doc_url))} />}
+                   <DocumentCard title="ID Card" path={selectedUser.id_card_url} onView={setPreviewDoc} />
+                   <DocumentCard title="Selfie" path={selectedUser.selfie_url} onView={setPreviewDoc} />
+                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" path={selectedUser.license_doc_url} onView={setPreviewDoc} />}
+                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" path={selectedUser.business_doc_url} onView={setPreviewDoc} />}
                 </div>
               </section>
             </div>
@@ -166,7 +158,20 @@ export default function UsersPage() {
   );
 }
 
-function DocumentCard({ title, url, onView }: { title: string; url: string | null | undefined; onView: () => void }) {
+function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) return;
+    if (path.startsWith('http')) { setUrl(path); return; }
+    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+    
+    // SECURE FIX: Creates a temporary signed URL because the bucket is Private.
+    supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 3600).then(({ data }) => {
+      if (data?.signedUrl) setUrl(data.signedUrl);
+    });
+  }, [path]);
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group transition hover:shadow-md">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
@@ -176,7 +181,7 @@ function DocumentCard({ title, url, onView }: { title: string; url: string | nul
         </div>
         {url && (
           <div className="flex gap-2">
-            <button onClick={() => onView()} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+            <button onClick={() => onView(url)} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
               <Eye size={14} /> Preview
             </button>
             <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
@@ -186,7 +191,7 @@ function DocumentCard({ title, url, onView }: { title: string; url: string | nul
         )}
       </div>
       {url ? (
-        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView()}>
+        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView(url)}>
           <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
         </div>
       ) : (
