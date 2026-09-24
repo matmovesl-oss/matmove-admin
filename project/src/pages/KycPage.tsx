@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, Eye, X } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -16,30 +16,16 @@ const statusClass = (status: KycStatus | null) => { switch (status) { case 'appr
 const formatDate = (value: string | null) => { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString(); };
 const getCustomerName = (profile: Profile | null) => { if (!profile) return 'Unknown customer'; const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(); return fullName || 'Unnamed customer'; };
 
-// FIX: Safely convert raw database paths to public image URLs
 const getStorageUrl = (path: string | null | undefined) => {
   if (!path) return null;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  // Change 'kyc-documents' to your exact Supabase storage bucket name if it differs
   const { data } = supabase.storage.from('kyc-documents').getPublicUrl(path);
   return data.publicUrl;
 };
 
-const downloadFile = async (url: string, filename: string) => {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename || 'kyc_document';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(blobUrl);
-  } catch (err) {
-    window.open(url, '_blank'); // Fallback if CORS blocks the download
-  }
+// FIX: Securely opens file in a new tab instead of forcing a blob/journal download
+const downloadFile = (url: string) => {
+  window.open(url, '_blank', 'noopener,noreferrer');
 };
 
 export function KycPage() {
@@ -55,6 +41,7 @@ export function KycPage() {
   const [selected, setSelected] = useState<KycSubmission | null>(null);
   const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
+  const [previewDoc, setPreviewDoc] = useState<string | null>(null);
 
   const loadSubmissions = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -189,7 +176,7 @@ export function KycPage() {
         {selected && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-              <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5">
+              <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5 sticky top-0 bg-white z-10">
                 <div><h2 className="text-xl font-bold text-gray-900">KYC Review</h2><p className="mt-1 text-sm text-gray-500">{getCustomerName(profile)} · {roleLabel(selected.target_role)}</p></div>
                 <button onClick={closeReview} className="text-2xl leading-none text-gray-400 hover:text-gray-700">×</button>
               </div>
@@ -197,7 +184,7 @@ export function KycPage() {
               <div className="space-y-6 p-6">
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Customer Information</h3>
-                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
                     <Info label="Full name" value={getCustomerName(profile)} />
                     <Info label="Phone" value={profile?.phone || profile?.phone_number || '—'} />
                     <Info label="Email" value={profile?.email || '—'} />
@@ -213,7 +200,7 @@ export function KycPage() {
                 {selected.target_role === 'driver' && (
                   <section>
                     <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Driver Information</h3>
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
                       <Info label="Vehicle type" value={profile?.vehicle_type || '—'} />
                       <Info label="Plate number" value={profile?.plate_number || '—'} />
                       <Info label="Driver license" value={profile?.driver_license_no || '—'} />
@@ -224,7 +211,7 @@ export function KycPage() {
                 {selected.target_role === 'merchant' && (
                   <section>
                     <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Business Information</h3>
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
                       <Info label="Business name" value={profile?.business_name || '—'} />
                       <Info label="Business type" value={profile?.business_type || '—'} />
                       <Info label="Tax ID" value={profile?.tax_id || '—'} />
@@ -235,10 +222,10 @@ export function KycPage() {
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" url={getStorageUrl(profile?.id_card_url)} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_ID_Card`} />
-                    <DocumentCard title="Selfie" url={getStorageUrl(profile?.selfie_url)} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Selfie`} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={getStorageUrl(profile?.license_doc_url)} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_License`} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={getStorageUrl(profile?.business_doc_url)} fileName={`${getCustomerName(profile).replace(/\s+/g, '_')}_Business_Doc`} />}
+                    <DocumentCard title="ID Card" url={getStorageUrl(profile?.id_card_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.id_card_url))} />
+                    <DocumentCard title="Selfie" url={getStorageUrl(profile?.selfie_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.selfie_url))} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" url={getStorageUrl(profile?.license_doc_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.license_doc_url))} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" url={getStorageUrl(profile?.business_doc_url)} onView={() => setPreviewDoc(getStorageUrl(profile?.business_doc_url))} />}
                   </div>
                 </section>
 
@@ -267,6 +254,15 @@ export function KycPage() {
             </div>
           </div>
         )}
+
+        {previewDoc && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+            <div className="relative w-full max-w-4xl bg-transparent flex flex-col items-center">
+              <button onClick={() => setPreviewDoc(null)} className="absolute -top-12 right-0 text-white hover:text-slate-300 transition"><X size={36} /></button>
+              <img src={previewDoc} alt="Document Preview" className="w-full h-auto max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
@@ -276,26 +272,28 @@ function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-gray-900">{value}</p></div>;
 }
 
-function DocumentCard({ title, url, fileName }: { title: string; url: string | null | undefined; fileName?: string }) {
+function DocumentCard({ title, url, onView }: { title: string; url: string | null | undefined; onView: () => void }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white group transition hover:shadow-md">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-indigo-600" />
           <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
         </div>
         {url && (
-          <button 
-            onClick={(e) => { e.preventDefault(); downloadFile(url, fileName || `${title.replace(/\s+/g, '_')}_document`); }} 
-            className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100"
-          >
-            <Download size={14} /> Download
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => onView()} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+              <Eye size={14} /> Preview
+            </button>
+            <button onClick={(e) => { e.preventDefault(); downloadFile(url); }} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+              <Download size={14} /> View / Save
+            </button>
+          </div>
         )}
       </div>
       {url ? (
-        <div className="bg-slate-50 border-t border-gray-100 p-2 flex justify-center">
-           <img src={url} alt={title} className="max-h-48 object-contain rounded-lg shadow-sm border border-slate-200" />
+        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView()}>
+          <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" />
         </div>
       ) : (
         <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>

@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, Eye, X } from 'lucide-react';
+import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, Eye, X, Download } from 'lucide-react';
 
-// SECURE GATEWAY: Converts raw database paths to public image URLs
 const getStorageUrl = (path: string | null | undefined) => {
   if (!path) return null;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
   const { data } = supabase.storage.from('kyc-documents').getPublicUrl(path);
   return data.publicUrl;
 };
+
+// FIX: Securely opens file in a new tab instead of forcing a blob/journal download
+const downloadFile = (url: string) => {
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+function Info({ label, value }: { label: string; value: string; }) {
+  return <div><p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-slate-900">{value}</p></div>;
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -77,7 +85,7 @@ export default function UsersPage() {
                       {user.kyc_status === 'approved' ? <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><CheckCircle2 size={14}/> Approved</span> : user.kyc_status === 'rejected' ? <span className="flex items-center gap-1 text-red-600 font-bold text-xs"><ShieldAlert size={14}/> Rejected</span> : <span className="flex items-center gap-1 text-amber-600 font-bold text-xs"><ShieldAlert size={14}/> Pending</span>}
                     </td>
                     <td className="px-6 py-4 text-right">
-                       <button onClick={() => setSelectedUser(user)} className="text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition">View Documents</button>
+                       <button onClick={() => setSelectedUser(user)} className="text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition">View Details</button>
                     </td>
                   </tr>
                 ))}
@@ -90,20 +98,62 @@ export default function UsersPage() {
       {selectedUser && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 sticky top-0 bg-white z-10">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Customer Documents</h2>
+                <h2 className="text-xl font-bold text-slate-900">Customer Profile & Documents</h2>
                 <p className="mt-1 text-sm text-slate-500">{selectedUser.full_name || 'Customer'} · {String(selectedUser.role).toUpperCase()}</p>
               </div>
               <button onClick={() => setSelectedUser(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                 <DocumentCard title="ID Card" url={getStorageUrl(selectedUser.id_card_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.id_card_url))} />
-                 <DocumentCard title="Selfie" url={getStorageUrl(selectedUser.selfie_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.selfie_url))} />
-                 {selectedUser.role === 'driver' && <DocumentCard title="Driver License" url={getStorageUrl(selectedUser.license_doc_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.license_doc_url))} />}
-                 {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" url={getStorageUrl(selectedUser.business_doc_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.business_doc_url))} />}
-              </div>
+            
+            <div className="p-6 space-y-6">
+              {/* FULL KYC DETAILS REPLICATED HERE */}
+              <section>
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Customer Information</h3>
+                <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
+                  <Info label="Full name" value={selectedUser.full_name || `${selectedUser.first_name || ''} ${selectedUser.last_name || ''}`.trim() || '—'} />
+                  <Info label="Phone" value={selectedUser.phone || selectedUser.phone_number || '—'} />
+                  <Info label="Email" value={selectedUser.email || '—'} />
+                  <Info label="Date of birth" value={selectedUser.date_of_birth || '—'} />
+                  <Info label="Nationality" value={selectedUser.nationality || '—'} />
+                  <Info label="Country" value={selectedUser.country || '—'} />
+                  <Info label="City" value={selectedUser.city || '—'} />
+                  <Info label="Address" value={selectedUser.residential_address || selectedUser.address || '—'} />
+                  <Info label="Current KYC status" value={selectedUser.kyc_status || '—'} />
+                </div>
+              </section>
+
+              {selectedUser.role === 'driver' && (
+                <section>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Driver Information</h3>
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
+                    <Info label="Vehicle type" value={selectedUser.vehicle_type || '—'} />
+                    <Info label="Plate number" value={selectedUser.plate_number || '—'} />
+                    <Info label="Driver license" value={selectedUser.driver_license_no || '—'} />
+                  </div>
+                </section>
+              )}
+
+              {selectedUser.role === 'merchant' && (
+                <section>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Business Information</h3>
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
+                    <Info label="Business name" value={selectedUser.business_name || '—'} />
+                    <Info label="Business type" value={selectedUser.business_type || '—'} />
+                    <Info label="Tax ID" value={selectedUser.tax_id || '—'} />
+                  </div>
+                </section>
+              )}
+
+              <section>
+                <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Submitted Documents</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                   <DocumentCard title="ID Card" url={getStorageUrl(selectedUser.id_card_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.id_card_url))} />
+                   <DocumentCard title="Selfie" url={getStorageUrl(selectedUser.selfie_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.selfie_url))} />
+                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" url={getStorageUrl(selectedUser.license_doc_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.license_doc_url))} />}
+                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" url={getStorageUrl(selectedUser.business_doc_url)} onView={() => setPreviewDoc(getStorageUrl(selectedUser.business_doc_url))} />}
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -112,7 +162,7 @@ export default function UsersPage() {
       {previewDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
           <div className="relative w-full max-w-4xl bg-transparent flex flex-col items-center">
-            <button onClick={() => setPreviewDoc(null)} className="absolute -top-12 right-0 text-white hover:text-gray-300 transition"><X size={36} /></button>
+            <button onClick={() => setPreviewDoc(null)} className="absolute -top-12 right-0 text-white hover:text-slate-300 transition"><X size={36} /></button>
             <img src={previewDoc} alt="Document Preview" className="w-full h-auto max-h-[85vh] object-contain rounded-xl shadow-2xl" />
           </div>
         </div>
@@ -123,20 +173,25 @@ export default function UsersPage() {
 
 function DocumentCard({ title, url, onView }: { title: string; url: string | null | undefined; onView: () => void }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group cursor-pointer transition hover:shadow-md" onClick={() => url && onView()}>
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group transition hover:shadow-md">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-indigo-600" />
           <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
         </div>
         {url && (
-          <button className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
-            <Eye size={14} /> Enlarge
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => onView()} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+              <Eye size={14} /> Preview
+            </button>
+            <button onClick={(e) => { e.preventDefault(); downloadFile(url); }} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+              <Download size={14} /> View / Save
+            </button>
+          </div>
         )}
       </div>
       {url ? (
-        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2">
+        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView()}>
           <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" />
         </div>
       ) : (

@@ -20,7 +20,6 @@ export function useKycQueue() {
   return { items, loading, error, refetch: fetch };
 }
 
-// Helper to reliably extract a user's name
 const buildOwnerName = (profile?: any) => {
   if (!profile) return 'Unknown customer';
   if (profile.full_name?.trim()) return profile.full_name.trim();
@@ -55,8 +54,8 @@ export function useWallets() {
           const apiData = await apiRes.json();
           apiData.accounts?.forEach((acc: any) => {
             if (acc.balance?.available?.value !== undefined) {
-              // Map exactly to the Monime ID. Divide by 100 because Monime returns cents.
-              monimeBalances[acc.id] = acc.balance.available.value / 100;
+              // Ensure perfect ID mapping by trimming whitespace
+              monimeBalances[String(acc.id).trim()] = acc.balance.available.value / 100;
             }
           });
         }
@@ -64,11 +63,11 @@ export function useWallets() {
 
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
         const p = profileMap.get(w.user_id);
-        const monimeId = w.metadata?.monime_account_id || null;
+        const monimeId = w.metadata?.monime_account_id ? String(w.metadata.monime_account_id).trim() : null;
         
-        // GATEWAY LOGIC: If we have a Monime ID and the API returned a balance for it, use it!
-        // If it shows 0 SLE, it means the API confirmed the balance is actually 0.
-        const trueBalance = monimeId && monimeBalances[monimeId] !== undefined ? monimeBalances[monimeId] : Number(w.balance || 0);
+        // GATEWAY LOGIC: Override Supabase balance with Live Monime API balance
+        const apiBal = monimeId ? monimeBalances[monimeId] : undefined;
+        const trueBalance = apiBal !== undefined ? apiBal : Number(w.balance || 0);
         const reserved = Number(w.reserved_balance || 0);
         
         return {
@@ -80,7 +79,7 @@ export function useWallets() {
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: trueBalance, // The synchronized balance
+          balance: trueBalance, // OVERRIDING Supabase column with TRUE GATEWAY BALANCE
           available_balance: Math.max(0, trueBalance - reserved)
         };
       });
@@ -122,14 +121,12 @@ export function useWithdrawals() {
   const fetchPayouts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      // JOIN with profiles to extract the real customer name instead of "Unknown"
       const { data, error: err } = await supabase
         .from('withdrawal_requests')
         .select('*, profiles:user_id(full_name, first_name, last_name, phone)')
         .order('created_at', { ascending: false });
       if (err) throw err;
 
-      // Sync with Monime live statuses
       let monimeStatuses: Record<string, string> = {};
       try {
         const apiRes = await fetch('/api/get-payouts');
@@ -173,7 +170,6 @@ export function useWithdrawals() {
   return { items, loading, error, refetch: fetchPayouts, authorize, reject };
 }
 
-// --- AUDIT / FRAUD LOGS HOOK ---
 export function useAuditLogs() {
   const [audit, setAudit] = useState<AuditLog[]>([]);
   const [fraud, setFraud] = useState<FraudLog[]>([]);
