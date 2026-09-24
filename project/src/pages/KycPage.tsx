@@ -247,14 +247,17 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
 
   useEffect(() => {
     if (!path) return;
-    if (path.startsWith('http')) { setUrl(path); return; }
+    if (path.startsWith('http')) { 
+      setUrl(path); 
+      return; 
+    }
     
+    // SECURE FIX: Now that the bucket is public, we fetch the fast public URL directly
     const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
-    // SECURE FIX: Ask Supabase to decrypt the private bucket and issue a temporary 1-hour Signed URL
-    supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 3600).then(({ data, error }) => {
-      if (error) console.error("Signed URL Error:", error.message);
-      if (data?.signedUrl) setUrl(data.signedUrl);
-    });
+    const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
+    if (data?.publicUrl) {
+      setUrl(data.publicUrl);
+    }
   }, [path]);
 
   return (

@@ -27,7 +27,7 @@ const buildOwnerName = (profile?: any) => {
   return fullName || 'Unnamed customer';
 };
 
-// --- MONIME GATEWAY WALLETS HOOK ---
+// --- SUPABASE-ONLY WALLETS HOOK ---
 export function useWallets() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -46,52 +46,22 @@ export function useWallets() {
       if (walletRes.error) throw walletRes.error;
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
-      // FETCH LIVE MONIME BALANCES
-      let monimeBalances: Record<string, number> = {};
-      try {
-        const apiRes = await fetch('/api/get-space-balance');
-        if (apiRes.ok) {
-          const apiData = await apiRes.json();
-          console.log("MONIME API RAW SYNC DATA:", apiData.accounts); // Check your browser console (F12) to see this!
-          
-          (apiData.accounts || []).forEach((acc: any) => {
-            const accId = String(acc.id || '').trim();
-            // Robust parsing for Monime's minor currency units (cents)
-            let val = undefined;
-            if (acc.balance?.available?.value !== undefined) val = acc.balance.available.value;
-            else if (acc.balance?.value !== undefined) val = acc.balance.value;
-            else if (typeof acc.balance === 'number') val = acc.balance;
-
-            if (accId && val !== undefined) {
-              monimeBalances[accId] = Number(val) / 100;
-            }
-          });
-        }
-      } catch (e) { console.error("Monime API Sync Failed", e); }
-
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
         const p = profileMap.get(w.user_id);
-        const monimeId = w.metadata?.monime_account_id ? String(w.metadata.monime_account_id).trim() : null;
-        
-        // GATEWAY RECONCILIATION: Map exact ID to Monime response
-        let trueBalance = Number(w.balance || 0);
-        if (monimeId && monimeBalances[monimeId] !== undefined) {
-           trueBalance = monimeBalances[monimeId]; // Override Supabase with TRUE Monime balance
-        }
-        
+        const balance = Number(w.balance || 0); // Directly from Supabase (updated by Webhook)
         const reserved = Number(w.reserved_balance || 0);
         
         return {
           ...w,
           wallet_id: w.id, 
           is_active: !w.is_frozen,
-          monime_account_id: monimeId,
+          monime_account_id: w.metadata?.monime_account_id || null,
           owner_name: buildOwnerName(p),
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: trueBalance, // The synchronized balance
-          available_balance: Math.max(0, trueBalance - reserved)
+          balance: balance,
+          available_balance: Math.max(0, balance - reserved)
         };
       });
 
@@ -123,7 +93,7 @@ export function useWallets() {
   return { wallets, transactions, loading, error, refetch: fetchLedger, toggleFreeze };
 }
 
-// --- WITHDRAWALS HOOK ---
+// --- SUPABASE-ONLY WITHDRAWALS HOOK ---
 export function useWithdrawals() {
   const [items, setItems] = useState<WithdrawalRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,22 +108,11 @@ export function useWithdrawals() {
         .order('created_at', { ascending: false });
       if (err) throw err;
 
-      let monimeStatuses: Record<string, string> = {};
-      try {
-        const apiRes = await fetch('/api/get-payouts');
-        if (apiRes.ok) {
-          const apiData = await apiRes.json();
-          (apiData.payouts || []).forEach((p: any) => {
-             if (p.metadata?.withdrawal_id) monimeStatuses[p.metadata.withdrawal_id] = p.status;
-          });
-        }
-      } catch (e) { console.error("Monime Payout Sync Failed", e); }
-
       const enriched = (data || []).map((w: any) => ({
         ...w,
         requester_name: buildOwnerName(w.profiles),
-        phone: w.destination_phone || w.profiles?.phone || 'Phone on file',
-        status: monimeStatuses[w.id] || w.status
+        phone: w.destination_phone || w.profiles?.phone || 'Phone on file'
+        // Status is read directly from Supabase (updated by Webhook)
       }));
 
       setItems(enriched as WithdrawalRequest[]);
@@ -201,11 +160,4 @@ export function useAuditLogs() {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
   return { audit, fraud, loading, error, refetch: fetchLogs };
-}
-
-export function useTxnStatusUpdate() {
-  return useCallback(async (id: string, status: TxnStatus) => {
-    const { error: err } = await supabase.from('wallet_transactions').update({ status }).eq('id', id);
-    if (err) throw err;
-  }, []);
 }
