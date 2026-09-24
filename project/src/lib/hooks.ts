@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from './supabase';
-import type { AuditLog, FraudLog, KycQueueItem, KycStatus, Role, TxnStatus, Wallet, WalletTransaction, WithdrawalRequest, WithdrawalStatus } from './types';
+import type { AuditLog, FraudLog, KycQueueItem, TxnStatus, Wallet, WalletTransaction, WithdrawalRequest } from './types';
 
 export function useKycQueue() {
   const [items, setItems] = useState<KycQueueItem[]>([]);
@@ -34,10 +34,9 @@ export function useWallets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
+  const fetchLedger = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      // Explicitly select exact columns based on your schema
       const [walletRes, txnRes, profileRes] = await Promise.all([
         supabase.from('wallets').select('id, user_id, currency, balance, reserved_balance, is_frozen, created_at, metadata').order('created_at', { ascending: false }),
         supabase.from('wallet_transactions').select('*').order('created_at', { ascending: false }).limit(200),
@@ -45,59 +44,71 @@ export function useWallets() {
       ]);
 
       if (walletRes.error) throw walletRes.error;
-      if (txnRes.error) throw txnRes.error;
-      if (profileRes.error) throw profileRes.error;
-
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
+
+      // FETCH LIVE MONIME BALANCES
+      let monimeBalances: Record<string, number> = {};
+      try {
+        const apiRes = await fetch('/api/get-space-balance');
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          apiData.accounts?.forEach((acc: any) => {
+            if (acc.balance?.available?.value !== undefined) {
+              monimeBalances[acc.id] = acc.balance.available.value / 100;
+            }
+          });
+        }
+      } catch (e) { console.error("Monime API Sync Failed", e); }
 
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
         const p = profileMap.get(w.user_id);
-        const balance = Number(w.balance || 0);
+        const monimeId = w.metadata?.monime_account_id || null;
+        
+        // Use true Monime balance if available, otherwise fallback to Supabase
+        const trueBalance = monimeId && monimeBalances[monimeId] !== undefined ? monimeBalances[monimeId] : Number(w.balance || 0);
         const reserved = Number(w.reserved_balance || 0);
         
         return {
           ...w,
           wallet_id: w.id, 
-          is_active: !w.is_frozen, // Map is_frozen to is_active for UI compatibility
-          monime_account_id: w.metadata?.monime_account_id || null, // Extract virtual account
+          is_active: !w.is_frozen,
+          monime_account_id: monimeId,
           owner_name: buildOwnerName(p),
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          available_balance: Math.max(0, balance - reserved)
+          balance: trueBalance,
+          available_balance: Math.max(0, trueBalance - reserved)
         };
       });
 
       const enrichedTxns = (txnRes.data || []).map((t: any) => ({
-        ...t,
-        owner_name: buildOwnerName(profileMap.get(t.user_id))
+        ...t, owner_name: buildOwnerName(profileMap.get(t.user_id))
       }));
 
       setWallets(enrichedWallets as Wallet[]);
       setTransactions(enrichedTxns as WalletTransaction[]);
     } catch (e: any) {
-      setError(e.message || 'Failed to load wallet data. Check RLS policies.');
-      setWallets([]); setTransactions([]);
+      setError(e.message || 'Failed to load wallet data.');
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
-    fetch();
+    fetchLedger();
     const channel = supabase.channel('admin-wallets')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, fetch)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, fetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, fetchLedger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, fetchLedger)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [fetch]);
+  }, [fetchLedger]);
 
   const toggleFreeze = useCallback(async (walletId: string, active: boolean) => {
-    // Inverse active to is_frozen for DB update
     const { error: err } = await supabase.from('wallets').update({ is_frozen: !active }).eq('id', walletId);
     if (err) throw new Error(err.message);
-    await fetch();
-  }, [fetch]);
+    await fetchLedger();
+  }, [fetchLedger]);
 
-  return { wallets, transactions, loading, error, refetch: fetch, toggleFreeze };
+  return { wallets, transactions, loading, error, refetch: fetchLedger, toggleFreeze };
 }
 
 // --- WITHDRAWALS HOOK ---
@@ -106,34 +117,58 @@ export function useWithdrawals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
+  const fetchPayouts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const { data, error: err } = await supabase.from('withdrawal_requests').select('*').order('created_at', { ascending: false });
+      // FIX: Join with profiles to get the real customer name
+      const { data, error: err } = await supabase
+        .from('withdrawal_requests')
+        .select('*, profiles:user_id(full_name, first_name, last_name, phone)')
+        .order('created_at', { ascending: false });
       if (err) throw err;
-      setItems((data || []) as WithdrawalRequest[]);
+
+      // FETCH LIVE MONIME PAYOUT STATUSES
+      let monimeStatuses: Record<string, string> = {};
+      try {
+        const apiRes = await fetch('/api/get-payouts');
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          apiData.payouts?.forEach((p: any) => {
+             if (p.metadata?.withdrawal_id) monimeStatuses[p.metadata.withdrawal_id] = p.status;
+          });
+        }
+      } catch (e) { console.error("Monime Payout Sync Failed", e); }
+
+      const enriched = (data || []).map((w: any) => ({
+        ...w,
+        requester_name: buildOwnerName(w.profiles),
+        phone: w.destination_phone || w.profiles?.phone || 'Phone on file',
+        status: monimeStatuses[w.id] || w.status // Sync live status
+      }));
+
+      setItems(enriched as WithdrawalRequest[]);
     } catch (e: any) { setError(e.message); setItems([]); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
-    fetch();
-    const channel = supabase.channel('admin-withdrawals').on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawal_requests' }, fetch).subscribe();
+    fetchPayouts();
+    const channel = supabase.channel('admin-withdrawals').on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawal_requests' }, fetchPayouts).subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [fetch]);
+  }, [fetchPayouts]);
 
   const authorize = useCallback(async (id: string, reason = 'Authorized by admin') => {
     const { error: rpcError } = await supabase.rpc('admin_authorize_withdrawal', { p_withdrawal_id: id, p_reason: reason });
     if (rpcError) throw new Error(rpcError.message);
-    await fetch();
-  }, [fetch]);
+    await fetchPayouts();
+  }, [fetchPayouts]);
 
   const reject = useCallback(async (id: string, notes: string) => {
     const { error: rpcError } = await supabase.rpc('admin_reject_withdrawal', { p_withdrawal_id: id, p_reason: notes });
     if (rpcError) throw new Error(rpcError.message);
-    await fetch();
-  }, [fetch]);
+    await fetchPayouts();
+  }, [fetchPayouts]);
 
-  return { items, loading, error, refetch: fetch, authorize, reject };
+  return { items, loading, error, refetch: fetchPayouts, authorize, reject };
 }
 
 // --- AUDIT / FRAUD LOGS HOOK ---
@@ -143,7 +178,7 @@ export function useAuditLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch = useCallback(async () => {
+  const fetchLogs = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const [aRes, fRes] = await Promise.all([
@@ -155,8 +190,8 @@ export function useAuditLogs() {
     } catch (e: any) { setAudit([]); setFraud([]); } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetch(); }, [fetch]);
-  return { audit, fraud, loading, error, refetch: fetch };
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  return { audit, fraud, loading, error, refetch: fetchLogs };
 }
 
 export function useTxnStatusUpdate() {

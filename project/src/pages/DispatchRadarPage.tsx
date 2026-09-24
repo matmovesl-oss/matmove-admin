@@ -10,20 +10,28 @@ export default function DispatchRadarPage() {
   const fetchBookings = async () => {
     setLoading(true);
     try {
+      // FIX: Removed .in('status', ...) filter so it captures ALL bookings
       const { data, error } = await supabase
         .from('bookings')
         .select(`*, profiles!rider_id(full_name, phone)`)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (error) throw error;
       setBookings(data || []);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchBookings(); }, []);
+  useEffect(() => { 
+    fetchBookings(); 
+    // FIX: Listen to ALL updates on the bookings table without filters
+    const channel = supabase.channel('admin-dispatch-radar')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchBookings)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   return (
-    <AdminLayout title="Dispatch Radar" subtitle="Live feed of all ride requests and deliveries directly from Supabase">
+    <AdminLayout title="Dispatch Radar" subtitle="Live feed of all ride requests, deliveries, and schedules">
       <div className="flex justify-end mb-6 mt-6">
         <button onClick={fetchBookings} disabled={loading} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-sm">
           {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh Radar
