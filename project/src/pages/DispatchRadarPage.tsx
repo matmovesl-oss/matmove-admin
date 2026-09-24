@@ -1,81 +1,129 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import AdminLayout from '@/components/AdminLayout';
+import StatCard from '@/components/StatCard';
+import Badge from '@/components/Badge';
 import { supabase } from '@/lib/supabase';
-import { Loader2, MapPin, Navigation, RefreshCw, Car, Package, AlertCircle } from 'lucide-react';
+import { FileCheck, Wallet, Banknote, Users, ShieldAlert, Clock, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
+import { formatSLE, timeAgo } from '@/lib/format';
 
-export default function DispatchRadarPage() {
-  const [bookings, setBookings] = useState<any[]>([]);
+export default function DashboardPage() {
+  const [stats, setStats] = useState({ pendingKyc: 0, totalBalance: 0, pendingWithdrawals: 0, pendingValue: 0, totalUsers: 0 });
+  const [recentWithdrawals, setRecentWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchBookings = async () => {
-    setLoading(true);
-    try {
-      // FIX: Removed .in('status', ...) filter so it captures ALL bookings
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`*, profiles!rider_id(full_name, phone)`)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      setBookings(data || []);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+  // Helper to reliably extract a user's name
+  const buildOwnerName = (profile?: any) => {
+    if (!profile) return 'Unknown customer';
+    if (profile.full_name?.trim()) return profile.full_name.trim();
+    const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+    return fullName || 'Unnamed customer';
   };
 
-  useEffect(() => { 
-    fetchBookings(); 
-    // FIX: Listen to ALL updates on the bookings table without filters
-    const channel = supabase.channel('admin-dispatch-radar')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchBookings)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      setLoading(true);
+      try {
+        const { data: profiles } = await supabase.from('profiles').select('kyc_status, role');
+        const { data: wallets } = await supabase.from('wallets').select('balance').eq('currency', 'SLE');
+        
+        // FIX: Join with profiles explicitly to pull customer names
+        const { data: withdrawals } = await supabase
+          .from('withdrawal_requests')
+          .select('id, amount, status, created_at, reference_code, profiles:user_id(full_name, first_name, last_name)')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        let kyc = 0, users = 0;
+        if (profiles) {
+          kyc = profiles.filter(p => p.kyc_status === 'pending').length;
+          users = profiles.filter(p => ['rider', 'driver', 'merchant'].includes(String(p.role).toLowerCase())).length;
+        }
+
+        const bal = wallets ? wallets.reduce((s, w) => s + Number(w.balance || 0), 0) : 0;
+
+        let pCount = 0, pVal = 0, recentW: any[] = [];
+        if (withdrawals) {
+          const pending = withdrawals.filter(w => w.status === 'pending');
+          pCount = pending.length;
+          pVal = pending.reduce((s, w) => s + Number(w.amount || 0), 0);
+          
+          // Map to extract real names
+          recentW = withdrawals.map(w => ({
+            ...w,
+            requester_name: buildOwnerName(w.profiles)
+          }));
+        }
+
+        setStats({ pendingKyc: kyc, totalBalance: bal, pendingWithdrawals: pCount, pendingValue: pVal, totalUsers: users });
+        setRecentWithdrawals(recentW);
+      } catch (err) { console.error(err); } finally { setLoading(false); }
+    };
+    fetchDashboard();
   }, []);
 
-  return (
-    <AdminLayout title="Dispatch Radar" subtitle="Live feed of all ride requests, deliveries, and schedules">
-      <div className="flex justify-end mb-6 mt-6">
-        <button onClick={fetchBookings} disabled={loading} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-sm">
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh Radar
-        </button>
-      </div>
+  const quickLinks = [
+    { to: '/kyc', label: 'KYC Approvals', icon: FileCheck, count: stats.pendingKyc, tone: 'amber' as const },
+    { to: '/wallets', label: 'Wallet Ledger', icon: Wallet, count: stats.totalUsers, tone: 'indigo' as const },
+    { to: '/withdrawals', label: 'Pending Payouts', icon: Banknote, count: stats.pendingWithdrawals, tone: 'emerald' as const },
+    { to: '/users', label: 'User Directory', icon: Users, count: stats.totalUsers, tone: 'indigo' as const },
+  ];
 
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Scanning for active bookings...</div> : bookings.length === 0 ? <div className="p-8 text-center text-slate-500">No active bookings found.</div> : (
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-              <tr><th className="px-6 py-4">Customer & Service</th><th className="px-6 py-4">Route Info</th><th className="px-6 py-4">Fare (SLE)</th><th className="px-6 py-4">Status</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {bookings.map((b) => {
-                 const statusTone = b.status === 'completed' ? 'emerald' : b.status === 'cancelled' ? 'red' : 'amber';
-                 return (
-                  <tr key={b.id} className="hover:bg-slate-50 transition">
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900 mb-1">{b.profiles?.full_name || 'Unknown User'}</div>
-                      <div className="flex items-center gap-2">
-                        {b.service_type === 'delivery' ? <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"><Package size={12}/> Delivery</span>
-                        : <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"><Car size={12}/> Ride</span>}
-                        <span className="font-mono text-slate-400 text-[10px] uppercase">{b.vehicle_type || 'Standard'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 max-w-xs">
-                      <div className="flex items-start gap-2 mb-1.5">
-                        <MapPin size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                        <span className="text-xs text-slate-700 truncate" title={b.pickup_location}>{b.pickup_location}</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <Navigation size={14} className="text-red-500 shrink-0 mt-0.5" />
-                        <span className="text-xs text-slate-700 truncate" title={b.destination_location}>{b.destination_location}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-900">{Number(b.fare_amount || 0).toLocaleString()}</td>
-                    <td className="px-6 py-4"><span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-${statusTone}-100 text-${statusTone}-800`}>{b.status || 'pending'}</span></td>
-                  </tr>
-                 );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+  return (
+    <AdminLayout title="Compliance Dashboard" subtitle="Executive overview synced with live Supabase data">
+      {loading ? (
+        <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <StatCard label="Pending KYC" value={String(stats.pendingKyc)} icon={Clock} tone="amber" hint="Awaiting review" />
+            <StatCard label="Total System Balance" value={formatSLE(stats.totalBalance)} icon={TrendingUp} tone="indigo" />
+            <StatCard label="Pending Payouts" value={formatSLE(stats.pendingValue)} icon={Banknote} tone="emerald" hint={`${stats.pendingWithdrawals} requests`} />
+            <StatCard label="Active Users" value={String(stats.totalUsers)} icon={Users} tone="indigo" hint="Riders & Drivers" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {quickLinks.map((q) => {
+              const Icon = q.icon;
+              return (
+                <Link key={q.to} to={q.to} className="group bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${q.tone === 'amber' ? 'bg-amber-50 text-amber-600' : q.tone === 'emerald' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}><Icon className="w-5 h-5" /></div>
+                    <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                  <p className="text-sm text-slate-500">{q.label}</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900">{q.count}</p>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900">Recent Withdrawal Requests</h3>
+                <Link to="/withdrawals" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View all</Link>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {recentWithdrawals.map((w) => (
+                  <div key={w.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50">
+                    <div>
+                      {/* FIX: Now shows real customer name */}
+                      <p className="text-sm font-medium text-slate-900">{w.requester_name}</p>
+                      <p className="text-xs text-slate-400 font-mono">{w.reference_code || w.id.slice(0,8)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-slate-900">{formatSLE(w.amount)}</p>
+                      <Badge tone={w.status === 'pending' ? 'amber' : w.status === 'completed' ? 'emerald' : 'red'}>{w.status}</Badge>
+                    </div>
+                  </div>
+                ))}
+                {recentWithdrawals.length === 0 && <div className="p-6 text-center text-slate-400 text-sm">No recent requests</div>}
+              </div>
+            </section>
+          </div>
+        </>
+      )}
     </AdminLayout>
   );
 }

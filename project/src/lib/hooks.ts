@@ -20,6 +20,7 @@ export function useKycQueue() {
   return { items, loading, error, refetch: fetch };
 }
 
+// Helper to reliably extract a user's name
 const buildOwnerName = (profile?: any) => {
   if (!profile) return 'Unknown customer';
   if (profile.full_name?.trim()) return profile.full_name.trim();
@@ -27,7 +28,7 @@ const buildOwnerName = (profile?: any) => {
   return fullName || 'Unnamed customer';
 };
 
-// --- UNIFIED WALLETS HOOK ---
+// --- UNIFIED WALLETS HOOK (THE MONIME GATEWAY) ---
 export function useWallets() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -46,7 +47,7 @@ export function useWallets() {
       if (walletRes.error) throw walletRes.error;
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
-      // FETCH LIVE MONIME BALANCES
+      // MONIME GATEWAY INTEGRATION
       let monimeBalances: Record<string, number> = {};
       try {
         const apiRes = await fetch('/api/get-space-balance');
@@ -54,6 +55,7 @@ export function useWallets() {
           const apiData = await apiRes.json();
           apiData.accounts?.forEach((acc: any) => {
             if (acc.balance?.available?.value !== undefined) {
+              // Map exactly to the Monime ID. Divide by 100 because Monime returns cents.
               monimeBalances[acc.id] = acc.balance.available.value / 100;
             }
           });
@@ -64,7 +66,8 @@ export function useWallets() {
         const p = profileMap.get(w.user_id);
         const monimeId = w.metadata?.monime_account_id || null;
         
-        // Use true Monime balance if available, otherwise fallback to Supabase
+        // GATEWAY LOGIC: If we have a Monime ID and the API returned a balance for it, use it!
+        // If it shows 0 SLE, it means the API confirmed the balance is actually 0.
         const trueBalance = monimeId && monimeBalances[monimeId] !== undefined ? monimeBalances[monimeId] : Number(w.balance || 0);
         const reserved = Number(w.reserved_balance || 0);
         
@@ -77,7 +80,7 @@ export function useWallets() {
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: trueBalance,
+          balance: trueBalance, // The synchronized balance
           available_balance: Math.max(0, trueBalance - reserved)
         };
       });
@@ -97,7 +100,6 @@ export function useWallets() {
     fetchLedger();
     const channel = supabase.channel('admin-wallets')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, fetchLedger)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, fetchLedger)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchLedger]);
@@ -120,14 +122,14 @@ export function useWithdrawals() {
   const fetchPayouts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      // FIX: Join with profiles to get the real customer name
+      // JOIN with profiles to extract the real customer name instead of "Unknown"
       const { data, error: err } = await supabase
         .from('withdrawal_requests')
         .select('*, profiles:user_id(full_name, first_name, last_name, phone)')
         .order('created_at', { ascending: false });
       if (err) throw err;
 
-      // FETCH LIVE MONIME PAYOUT STATUSES
+      // Sync with Monime live statuses
       let monimeStatuses: Record<string, string> = {};
       try {
         const apiRes = await fetch('/api/get-payouts');
@@ -143,7 +145,7 @@ export function useWithdrawals() {
         ...w,
         requester_name: buildOwnerName(w.profiles),
         phone: w.destination_phone || w.profiles?.phone || 'Phone on file',
-        status: monimeStatuses[w.id] || w.status // Sync live status
+        status: monimeStatuses[w.id] || w.status
       }));
 
       setItems(enriched as WithdrawalRequest[]);
