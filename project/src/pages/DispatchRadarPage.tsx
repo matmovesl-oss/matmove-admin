@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Loader2, MapPin, Navigation, RefreshCw, Car, Package } from 'lucide-react';
+import { Loader2, MapPin, Navigation, RefreshCw, Car, Package, Phone } from 'lucide-react';
 
 export default function DispatchRadarPage() {
   const [bookings, setBookings] = useState<any[]>([]);
@@ -10,9 +10,14 @@ export default function DispatchRadarPage() {
   const fetchBookings = async () => {
     setLoading(true);
     try {
+      // Fetches ALL rides, linking BOTH the Rider and the Driver
       const { data, error } = await supabase
         .from('bookings')
-        .select(`*, profiles!rider_id(full_name, phone)`)
+        .select(`
+          *,
+          rider:rider_id(full_name, phone),
+          driver:driver_id(full_name, phone)
+        `)
         .order('created_at', { ascending: false })
         .limit(100);
         
@@ -30,7 +35,7 @@ export default function DispatchRadarPage() {
   }, []);
 
   return (
-    <AdminLayout title="Dispatch Radar Feed" subtitle="Live tracking of all incoming requests (Rides, Deliveries, and Schedules)">
+    <AdminLayout title="Dispatch Radar Feed" subtitle="Live tracking of all incoming requests and Driver-Rider communication">
       <div className="flex justify-end mb-6 mt-6">
         <button onClick={fetchBookings} disabled={loading} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-sm">
           {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh Radar
@@ -41,21 +46,35 @@ export default function DispatchRadarPage() {
         {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Scanning for active bookings...</div> : bookings.length === 0 ? <div className="p-8 text-center text-slate-500">No active bookings found.</div> : (
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-              <tr><th className="px-6 py-4">Customer & Service</th><th className="px-6 py-4">Route Info</th><th className="px-6 py-4">Fare (SLE)</th><th className="px-6 py-4">Status</th></tr>
+              <tr><th className="px-6 py-4">Rider Details</th><th className="px-6 py-4">Driver Details</th><th className="px-6 py-4">Route Info</th><th className="px-6 py-4">Fare (SLE)</th><th className="px-6 py-4">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {bookings.map((b) => {
                  const statusTone = b.status === 'completed' ? 'emerald' : b.status === 'cancelled' ? 'red' : 'amber';
                  return (
                   <tr key={b.id} className="hover:bg-slate-50 transition">
+                    {/* RIDER INFO */}
                     <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900 mb-1">{b.profiles?.full_name || 'Unknown User'}</div>
-                      <div className="flex items-center gap-2">
-                        {b.service_type === 'delivery' ? <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"><Package size={12}/> Delivery</span>
-                        : <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"><Car size={12}/> Ride</span>}
-                        <span className="font-mono text-slate-400 text-[10px] uppercase">{b.vehicle_type || 'Standard'}</span>
+                      <div className="font-bold text-slate-900 mb-1">{b.rider?.full_name || 'Unknown Rider'}</div>
+                      <div className="flex items-center gap-1 text-xs text-slate-500"><Phone size={12}/> {b.rider?.phone || 'No Phone'}</div>
+                      <div className="mt-1">
+                        {b.service_type === 'delivery' ? <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex w-max items-center gap-1"><Package size={12}/> Delivery</span>
+                        : <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex w-max items-center gap-1"><Car size={12}/> Ride</span>}
                       </div>
                     </td>
+                    {/* DRIVER INFO */}
+                    <td className="px-6 py-4">
+                      {b.driver ? (
+                        <>
+                          <div className="font-bold text-slate-900 mb-1">{b.driver.full_name}</div>
+                          <div className="flex items-center gap-1 text-xs text-slate-500"><Phone size={12}/> {b.driver.phone || 'No Phone'}</div>
+                          <span className="font-mono text-slate-400 text-[10px] uppercase block mt-1">{b.vehicle_type || 'Standard'}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">Searching for driver...</span>
+                      )}
+                    </td>
+                    {/* ROUTE INFO */}
                     <td className="px-6 py-4 max-w-xs">
                       <div className="flex items-start gap-2 mb-1.5">
                         <MapPin size={14} className="text-emerald-500 shrink-0 mt-0.5" />

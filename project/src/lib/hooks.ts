@@ -27,7 +27,7 @@ const buildOwnerName = (profile?: any) => {
   return fullName || 'Unnamed customer';
 };
 
-// --- LIVE MONIME GATEWAY WALLETS HOOK ---
+// --- SMART MONIME GATEWAY ---
 export function useWallets() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -38,40 +38,49 @@ export function useWallets() {
     setLoading(true); setError(null);
     try {
       const [walletRes, txnRes, profileRes] = await Promise.all([
-        supabase.from('wallets').select('id, user_id, currency, balance, reserved_balance, is_frozen, created_at, metadata').order('created_at', { ascending: false }),
+        supabase.from('wallets').select('*').order('created_at', { ascending: false }),
         supabase.from('wallet_transactions').select('*').order('created_at', { ascending: false }).limit(200),
-        supabase.from('profiles').select('id, full_name, first_name, last_name, phone, phone_number, role, kyc_status').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       ]);
 
       if (walletRes.error) throw walletRes.error;
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
-      // 1. FETCH LIVE BALANCES DIRECTLY FROM MONIME BACKEND
-      let monimeBalances: Record<string, number> = {};
+      // FETCH ALL LIVE ACCOUNTS FROM MONIME
+      let monimeAccounts: any[] = [];
       try {
         const apiRes = await fetch('/api/get-space-balance');
         if (apiRes.ok) {
           const apiData = await apiRes.json();
-          (apiData.accounts || []).forEach((acc: any) => {
-            const accId = String(acc.id || '').trim();
-            // Monime stores balances in minor units (cents)
-            const val = acc.balance?.available?.value ?? acc.balance?.value;
-            if (accId && val !== undefined) {
-              monimeBalances[accId] = Number(val) / 100; // Convert to proper SLE/USD
-            }
-          });
+          monimeAccounts = apiData.accounts || [];
         }
       } catch (e) { console.error("Monime API Sync Failed", e); }
 
-      // 2. MERGE MONIME BALANCES WITH SUPABASE ACCOUNTS
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
         const p = profileMap.get(w.user_id);
-        const monimeId = w.metadata?.monime_account_id ? String(w.metadata.monime_account_id).trim() : null;
+        const ownerName = buildOwnerName(p);
+        const phone = p?.phone || p?.phone_number || '';
         
-        // SMARTEST WAY: If Monime account exists, completely overwrite Supabase balance with live Monime balance
         let trueBalance = Number(w.balance || 0);
-        if (monimeId && monimeBalances[monimeId] !== undefined) {
-           trueBalance = monimeBalances[monimeId];
+        let matchedMonimeId = w.metadata?.monime_account_id || null;
+
+        // SMART FUZZY MATCHING: Check Monime API by ID, UVAN, Name, or Phone
+        if (monimeAccounts.length > 0) {
+          const match = monimeAccounts.find(acc => {
+            const accName = String(acc.name || '').toLowerCase();
+            const accId = String(acc.id || '').trim();
+            return (
+              accId === matchedMonimeId || 
+              (phone && accName.includes(phone.toLowerCase())) || 
+              (ownerName !== 'Unknown customer' && accName.includes(ownerName.toLowerCase()))
+            );
+          });
+
+          if (match) {
+             matchedMonimeId = match.id;
+             const rawBal = match.balance?.available?.value ?? match.balance?.value ?? 0;
+             trueBalance = Number(rawBal) / 100;
+          }
         }
         
         const reserved = Number(w.reserved_balance || 0);
@@ -80,12 +89,12 @@ export function useWallets() {
           ...w,
           wallet_id: w.id, 
           is_active: !w.is_frozen,
-          monime_account_id: monimeId,
-          owner_name: buildOwnerName(p),
-          phone: p?.phone || p?.phone_number || '',
+          monime_account_id: matchedMonimeId,
+          owner_name: ownerName,
+          phone: phone,
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: trueBalance, // Exposes the live backend balance
+          balance: trueBalance, // FORCES TRUE BALANCE
           available_balance: Math.max(0, trueBalance - reserved)
         };
       });
@@ -103,15 +112,12 @@ export function useWallets() {
 
   useEffect(() => {
     fetchLedger();
-    const channel = supabase.channel('admin-wallets')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, fetchLedger)
-      .subscribe();
+    const channel = supabase.channel('admin-wallets').on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, fetchLedger).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchLedger]);
 
   const toggleFreeze = useCallback(async (walletId: string, active: boolean) => {
-    const { error: err } = await supabase.from('wallets').update({ is_frozen: !active }).eq('id', walletId);
-    if (err) throw new Error(err.message);
+    await supabase.from('wallets').update({ is_frozen: !active }).eq('id', walletId);
     await fetchLedger();
   }, [fetchLedger]);
 
@@ -127,30 +133,14 @@ export function useWithdrawals() {
   const fetchPayouts = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const { data, error: err } = await supabase
-        .from('withdrawal_requests')
-        .select('*, profiles:user_id(full_name, first_name, last_name, phone)')
-        .order('created_at', { ascending: false });
+      const { data, error: err } = await supabase.from('withdrawal_requests').select('*, profiles:user_id(full_name, first_name, last_name, phone)').order('created_at', { ascending: false });
       if (err) throw err;
-
-      let monimeStatuses: Record<string, string> = {};
-      try {
-        const apiRes = await fetch('/api/get-payouts');
-        if (apiRes.ok) {
-          const apiData = await apiRes.json();
-          (apiData.payouts || []).forEach((p: any) => {
-             if (p.metadata?.withdrawal_id) monimeStatuses[p.metadata.withdrawal_id] = p.status;
-          });
-        }
-      } catch (e) { console.error("Monime Payout Sync Failed", e); }
 
       const enriched = (data || []).map((w: any) => ({
         ...w,
         requester_name: buildOwnerName(w.profiles),
-        phone: w.destination_phone || w.profiles?.phone || 'Phone on file',
-        status: monimeStatuses[w.id] || w.status
+        phone: w.destination_phone || w.profiles?.phone || 'Phone on file'
       }));
-
       setItems(enriched as WithdrawalRequest[]);
     } catch (e: any) { setError(e.message); setItems([]); } finally { setLoading(false); }
   }, []);
@@ -162,14 +152,12 @@ export function useWithdrawals() {
   }, [fetchPayouts]);
 
   const authorize = useCallback(async (id: string, reason = 'Authorized by admin') => {
-    const { error: rpcError } = await supabase.rpc('admin_authorize_withdrawal', { p_withdrawal_id: id, p_reason: reason });
-    if (rpcError) throw new Error(rpcError.message);
+    await supabase.rpc('admin_authorize_withdrawal', { p_withdrawal_id: id, p_reason: reason });
     await fetchPayouts();
   }, [fetchPayouts]);
 
   const reject = useCallback(async (id: string, notes: string) => {
-    const { error: rpcError } = await supabase.rpc('admin_reject_withdrawal', { p_withdrawal_id: id, p_reason: notes });
-    if (rpcError) throw new Error(rpcError.message);
+    await supabase.rpc('admin_reject_withdrawal', { p_withdrawal_id: id, p_reason: notes });
     await fetchPayouts();
   }, [fetchPayouts]);
 

@@ -163,25 +163,26 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
 
   useEffect(() => {
     if (!path) return;
+    
     if (path.startsWith('http')) { 
       setUrl(path); 
       return; 
     }
     
-    // SECURE FIX: Now that the bucket is public, we fetch the fast public URL directly
+    // SECURE FIX: Override internal Supabase SDK pathing by manually constructing the exact root URL
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vultapi.supabase.co'; 
     const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
-    const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
-    if (data?.publicUrl) {
-      setUrl(data.publicUrl);
-    }
+    
+    const directUrl = `${supabaseUrl}/storage/v1/object/public/kyc-documents/${encodeURIComponent(cleanPath)}`;
+    setUrl(directUrl);
   }, [path]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white group transition hover:shadow-md">
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group transition hover:shadow-md">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-indigo-600" />
-          <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
+          <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
         </div>
         {url && (
           <div className="flex gap-2">
@@ -196,10 +197,18 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
       </div>
       {url ? (
         <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView(url)}>
-          <img src={url} alt={title} className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+          <img 
+             src={url} 
+             alt={title} 
+             className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" 
+             onError={(e) => { 
+               (e.target as HTMLElement).style.display = 'none'; 
+               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-400 font-medium">File not found in storage bucket</span>';
+             }} 
+          />
         </div>
       ) : (
-        <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>
+        <div className="flex h-32 items-center justify-center bg-slate-50 text-sm text-gray-400">No document submitted</div>
       )}
     </div>
   );
