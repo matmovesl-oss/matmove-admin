@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Download, FileText, Eye, X, ExternalLink } from 'lucide-react';
+import { FileText, Eye, X, ExternalLink } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -244,6 +244,7 @@ function Info({ label, value }: { label: string; value: string; }) {
 
 function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
 
   useEffect(() => {
     if (!path) return;
@@ -253,12 +254,19 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
       return; 
     }
     
-    // SECURE FIX: Override internal Supabase SDK pathing by manually constructing the exact root URL
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vultapi.supabase.co'; 
-    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
-    
-    const directUrl = `${supabaseUrl}/storage/v1/object/public/kyc-documents/${encodeURIComponent(cleanPath)}`;
-    setUrl(directUrl);
+    const fetchSignedUrl = async () => {
+      const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+      const { data, error } = await supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 31536000); // 1 year expiry token
+      
+      if (data?.signedUrl) {
+        setUrl(data.signedUrl);
+      } else {
+        // Fallback to public URL if signed fails
+        const { data: pubData } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
+        setUrl(pubData.publicUrl);
+      }
+    };
+    fetchSignedUrl();
   }, [path]);
 
   return (
@@ -268,7 +276,7 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
           <FileText size={16} className="text-indigo-600" />
           <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
         </div>
-        {url && (
+        {url && !isError && (
           <div className="flex gap-2">
             <button onClick={() => onView(url)} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
               <Eye size={14} /> Preview
@@ -280,14 +288,15 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
         )}
       </div>
       {url ? (
-        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView(url)}>
+        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError) onView(url); }}>
           <img 
              src={url} 
              alt={title} 
              className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" 
              onError={(e) => { 
+               setIsError(true);
                (e.target as HTMLElement).style.display = 'none'; 
-               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-400 font-medium">File not found in storage bucket</span>';
+               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-500 font-bold">Image not found in Supabase Storage Bucket</span>';
              }} 
           />
         </div>

@@ -160,6 +160,7 @@ export default function UsersPage() {
 
 function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
 
   useEffect(() => {
     if (!path) return;
@@ -169,22 +170,28 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
       return; 
     }
     
-    // SECURE FIX: Override internal Supabase SDK pathing by manually constructing the exact root URL
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://vultapi.supabase.co'; 
-    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
-    
-    const directUrl = `${supabaseUrl}/storage/v1/object/public/kyc-documents/${encodeURIComponent(cleanPath)}`;
-    setUrl(directUrl);
+    const fetchSignedUrl = async () => {
+      const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+      const { data, error } = await supabase.storage.from('kyc-documents').createSignedUrl(cleanPath, 31536000); 
+      
+      if (data?.signedUrl) {
+        setUrl(data.signedUrl);
+      } else {
+        const { data: pubData } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
+        setUrl(pubData.publicUrl);
+      }
+    };
+    fetchSignedUrl();
   }, [path]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group transition hover:shadow-md">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white group transition hover:shadow-md">
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-indigo-600" />
-          <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
+          <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
         </div>
-        {url && (
+        {url && !isError && (
           <div className="flex gap-2">
             <button onClick={() => onView(url)} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
               <Eye size={14} /> Preview
@@ -196,19 +203,20 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
         )}
       </div>
       {url ? (
-        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => onView(url)}>
+        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError) onView(url); }}>
           <img 
              src={url} 
              alt={title} 
              className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" 
              onError={(e) => { 
+               setIsError(true);
                (e.target as HTMLElement).style.display = 'none'; 
-               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-400 font-medium">File not found in storage bucket</span>';
+               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-500 font-bold">Image not found in Supabase Storage Bucket</span>';
              }} 
           />
         </div>
       ) : (
-        <div className="flex h-32 items-center justify-center bg-slate-50 text-sm text-gray-400">No document submitted</div>
+        <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>
       )}
     </div>
   );

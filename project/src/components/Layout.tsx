@@ -25,40 +25,39 @@ export function Layout() {
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between">
-        <div>
-          <div className="p-6 flex items-center gap-3 text-white">
-             <div className="bg-indigo-600 p-2 rounded-lg shadow-sm">
-               <Shield size={20} />
-             </div>
-             <div>
-               <span className="font-bold text-lg tracking-tight block">MatMove</span>
-               <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest block -mt-1">Admin Console</span>
-             </div>
-          </div>
-          
-          <nav className="px-4 space-y-1 mt-2">
-            {navItems.map((item) => (
-              <NavLink 
-                key={item.to} 
-                to={item.to}
-                className={({ isActive }) => 
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'
-                  }`
-                }
-              >
-                <item.icon size={18} />
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+      <div className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full">
+        <div className="p-6 flex items-center gap-3 text-white shrink-0">
+           <div className="bg-indigo-600 p-2 rounded-lg shadow-sm">
+             <Shield size={20} />
+           </div>
+           <div>
+             <span className="font-bold text-lg tracking-tight block">MatMove</span>
+             <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest block -mt-1">Admin Console</span>
+           </div>
         </div>
+        
+        {/* Scrollable Nav Area */}
+        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
+          {navItems.map((item) => (
+            <NavLink 
+              key={item.to} 
+              to={item.to}
+              className={({ isActive }) => 
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'
+                }`
+              }
+            >
+              <item.icon size={18} />
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
 
-        {/* LOGOUT BUTTON - PINNED TO BOTTOM */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900">
+        {/* SECURE SIGN OUT BUTTON - PINNED TO BOTTOM */}
+        <div className="p-4 border-t border-slate-800 bg-slate-900 shrink-0">
           <button 
             onClick={handleSignOut}
             className="flex items-center justify-center gap-2 px-3 py-3 w-full rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-all shadow-md"
@@ -70,7 +69,7 @@ export function Layout() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto bg-slate-50">
+      <div className="flex-1 overflow-auto bg-slate-50 h-full">
         <Outlet />
       </div>
     </div>

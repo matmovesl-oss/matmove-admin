@@ -59,25 +59,14 @@ export function useWallets() {
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
         const p = profileMap.get(w.user_id);
         const ownerName = buildOwnerName(p);
-        const phone = p?.phone || p?.phone_number || '';
         
         let trueBalance = Number(w.balance || 0);
         let matchedMonimeId = w.metadata?.monime_account_id || null;
 
-        // SMART FUZZY MATCHING: Check Monime API by ID, UVAN, Name, or Phone
-        if (monimeAccounts.length > 0) {
-          const match = monimeAccounts.find(acc => {
-            const accName = String(acc.name || '').toLowerCase();
-            const accId = String(acc.id || '').trim();
-            return (
-              accId === matchedMonimeId || 
-              (phone && accName.includes(phone.toLowerCase())) || 
-              (ownerName !== 'Unknown customer' && accName.includes(ownerName.toLowerCase()))
-            );
-          });
-
+        // FORCE MATCH MONIME BALANCE
+        if (monimeAccounts.length > 0 && matchedMonimeId) {
+          const match = monimeAccounts.find(acc => String(acc.id).trim() === String(matchedMonimeId).trim());
           if (match) {
-             matchedMonimeId = match.id;
              const rawBal = match.balance?.available?.value ?? match.balance?.value ?? 0;
              trueBalance = Number(rawBal) / 100;
           }
@@ -91,7 +80,7 @@ export function useWallets() {
           is_active: !w.is_frozen,
           monime_account_id: matchedMonimeId,
           owner_name: ownerName,
-          phone: phone,
+          phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
           balance: trueBalance, // FORCES TRUE BALANCE
