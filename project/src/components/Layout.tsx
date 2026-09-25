@@ -8,8 +8,8 @@ import {
 export function Layout() {
   
   const handleSignOut = async () => {
+    // Completely destroys the Supabase Auth session
     await supabase.auth.signOut();
-    // Supabase will update the session state in App.tsx, which will instantly throw the user back to the LoginPage.
   };
 
   const navItems = [
@@ -55,7 +55,7 @@ export function Layout() {
           ))}
         </nav>
 
-        {/* Sign Out Button */}
+        {/* SECURE SIGN OUT BUTTON */}
         <div className="p-4 border-t border-slate-800">
           <button 
             onClick={handleSignOut}

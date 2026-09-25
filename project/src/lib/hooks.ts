@@ -27,7 +27,7 @@ const buildOwnerName = (profile?: any) => {
   return fullName || 'Unnamed customer';
 };
 
-// --- SUPABASE-ONLY WALLETS HOOK ---
+// --- LIVE MONIME GATEWAY WALLETS HOOK ---
 export function useWallets() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -46,22 +46,47 @@ export function useWallets() {
       if (walletRes.error) throw walletRes.error;
       const profileMap = new Map((profileRes.data || []).map((p: any) => [p.id, p]));
 
+      // 1. FETCH LIVE BALANCES DIRECTLY FROM MONIME BACKEND
+      let monimeBalances: Record<string, number> = {};
+      try {
+        const apiRes = await fetch('/api/get-space-balance');
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          (apiData.accounts || []).forEach((acc: any) => {
+            const accId = String(acc.id || '').trim();
+            // Monime stores balances in minor units (cents)
+            const val = acc.balance?.available?.value ?? acc.balance?.value;
+            if (accId && val !== undefined) {
+              monimeBalances[accId] = Number(val) / 100; // Convert to proper SLE/USD
+            }
+          });
+        }
+      } catch (e) { console.error("Monime API Sync Failed", e); }
+
+      // 2. MERGE MONIME BALANCES WITH SUPABASE ACCOUNTS
       const enrichedWallets = (walletRes.data || []).map((w: any) => {
         const p = profileMap.get(w.user_id);
-        const balance = Number(w.balance || 0); // Directly from Supabase (updated by Webhook)
+        const monimeId = w.metadata?.monime_account_id ? String(w.metadata.monime_account_id).trim() : null;
+        
+        // SMARTEST WAY: If Monime account exists, completely overwrite Supabase balance with live Monime balance
+        let trueBalance = Number(w.balance || 0);
+        if (monimeId && monimeBalances[monimeId] !== undefined) {
+           trueBalance = monimeBalances[monimeId];
+        }
+        
         const reserved = Number(w.reserved_balance || 0);
         
         return {
           ...w,
           wallet_id: w.id, 
           is_active: !w.is_frozen,
-          monime_account_id: w.metadata?.monime_account_id || null,
+          monime_account_id: monimeId,
           owner_name: buildOwnerName(p),
           phone: p?.phone || p?.phone_number || '',
           role: p?.role || '',
           kyc_status: p?.kyc_status || 'not_started',
-          balance: balance,
-          available_balance: Math.max(0, balance - reserved)
+          balance: trueBalance, // Exposes the live backend balance
+          available_balance: Math.max(0, trueBalance - reserved)
         };
       });
 
@@ -93,7 +118,7 @@ export function useWallets() {
   return { wallets, transactions, loading, error, refetch: fetchLedger, toggleFreeze };
 }
 
-// --- SUPABASE-ONLY WITHDRAWALS HOOK ---
+// --- WITHDRAWALS HOOK ---
 export function useWithdrawals() {
   const [items, setItems] = useState<WithdrawalRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,11 +133,22 @@ export function useWithdrawals() {
         .order('created_at', { ascending: false });
       if (err) throw err;
 
+      let monimeStatuses: Record<string, string> = {};
+      try {
+        const apiRes = await fetch('/api/get-payouts');
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          (apiData.payouts || []).forEach((p: any) => {
+             if (p.metadata?.withdrawal_id) monimeStatuses[p.metadata.withdrawal_id] = p.status;
+          });
+        }
+      } catch (e) { console.error("Monime Payout Sync Failed", e); }
+
       const enriched = (data || []).map((w: any) => ({
         ...w,
         requester_name: buildOwnerName(w.profiles),
-        phone: w.destination_phone || w.profiles?.phone || 'Phone on file'
-        // Status is read directly from Supabase (updated by Webhook)
+        phone: w.destination_phone || w.profiles?.phone || 'Phone on file',
+        status: monimeStatuses[w.id] || w.status
       }));
 
       setItems(enriched as WithdrawalRequest[]);

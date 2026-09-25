@@ -22,7 +22,6 @@ export default function LoginPage() {
       setError(authError.message);
       setLoading(false);
     }
-    // If successful, the App.tsx session listener will automatically redirect to the dashboard
   };
 
   return (

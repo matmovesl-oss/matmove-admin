@@ -23,13 +23,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active session on load
+    // 1. Check active session on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    // Listen for login/logout events
+    // 2. Instantly catch login/logout events to trap or grant access
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -45,7 +45,7 @@ export default function App() {
     );
   }
 
-  // If no session exists, strictly lock the user to the Login Page
+  // FORCE LOGIN: If no session exists, strictly lock the user to the Login Page
   if (!session) {
     return (
       <BrowserRouter>
@@ -56,7 +56,7 @@ export default function App() {
     );
   }
 
-  // Authenticated Application
+  // SECURE AUTHENTICATED ADMIN
   return (
     <BrowserRouter>
       <Routes>
