@@ -1,69 +1,76 @@
-import { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
-import { Menu, LogOut, Loader2 } from 'lucide-react';
+import { Outlet, NavLink } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import Sidebar from './Sidebar';
+import { 
+  LayoutDashboard, Radar, Tag, FileCheck, Wallet, 
+  Banknote, Users, UserCog, ScrollText, LogOut, Shield 
+} from 'lucide-react';
 
 export function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [adminRole, setAdminRole] = useState<string | null>(null);
-  const [adminName, setAdminName] = useState<string>('Admin');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchAdminProfile = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data } = await supabase
-          .from('profiles')
-          .select('role, full_name')
-          .eq('id', user.id)
-          .single();
-
-        if (data) {
-          setAdminRole(data.role); // e.g., 'super_admin', 'admin_finance', etc.
-          setAdminName(data.full_name || 'Admin');
-        }
-      } catch (err) {
-        console.error('Failed to fetch admin role', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAdminProfile();
-  }, []);
-
-  const handleLogout = async () => {
+  
+  const handleSignOut = async () => {
     await supabase.auth.signOut();
+    // Supabase will update the session state in App.tsx, which will instantly throw the user back to the LoginPage.
   };
 
-  if (loading) {
-    return <div className="flex h-screen items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-indigo-600" size={32} /></div>;
-  }
+  const navItems = [
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+    { to: '/dispatch', icon: Radar, label: 'Dispatch Radar' },
+    { to: '/pricing', icon: Tag, label: 'Vehicle Pricing' },
+    { to: '/kyc', icon: FileCheck, label: 'KYC & Onboarding' },
+    { to: '/wallets', icon: Wallet, label: 'Financial & Wallets' },
+    { to: '/withdrawals', icon: Banknote, label: 'Payouts & Withdrawals' },
+    { to: '/users', icon: Users, label: 'Customer Governance' },
+    { to: '/staff', icon: UserCog, label: 'Staff Governance' },
+    { to: '/audit', icon: ScrollText, label: 'System & Audit Logs' },
+  ];
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden relative">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} adminRole={adminRole} adminName={adminName} />
-      
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden lg:ml-72 h-screen">
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 lg:hidden">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
-              <Menu size={20} />
-            </button>
-            <h1 className="text-lg font-bold text-slate-900">MatMove Admin</h1>
-          </div>
-          <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 transition">
-            <LogOut size={20} />
-          </button>
-        </header>
-        
-        <div className="flex-1 overflow-auto relative bg-slate-50">
-          <Outlet />
+    <div className="flex h-screen bg-slate-50">
+      {/* Sidebar */}
+      <div className="w-64 bg-slate-900 text-slate-300 flex flex-col">
+        <div className="p-6 flex items-center gap-3 text-white">
+           <div className="bg-indigo-600 p-2 rounded-lg shadow-sm">
+             <Shield size={20} />
+           </div>
+           <div>
+             <span className="font-bold text-lg tracking-tight block">MatMove</span>
+             <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest block -mt-1">Admin Console</span>
+           </div>
         </div>
-      </main>
+        
+        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
+          {navItems.map((item) => (
+            <NavLink 
+              key={item.to} 
+              to={item.to}
+              className={({ isActive }) => 
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 hover:text-white'
+                }`
+              }
+            >
+              <item.icon size={18} />
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Sign Out Button */}
+        <div className="p-4 border-t border-slate-800">
+          <button 
+            onClick={handleSignOut}
+            className="flex items-center justify-center gap-2 px-3 py-2.5 w-full rounded-lg text-sm font-bold text-slate-400 bg-slate-800/50 hover:bg-red-500 hover:text-white transition-all shadow-sm"
+          >
+            <LogOut size={16} />
+            Sign Out Session
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto">
+        <Outlet />
+      </div>
     </div>
   );
 }
