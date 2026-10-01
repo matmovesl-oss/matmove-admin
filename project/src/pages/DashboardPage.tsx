@@ -16,7 +16,6 @@ export default function DashboardPage() {
       setLoading(true);
       try {
         const { data: profiles } = await supabase.from('profiles').select('kyc_status, role');
-        const { data: wallets } = await supabase.from('wallets').select('balance').eq('currency', 'SLE');
         const { data: bookings } = await supabase.from('bookings').select('*, rider:rider_id(full_name), driver:driver_id(full_name)').order('created_at', { ascending: false }).limit(5);
 
         let kyc = 0, users = 0;
@@ -25,9 +24,29 @@ export default function DashboardPage() {
           users = profiles.filter(p => ['rider', 'driver', 'merchant'].includes(String(p.role).toLowerCase())).length;
         }
 
-        const bal = wallets ? wallets.reduce((s, w) => s + Number(w.balance || 0), 0) : 0;
+        // 🔴 Fetch TRUE Balances from Monime API
+        const monimeRes = await fetch('/api/get-space-balance');
+        const monimeData = await monimeRes.json();
+        let trueTotalBalance = 0;
         
-        setStats({ pendingKyc: kyc, totalBalance: bal, pendingWithdrawals: 0, totalUsers: users });
+        if (monimeData.accounts) {
+          trueTotalBalance = monimeData.accounts.reduce((sum: number, acc: any) => {
+            // Monime balances are in minor units (cents), so we divide by 100
+            const val = acc.balance?.available?.value || 0;
+            return sum + (val / 100);
+          }, 0);
+        }
+
+        // 🔴 Fetch TRUE Payouts from Monime API
+        const payoutRes = await fetch('/api/get-payouts');
+        const payoutData = await payoutRes.json();
+        let pendingPayoutsCount = 0;
+
+        if (payoutData.payouts) {
+          pendingPayoutsCount = payoutData.payouts.filter((p: any) => p.status === 'pending' || p.status === 'processing').length;
+        }
+        
+        setStats({ pendingKyc: kyc, totalBalance: trueTotalBalance, pendingWithdrawals: pendingPayoutsCount, totalUsers: users });
         if (bookings) setRecentBookings(bookings);
       } catch (err) { console.error(err); } finally { setLoading(false); }
     };
@@ -42,14 +61,15 @@ export default function DashboardPage() {
   ];
 
   return (
-    <AdminLayout title="Compliance Dashboard" subtitle="Executive overview synced with live Supabase data">
+    <AdminLayout title="Compliance Dashboard" subtitle="Executive overview synced with live Monime and Supabase data">
       {loading ? (
         <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <StatCard label="Pending KYC" value={String(stats.pendingKyc)} icon={Clock} tone="amber" hint="Awaiting review" />
-            <StatCard label="Total User Balances" value={`SLE ${stats.totalBalance.toFixed(2)}`} icon={Wallet} tone="indigo" />
+            <StatCard label="True System Balance" value={`SLE ${stats.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Wallet} tone="emerald" hint="Live Monime Ledger" />
+            <StatCard label="Pending Payouts" value={String(stats.pendingWithdrawals)} icon={Banknote} tone="amber" hint="Awaiting Settlement" />
             <StatCard label="Active Users" value={String(stats.totalUsers)} icon={Users} tone="indigo" hint="Riders & Drivers" />
           </div>
 

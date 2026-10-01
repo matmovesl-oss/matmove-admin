@@ -2,20 +2,22 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
-    const monimeRes = await fetch('https://api.monime.io/v1/payouts?limit=50', {
+    const apiKey = process.env.VITE_MONIME_API_KEY || process.env.MONIME_API_KEY;
+    const spaceId = process.env.VITE_MONIME_SPACE_ID || process.env.MONIME_SPACE_ID;
+
+    const monimeRes = await fetch('https://api.monime.io/v1/payouts?limit=100', {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${process.env.MONIME_API_KEY || process.env.VITE_MONIME_API_KEY}`,
-        'Monime-Space-Id': process.env.MONIME_SPACE_ID || process.env.VITE_MONIME_SPACE_ID,
-        'Monime-Version': 'caph.2025-08-23'
+        'Authorization': `Bearer ${apiKey}`,
+        'Monime-Space-Id': spaceId,
+        'Accept': '*/*'
       }
     });
 
     const rawData = await monimeRes.json();
     if (!monimeRes.ok) throw new Error(rawData.message || "Failed to fetch payouts from Monime");
 
-    // Monime Schema: result is an array of Payout objects
-    const payouts = rawData.result || [];
+    const payouts = rawData.result || rawData.data || [];
     return res.status(200).json({ payouts });
   } catch (error) {
     return res.status(500).json({ error: error.message });
