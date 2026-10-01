@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { FileText, Eye, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { FileText, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -21,13 +21,14 @@ export function KycPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | KycStatus>('all');
   const [roleFilter, setRoleFilter] = useState<'all' | TargetRole>('all');
+
   const [selected, setSelected] = useState<KycSubmission | null>(null);
   const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
-  const [previewDoc, setPreviewDoc] = useState<string | null>(null);
 
   const loadSubmissions = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -113,7 +114,13 @@ export function KycPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
-                <tr><th className="px-6 py-4">Customer</th><th className="px-6 py-4">Account</th><th className="px-6 py-4">Submitted</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Action</th></tr>
+                <tr>
+                  <th className="px-6 py-4">Customer</th>
+                  <th className="px-6 py-4">Account</th>
+                  <th className="px-6 py-4">Submitted</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Action</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
@@ -165,13 +172,35 @@ export function KycPage() {
                   </div>
                 </section>
 
+                {selected.target_role === 'driver' && (
+                  <section>
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Driver Information</h3>
+                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
+                      <Info label="Vehicle type" value={profile?.vehicle_type || '—'} />
+                      <Info label="Plate number" value={profile?.plate_number || '—'} />
+                      <Info label="Driver license" value={profile?.driver_license_no || '—'} />
+                    </div>
+                  </section>
+                )}
+
+                {selected.target_role === 'merchant' && (
+                  <section>
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Business Information</h3>
+                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
+                      <Info label="Business name" value={profile?.business_name || '—'} />
+                      <Info label="Business type" value={profile?.business_type || '—'} />
+                      <Info label="Tax ID" value={profile?.tax_id || '—'} />
+                    </div>
+                  </section>
+                )}
+
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" path={profile?.id_card_url} userId={profile?.id} onView={setPreviewDoc} />
-                    <DocumentCard title="Selfie" path={profile?.selfie_url} userId={profile?.id} onView={setPreviewDoc} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} userId={profile?.id} onView={setPreviewDoc} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} userId={profile?.id} onView={setPreviewDoc} />}
+                  <div className="grid grid-cols-2 gap-4">
+                    <DocumentCard title="ID Card" path={profile?.id_card_url} userId={profile?.id} />
+                    <DocumentCard title="Selfie" path={profile?.selfie_url} userId={profile?.id} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} userId={profile?.id} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} userId={profile?.id} />}
                   </div>
                 </section>
 
@@ -200,43 +229,31 @@ export function KycPage() {
             </div>
           </div>
         )}
-
-        {previewDoc && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4">
-            <div className="relative w-full max-w-4xl bg-transparent flex flex-col items-center">
-              <button onClick={() => setPreviewDoc(null)} className="absolute -top-12 right-0 text-white hover:text-slate-300 transition"><X size={36} /></button>
-              <img src={previewDoc} alt="Document Preview" className="w-full h-auto max-h-[85vh] object-contain rounded-xl shadow-2xl" />
-            </div>
-          </div>
-        )}
       </div>
     </AdminLayout>
   );
 }
 
-function Info({ label, value }: { label: string; value: string; }) {
-  return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value}</p></div>;
+function Info({ label, value }: { label: string; value: string | null | undefined; }) {
+  return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value || '—'}</p></div>;
 }
 
-// 🔴 THE SMART FALLBACK FIX: Attempts all possible path combinations so it never fails.
-function DocumentCard({ title, path, userId, onView }: { title: string; path?: string | null; userId?: string | null; onView: (url: string) => void }) {
-  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
-  const [isError, setIsError] = useState(false);
-  const [attemptIndex, setAttemptIndex] = useState(0);
-  const [pathsToTry, setPathsToTry] = useState<string[]>([]);
+// 🔴 THE NEW DOCUMENT CARD: Open safely in a new tab, no inline image fails.
+function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
+  const [validUrl, setValidUrl] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
     if (!path) return;
     if (path.startsWith('http')) { 
-      setCurrentUrl(path); 
-      setPathsToTry([path]);
+      setValidUrl(path); 
       return; 
     }
     
+    setIsChecking(true);
     const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
     const filenameOnly = cleanPath.split('/').pop() || cleanPath;
 
-    // Test the 3 most common places the Customer App might have put the file
     const possiblePaths = [
       cleanPath,
       `${userId}/${filenameOnly}`,
@@ -246,54 +263,43 @@ function DocumentCard({ title, path, userId, onView }: { title: string; path?: s
     const uniquePaths = Array.from(new Set(possiblePaths));
     const urls = uniquePaths.map(p => supabase.storage.from('kyc-documents').getPublicUrl(p).data.publicUrl);
     
-    setPathsToTry(urls);
-    setCurrentUrl(urls[0]);
-    setAttemptIndex(0);
-    setIsError(false);
-  }, [path, userId]);
-
-  const handleError = (e: any) => {
-    if (attemptIndex < pathsToTry.length - 1) {
-      const nextIndex = attemptIndex + 1;
-      setAttemptIndex(nextIndex);
-      setCurrentUrl(pathsToTry[nextIndex]);
-    } else {
-      setIsError(true);
-      e.target.style.display = 'none';
-      if (e.target.parentElement) {
-        let errSpan = e.target.parentElement.querySelector('.err-msg');
-        if (!errSpan) {
-           e.target.parentElement.insertAdjacentHTML('beforeend', '<span class="err-msg text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded-lg border border-red-100 text-center block w-full shadow-sm">Image not found in Storage Bucket</span>');
+    // Test the URLs in the background to find the one that works
+    const findValidUrl = async () => {
+      for (const u of urls) {
+        const isValid = await new Promise<boolean>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(true);
+          img.onerror = () => resolve(false);
+          img.src = u;
+        });
+        if (isValid) {
+          setValidUrl(u);
+          setIsChecking(false);
+          return;
         }
       }
-    }
-  };
+      setValidUrl(urls[0]); // Fallback
+      setIsChecking(false);
+    };
+
+    findValidUrl();
+  }, [path, userId]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white group transition hover:shadow-md hover:border-indigo-200 flex flex-col h-full">
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50">
-        <div className="flex items-center gap-2">
-          <FileText size={18} className="text-indigo-600" />
-          <h4 className="text-sm font-bold text-slate-900">{title}</h4>
-        </div>
-        {currentUrl && !isError && (
-          <div className="flex gap-2">
-            <button onClick={() => onView(currentUrl)} className="flex items-center gap-1 text-[10px] uppercase font-bold text-indigo-700 hover:text-indigo-900 transition bg-indigo-100 px-3 py-1.5 rounded-lg">
-              <Eye size={14} /> Preview
-            </button>
-            <a href={currentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-700 hover:text-slate-900 transition bg-slate-200 px-3 py-1.5 rounded-lg">
-              <ExternalLink size={14} /> Open
-            </a>
-          </div>
-        )}
+    <div className="border border-slate-200 rounded-xl p-5 bg-white shadow-sm flex flex-col justify-center items-center text-center group transition hover:border-indigo-300 min-h-[160px]">
+      <div className="mb-4">
+        <FileText size={32} className="text-indigo-400 mx-auto mb-2" />
+        <h4 className="text-sm font-bold text-slate-900">{title}</h4>
       </div>
-      <div className="relative flex-1 min-h-[160px] w-full bg-slate-100 flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError && currentUrl) onView(currentUrl); }}>
-        {currentUrl && !isError ? (
-          <img src={currentUrl} alt={title} className="object-contain w-full h-full max-h-[200px] group-hover:scale-105 transition-transform duration-300 rounded-xl" onError={handleError} />
-        ) : (
-          <div className="text-sm font-bold text-slate-400">No document submitted</div>
-        )}
-      </div>
+      {!path ? (
+        <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg w-full block">Not Submitted</span>
+      ) : isChecking ? (
+        <span className="text-xs font-bold text-slate-500 flex items-center justify-center gap-2 w-full py-1.5"><Loader2 size={14} className="animate-spin" /> Locating file...</span>
+      ) : validUrl ? (
+        <a href={validUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition px-4 py-2.5 rounded-xl shadow-sm">
+          <ExternalLink size={14} /> Open Document
+        </a>
+      ) : null}
     </div>
   );
 }

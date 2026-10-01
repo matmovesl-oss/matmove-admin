@@ -9,7 +9,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Admin API Key or Space ID is missing in Vercel.' });
     }
 
-    const monimeRes = await fetch('https://api.monime.io/v1/payouts?limit=100', {
+    // 🔴 FIX: Limit must be 50 or less according to Monime Docs!
+    const monimeRes = await fetch('https://api.monime.io/v1/payouts?limit=50', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -25,8 +26,6 @@ export default async function handler(req, res) {
     let payouts = [];
     if (Array.isArray(rawData.result)) payouts = rawData.result;
     else if (rawData.result?.items && Array.isArray(rawData.result.items)) payouts = rawData.result.items;
-    else if (Array.isArray(rawData.data)) payouts = rawData.data;
-    else if (rawData.data?.items && Array.isArray(rawData.data.items)) payouts = rawData.data.items;
 
     return res.status(200).json({ payouts });
   } catch (error) {
