@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { FileText, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { FileText, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -197,7 +197,6 @@ export function KycPage() {
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {/* 🔴 CRITICAL FIX: Passing userId explicitly to the DocumentCard */}
                     <DocumentCard title="ID Card" path={profile?.id_card_url} userId={profile?.id} />
                     <DocumentCard title="Selfie" path={profile?.selfie_url} userId={profile?.id} />
                     {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} userId={profile?.id} />}
@@ -239,8 +238,65 @@ function Info({ label, value }: { label: string; value: string | null | undefine
   return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value || '—'}</p></div>;
 }
 
-// 🔴 DUAL-LINK DOCUMENT CARD FIX: Offers both possible paths so you never get a 404 again
+// 🔴 AUTO-DISCOVERY DOCUMENT CARD: Dynamically tests paths and returns the correct one
 function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
+  const [targetUrl, setTargetUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!path) {
+      setLoading(false);
+      return;
+    }
+
+    if (path.startsWith('http')) {
+      setTargetUrl(path);
+      setLoading(false);
+      return;
+    }
+
+    const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+    const fileName = cleanPath.split('/').pop() || cleanPath;
+
+    // The 4 permutations of how the file might have been saved in the bucket
+    const pathsToTry = [
+      cleanPath,                      
+      fileName,                       
+      `${userId}/${fileName}`,        
+      `kyc/${userId}/${fileName}`     
+    ];
+
+    const uniquePaths = Array.from(new Set(pathsToTry));
+    const urlsToTest = uniquePaths.map(p => supabase.storage.from('kyc-documents').getPublicUrl(p).data.publicUrl);
+
+    const findValidUrl = async () => {
+      for (const url of urlsToTest) {
+        try {
+          const exists = await new Promise<boolean>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+            img.src = url;
+          });
+          
+          if (exists) {
+            setTargetUrl(url);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          // Ignore error, loop continues to test the next URL
+        }
+      }
+      
+      // If none worked, default to the first one so the Admin sees the true 404
+      setTargetUrl(urlsToTest[0]);
+      setLoading(false);
+    };
+
+    findValidUrl();
+  }, [path, userId]);
+
   if (!path) {
     return (
       <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[180px]">
@@ -251,26 +307,27 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
     );
   }
 
-  // Define the two most likely places the file was saved
-  const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
-  const filenameOnly = cleanPath.split('/').pop() || cleanPath;
-
-  const rootUrl = supabase.storage.from('kyc-documents').getPublicUrl(filenameOnly).data.publicUrl;
-  const folderUrl = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${filenameOnly}`).data.publicUrl;
-
   return (
     <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[180px]">
       <FileText size={28} className="text-indigo-500 mb-2" />
       <h4 className="text-sm font-bold text-slate-900 mb-3">{title}</h4>
       
-      <div className="w-full flex flex-col gap-2">
-        <a href={rootUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-3 py-2 rounded-xl text-[10px] font-bold border border-indigo-100 shadow-sm flex items-center justify-center gap-1.5">
-          <ExternalLink size={12} /> Open Image Link 1
+      {loading ? (
+        <span className="text-xs text-slate-500 font-bold animate-pulse flex items-center gap-2 mt-2">
+          <Loader2 size={14} className="animate-spin text-indigo-500" /> Locating file...
+        </span>
+      ) : targetUrl ? (
+        <a 
+          href={targetUrl} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="w-full bg-indigo-600 text-white hover:bg-indigo-700 transition px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 mt-2"
+        >
+          <ExternalLink size={14} /> Open Document
         </a>
-        <a href={folderUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-slate-50 text-slate-700 hover:bg-slate-100 transition px-3 py-2 rounded-xl text-[10px] font-bold border border-slate-200 shadow-sm flex items-center justify-center gap-1.5">
-          <ExternalLink size={12} /> Open Image Link 2
-        </a>
-      </div>
+      ) : (
+        <span className="text-[10px] uppercase font-bold text-red-500 bg-red-50 px-3 py-2 rounded-lg w-full border border-red-100 mt-2">File not found</span>
+      )}
     </div>
   );
 }
