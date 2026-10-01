@@ -5,11 +5,10 @@ import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import { supabase } from '@/lib/supabase';
 import { FileCheck, Wallet, Banknote, Users, ShieldAlert, Clock, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
-import { formatSLE, timeAgo } from '@/lib/format';
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState({ pendingKyc: 0, totalBalance: 0, pendingWithdrawals: 0, pendingValue: 0, totalUsers: 0 });
-  const [recentWithdrawals, setRecentWithdrawals] = useState<any[]>([]);
+  const [stats, setStats] = useState({ pendingKyc: 0, totalBalance: 0, pendingWithdrawals: 0, totalUsers: 0 });
+  const [recentBookings, setRecentBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,7 +17,7 @@ export default function DashboardPage() {
       try {
         const { data: profiles } = await supabase.from('profiles').select('kyc_status, role');
         const { data: wallets } = await supabase.from('wallets').select('balance').eq('currency', 'SLE');
-        const { data: withdrawals } = await supabase.from('withdrawal_requests').select('id, amount, status, created_at, reference_code, profiles(full_name)').order('created_at', { ascending: false });
+        const { data: bookings } = await supabase.from('bookings').select('*, rider:rider_id(full_name), driver:driver_id(full_name)').order('created_at', { ascending: false }).limit(5);
 
         let kyc = 0, users = 0;
         if (profiles) {
@@ -27,17 +26,9 @@ export default function DashboardPage() {
         }
 
         const bal = wallets ? wallets.reduce((s, w) => s + Number(w.balance || 0), 0) : 0;
-
-        let pCount = 0, pVal = 0, recentW: any[] = [];
-        if (withdrawals) {
-          const pending = withdrawals.filter(w => w.status === 'pending');
-          pCount = pending.length;
-          pVal = pending.reduce((s, w) => s + Number(w.amount || 0), 0);
-          recentW = withdrawals.slice(0, 5);
-        }
-
-        setStats({ pendingKyc: kyc, totalBalance: bal, pendingWithdrawals: pCount, pendingValue: pVal, totalUsers: users });
-        setRecentWithdrawals(recentW);
+        
+        setStats({ pendingKyc: kyc, totalBalance: bal, pendingWithdrawals: 0, totalUsers: users });
+        if (bookings) setRecentBookings(bookings);
       } catch (err) { console.error(err); } finally { setLoading(false); }
     };
     fetchDashboard();
@@ -45,9 +36,9 @@ export default function DashboardPage() {
 
   const quickLinks = [
     { to: '/kyc', label: 'KYC Approvals', icon: FileCheck, count: stats.pendingKyc, tone: 'amber' as const },
-    { to: '/wallets', label: 'Wallet Ledger', icon: Wallet, count: stats.totalUsers, tone: 'indigo' as const },
-    { to: '/withdrawals', label: 'Pending Payouts', icon: Banknote, count: stats.pendingWithdrawals, tone: 'emerald' as const },
-    { to: '/users', label: 'User Directory', icon: Users, count: stats.totalUsers, tone: 'indigo' as const },
+    { to: '/users', label: 'Active Users', icon: Users, count: stats.totalUsers, tone: 'indigo' as const },
+    { to: '/pricing', label: 'Platform Pricing', icon: TrendingUp, count: 4, tone: 'emerald' as const },
+    { to: '/logs', label: 'Audit Logs', icon: ShieldAlert, count: 'Live', tone: 'indigo' as const },
   ];
 
   return (
@@ -58,8 +49,7 @@ export default function DashboardPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <StatCard label="Pending KYC" value={String(stats.pendingKyc)} icon={Clock} tone="amber" hint="Awaiting review" />
-            <StatCard label="Total System Balance" value={formatSLE(stats.totalBalance)} icon={TrendingUp} tone="indigo" />
-            <StatCard label="Pending Payouts" value={formatSLE(stats.pendingValue)} icon={Banknote} tone="emerald" hint={`${stats.pendingWithdrawals} requests`} />
+            <StatCard label="Total User Balances" value={`SLE ${stats.totalBalance.toFixed(2)}`} icon={Wallet} tone="indigo" />
             <StatCard label="Active Users" value={String(stats.totalUsers)} icon={Users} tone="indigo" hint="Riders & Drivers" />
           </div>
 
@@ -82,23 +72,21 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-900">Recent Withdrawal Requests</h3>
-                <Link to="/withdrawals" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View all</Link>
+                <h3 className="font-semibold text-slate-900">Recent Platform Bookings</h3>
               </div>
               <div className="divide-y divide-slate-100">
-                {recentWithdrawals.map((w) => (
-                  <div key={w.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50">
+                {recentBookings.map((b) => (
+                  <div key={b.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50">
                     <div>
-                      <p className="text-sm font-medium text-slate-900">{w.profiles?.full_name || 'Customer'}</p>
-                      <p className="text-xs text-slate-400 font-mono">{w.reference_code || w.id.slice(0,8)}</p>
+                      <p className="text-sm font-medium text-slate-900 capitalize">{b.service_type} - {b.rider?.full_name || 'Rider'}</p>
+                      <p className="text-xs text-slate-400">Driver: {b.driver?.full_name || 'Unassigned'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-slate-900">{formatSLE(w.amount)}</p>
-                      <Badge tone={w.status === 'pending' ? 'amber' : w.status === 'completed' ? 'emerald' : 'red'}>{w.status}</Badge>
+                      <p className="text-sm font-semibold text-slate-900">SLE {b.fare_amount}</p>
+                      <Badge tone={b.status === 'completed' ? 'emerald' : b.status === 'cancelled' ? 'red' : 'amber'}>{b.status}</Badge>
                     </div>
                   </div>
                 ))}
-                {recentWithdrawals.length === 0 && <div className="p-6 text-center text-slate-400 text-sm">No recent requests</div>}
               </div>
             </section>
           </div>
