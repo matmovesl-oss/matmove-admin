@@ -6,7 +6,7 @@ export default async function handler(req, res) {
     const spaceId = process.env.MONIME_SPACE_ID;
 
     if (!apiKey || !spaceId) {
-      return res.status(500).json({ error: 'Admin API Key or Space ID is missing in Vercel Environment Variables.' });
+      return res.status(500).json({ error: 'Admin API Key or Space ID is missing in Vercel.' });
     }
 
     const monimeRes = await fetch('https://api.monime.io/v1/financial-accounts?withBalance=true&limit=100', {
@@ -21,10 +21,16 @@ export default async function handler(req, res) {
 
     const rawData = await monimeRes.json();
     if (!monimeRes.ok) {
-      return res.status(monimeRes.status).json({ error: rawData.message || 'Failed to fetch Monime accounts' });
+      return res.status(monimeRes.status).json({ error: rawData.message || 'Failed to fetch accounts' });
     }
 
-    const accounts = rawData.result || rawData.data || [];
+    // Safely extract the array whether it's wrapped in 'items' or not
+    let accounts = [];
+    if (Array.isArray(rawData.result)) accounts = rawData.result;
+    else if (rawData.result?.items && Array.isArray(rawData.result.items)) accounts = rawData.result.items;
+    else if (Array.isArray(rawData.data)) accounts = rawData.data;
+    else if (rawData.data?.items && Array.isArray(rawData.data.items)) accounts = rawData.data.items;
+
     return res.status(200).json({ accounts });
   } catch (error) {
     return res.status(500).json({ error: error.message });

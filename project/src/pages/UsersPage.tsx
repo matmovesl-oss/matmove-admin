@@ -135,10 +135,10 @@ export default function UsersPage() {
               <section>
                 <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-400">Submitted Documents</h3>
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                   <DocumentCard title="ID Card" path={selectedUser.id_card_url} onView={setPreviewDoc} />
-                   <DocumentCard title="Selfie" path={selectedUser.selfie_url} onView={setPreviewDoc} />
-                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" path={selectedUser.license_doc_url} onView={setPreviewDoc} />}
-                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" path={selectedUser.business_doc_url} onView={setPreviewDoc} />}
+                   <DocumentCard title="ID Card" path={selectedUser.id_card_url} userId={selectedUser.id} onView={setPreviewDoc} />
+                   <DocumentCard title="Selfie" path={selectedUser.selfie_url} userId={selectedUser.id} onView={setPreviewDoc} />
+                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" path={selectedUser.license_doc_url} userId={selectedUser.id} onView={setPreviewDoc} />}
+                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" path={selectedUser.business_doc_url} userId={selectedUser.id} onView={setPreviewDoc} />}
                 </div>
               </section>
             </div>
@@ -158,63 +158,81 @@ export default function UsersPage() {
   );
 }
 
-// 🔴 THE EXACT FIX: Uses the literal path directly against the public URL endpoint
-function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
-  const [url, setUrl] = useState<string | null>(null);
+function DocumentCard({ title, path, userId, onView }: { title: string; path?: string | null; userId?: string | null; onView: (url: string) => void }) {
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
+  const [attemptIndex, setAttemptIndex] = useState(0);
+  const [pathsToTry, setPathsToTry] = useState<string[]>([]);
 
   useEffect(() => {
     if (!path) return;
-    
     if (path.startsWith('http')) { 
-      setUrl(path); 
+      setCurrentUrl(path); 
+      setPathsToTry([path]);
       return; 
     }
     
-    // 1. Remove bucket name if mistakenly appended
-    let cleanPath = path.replace(/^kyc-documents\//, '');
-    // 2. Remove leading slashes
-    cleanPath = cleanPath.replace(/^\//, '');
+    const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+    const filenameOnly = cleanPath.split('/').pop() || cleanPath;
 
-    // Get the explicit public URL assuming no subfolders
-    const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
-    setUrl(data.publicUrl);
-  }, [path]);
+    // Test the 3 most common places the Customer App might have put the file
+    const possiblePaths = [
+      cleanPath,
+      `${userId}/${filenameOnly}`,
+      `kyc/${userId}/${filenameOnly}`
+    ];
+    
+    const uniquePaths = Array.from(new Set(possiblePaths));
+    const urls = uniquePaths.map(p => supabase.storage.from('kyc-documents').getPublicUrl(p).data.publicUrl);
+    
+    setPathsToTry(urls);
+    setCurrentUrl(urls[0]);
+    setAttemptIndex(0);
+    setIsError(false);
+  }, [path, userId]);
+
+  const handleError = (e: any) => {
+    if (attemptIndex < pathsToTry.length - 1) {
+      const nextIndex = attemptIndex + 1;
+      setAttemptIndex(nextIndex);
+      setCurrentUrl(pathsToTry[nextIndex]);
+    } else {
+      setIsError(true);
+      e.target.style.display = 'none';
+      if (e.target.parentElement) {
+        let errSpan = e.target.parentElement.querySelector('.err-msg');
+        if (!errSpan) {
+           e.target.parentElement.insertAdjacentHTML('beforeend', '<span class="err-msg text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded-lg border border-red-100 text-center block w-full shadow-sm">Image not found in Storage Bucket</span>');
+        }
+      }
+    }
+  };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white group transition hover:shadow-md hover:border-indigo-200">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white group transition hover:shadow-md hover:border-indigo-200 flex flex-col h-full">
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50">
         <div className="flex items-center gap-2">
           <FileText size={18} className="text-indigo-600" />
           <h4 className="text-sm font-bold text-slate-900">{title}</h4>
         </div>
-        {url && !isError && (
+        {currentUrl && !isError && (
           <div className="flex gap-2">
-            <button onClick={() => onView(url)} className="flex items-center gap-1 text-[10px] font-bold uppercase text-indigo-700 hover:text-indigo-900 transition bg-indigo-100 px-3 py-1.5 rounded-lg">
+            <button onClick={() => onView(currentUrl)} className="flex items-center gap-1 text-[10px] uppercase font-bold text-indigo-700 hover:text-indigo-900 transition bg-indigo-100 px-3 py-1.5 rounded-lg">
               <Eye size={14} /> Preview
             </button>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-700 hover:text-slate-900 transition bg-slate-200 px-3 py-1.5 rounded-lg">
+            <a href={currentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-700 hover:text-slate-900 transition bg-slate-200 px-3 py-1.5 rounded-lg">
               <ExternalLink size={14} /> Open
             </a>
           </div>
         )}
       </div>
-      {url ? (
-        <div className="relative h-56 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError) onView(url); }}>
-          <img 
-             src={url} 
-             alt={title} 
-             className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded-xl" 
-             onError={(e) => { 
-               setIsError(true);
-               (e.target as HTMLElement).style.display = 'none'; 
-               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded-lg border border-red-100 text-center block w-full shadow-sm">Image not found in Storage Bucket</span>';
-             }} 
-          />
-        </div>
-      ) : (
-        <div className="flex h-56 items-center justify-center bg-slate-50 text-sm font-bold text-slate-400">No document submitted</div>
-      )}
+      <div className="relative flex-1 min-h-[160px] w-full bg-slate-100 flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError && currentUrl) onView(currentUrl); }}>
+        {currentUrl && !isError ? (
+          <img src={currentUrl} alt={title} className="object-contain w-full h-full max-h-[200px] group-hover:scale-105 transition-transform duration-300 rounded-xl" onError={handleError} />
+        ) : (
+          <div className="text-sm font-bold text-slate-400">No document submitted</div>
+        )}
+      </div>
     </div>
   );
 }

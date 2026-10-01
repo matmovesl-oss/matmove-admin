@@ -35,7 +35,7 @@ export function FinancialsPage() {
             const sleVal = Number(rawVal) / 100;
             if (acc.id) monimeAccountsMap.set(acc.id, sleVal);
             if (acc.reference) monimeAccountsMap.set(acc.reference, sleVal);
-            computedTotalBalance += sleVal; // True Total from Monime
+            computedTotalBalance += sleVal;
           });
         }
       } catch (mErr: any) {

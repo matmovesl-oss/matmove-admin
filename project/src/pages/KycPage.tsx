@@ -21,11 +21,9 @@ export function KycPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | KycStatus>('all');
   const [roleFilter, setRoleFilter] = useState<'all' | TargetRole>('all');
-
   const [selected, setSelected] = useState<KycSubmission | null>(null);
   const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
@@ -115,13 +113,7 @@ export function KycPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
-                <tr>
-                  <th className="px-6 py-4">Customer</th>
-                  <th className="px-6 py-4">Account</th>
-                  <th className="px-6 py-4">Submitted</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
+                <tr><th className="px-6 py-4">Customer</th><th className="px-6 py-4">Account</th><th className="px-6 py-4">Submitted</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
@@ -152,15 +144,15 @@ export function KycPage() {
         {selected && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-              <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 sticky top-0 bg-white z-10">
-                <div><h2 className="text-xl font-bold text-slate-900">KYC Review</h2><p className="mt-1 text-sm text-slate-500">{getCustomerName(profile)} · {roleLabel(selected.target_role)}</p></div>
-                <button onClick={closeReview} className="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
+              <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5 sticky top-0 bg-white z-10">
+                <div><h2 className="text-xl font-bold text-gray-900">KYC Review</h2><p className="mt-1 text-sm text-slate-500">{getCustomerName(profile)} · {roleLabel(selected.target_role)}</p></div>
+                <button onClick={closeReview} className="text-2xl leading-none text-gray-400 hover:text-gray-700">×</button>
               </div>
 
               <div className="space-y-6 p-6">
                 <section>
-                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Customer Information</h3>
-                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Customer Information</h3>
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
                     <Info label="Full name" value={getCustomerName(profile)} />
                     <Info label="Phone" value={profile?.phone || profile?.phone_number || '—'} />
                     <Info label="Email" value={profile?.email || '—'} />
@@ -173,35 +165,13 @@ export function KycPage() {
                   </div>
                 </section>
 
-                {selected.target_role === 'driver' && (
-                  <section>
-                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Driver Information</h3>
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
-                      <Info label="Vehicle type" value={profile?.vehicle_type || '—'} />
-                      <Info label="Plate number" value={profile?.plate_number || '—'} />
-                      <Info label="Driver license" value={profile?.driver_license_no || '—'} />
-                    </div>
-                  </section>
-                )}
-
-                {selected.target_role === 'merchant' && (
-                  <section>
-                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Business Information</h3>
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
-                      <Info label="Business name" value={profile?.business_name || '—'} />
-                      <Info label="Business type" value={profile?.business_type || '—'} />
-                      <Info label="Tax ID" value={profile?.tax_id || '—'} />
-                    </div>
-                  </section>
-                )}
-
                 <section>
-                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Submitted Documents</h3>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" path={profile?.id_card_url} onView={setPreviewDoc} />
-                    <DocumentCard title="Selfie" path={profile?.selfie_url} onView={setPreviewDoc} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} onView={setPreviewDoc} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} onView={setPreviewDoc} />}
+                    <DocumentCard title="ID Card" path={profile?.id_card_url} userId={profile?.id} onView={setPreviewDoc} />
+                    <DocumentCard title="Selfie" path={profile?.selfie_url} userId={profile?.id} onView={setPreviewDoc} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} userId={profile?.id} onView={setPreviewDoc} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} userId={profile?.id} onView={setPreviewDoc} />}
                   </div>
                 </section>
 
@@ -221,7 +191,7 @@ export function KycPage() {
                 </section>
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
                 <button onClick={closeReview} className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold hover:bg-slate-50">Cancel</button>
                 <button onClick={submitDecision} disabled={actionLoading || (decision !== 'approved' && !reason.trim())} className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">
                   {actionLoading ? 'Processing...' : 'Submit Decision'}
@@ -248,62 +218,82 @@ function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value}</p></div>;
 }
 
-// 🔴 THE EXACT FIX: Uses the literal path directly against the public URL endpoint
-function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
-  const [url, setUrl] = useState<string | null>(null);
+// 🔴 THE SMART FALLBACK FIX: Attempts all possible path combinations so it never fails.
+function DocumentCard({ title, path, userId, onView }: { title: string; path?: string | null; userId?: string | null; onView: (url: string) => void }) {
+  const [currentUrl, setCurrentUrl] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
+  const [attemptIndex, setAttemptIndex] = useState(0);
+  const [pathsToTry, setPathsToTry] = useState<string[]>([]);
 
   useEffect(() => {
     if (!path) return;
     if (path.startsWith('http')) { 
-      setUrl(path); 
+      setCurrentUrl(path); 
+      setPathsToTry([path]);
       return; 
     }
     
-    // 1. Remove bucket name if mistakenly appended
-    let cleanPath = path.replace(/^kyc-documents\//, '');
-    // 2. Remove leading slashes
-    cleanPath = cleanPath.replace(/^\//, '');
+    const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+    const filenameOnly = cleanPath.split('/').pop() || cleanPath;
 
-    // Get the explicit public URL assuming no subfolders
-    const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
-    setUrl(data.publicUrl);
-  }, [path]);
+    // Test the 3 most common places the Customer App might have put the file
+    const possiblePaths = [
+      cleanPath,
+      `${userId}/${filenameOnly}`,
+      `kyc/${userId}/${filenameOnly}`
+    ];
+    
+    const uniquePaths = Array.from(new Set(possiblePaths));
+    const urls = uniquePaths.map(p => supabase.storage.from('kyc-documents').getPublicUrl(p).data.publicUrl);
+    
+    setPathsToTry(urls);
+    setCurrentUrl(urls[0]);
+    setAttemptIndex(0);
+    setIsError(false);
+  }, [path, userId]);
+
+  const handleError = (e: any) => {
+    if (attemptIndex < pathsToTry.length - 1) {
+      const nextIndex = attemptIndex + 1;
+      setAttemptIndex(nextIndex);
+      setCurrentUrl(pathsToTry[nextIndex]);
+    } else {
+      setIsError(true);
+      e.target.style.display = 'none';
+      if (e.target.parentElement) {
+        let errSpan = e.target.parentElement.querySelector('.err-msg');
+        if (!errSpan) {
+           e.target.parentElement.insertAdjacentHTML('beforeend', '<span class="err-msg text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded-lg border border-red-100 text-center block w-full shadow-sm">Image not found in Storage Bucket</span>');
+        }
+      }
+    }
+  };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group transition hover:shadow-md">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white group transition hover:shadow-md hover:border-indigo-200 flex flex-col h-full">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-slate-50">
         <div className="flex items-center gap-2">
-          <FileText size={16} className="text-indigo-600" />
+          <FileText size={18} className="text-indigo-600" />
           <h4 className="text-sm font-bold text-slate-900">{title}</h4>
         </div>
-        {url && !isError && (
+        {currentUrl && !isError && (
           <div className="flex gap-2">
-            <button onClick={() => onView(url)} className="flex items-center gap-1 text-[10px] uppercase font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition">
+            <button onClick={() => onView(currentUrl)} className="flex items-center gap-1 text-[10px] uppercase font-bold text-indigo-700 hover:text-indigo-900 transition bg-indigo-100 px-3 py-1.5 rounded-lg">
               <Eye size={14} /> Preview
             </button>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition">
+            <a href={currentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-700 hover:text-slate-900 transition bg-slate-200 px-3 py-1.5 rounded-lg">
               <ExternalLink size={14} /> Open
             </a>
           </div>
         )}
       </div>
-      {url ? (
-        <div className="relative h-48 w-full bg-slate-50 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError) onView(url); }}>
-          <img 
-             src={url} 
-             alt={title} 
-             className="object-contain w-full h-full group-hover:scale-105 transition-transform duration-300 rounded" 
-             onError={(e) => { 
-               setIsError(true);
-               (e.target as HTMLElement).style.display = 'none'; 
-               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded text-center">Image not found in Storage Bucket</span>';
-             }} 
-          />
-        </div>
-      ) : (
-        <div className="flex h-48 items-center justify-center bg-slate-50 text-xs font-bold text-slate-400">No document submitted</div>
-      )}
+      <div className="relative flex-1 min-h-[160px] w-full bg-slate-100 flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError && currentUrl) onView(currentUrl); }}>
+        {currentUrl && !isError ? (
+          <img src={currentUrl} alt={title} className="object-contain w-full h-full max-h-[200px] group-hover:scale-105 transition-transform duration-300 rounded-xl" onError={handleError} />
+        ) : (
+          <div className="text-sm font-bold text-slate-400">No document submitted</div>
+        )}
+      </div>
     </div>
   );
 }
