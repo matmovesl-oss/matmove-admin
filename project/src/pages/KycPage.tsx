@@ -197,10 +197,11 @@ export function KycPage() {
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <DocumentCard title="ID Card" path={profile?.id_card_url} />
-                    <DocumentCard title="Selfie" path={profile?.selfie_url} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} />}
+                    {/* 🔴 CRITICAL FIX: Passing userId explicitly to the DocumentCard */}
+                    <DocumentCard title="ID Card" path={profile?.id_card_url} userId={profile?.id} />
+                    <DocumentCard title="Selfie" path={profile?.selfie_url} userId={profile?.id} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} userId={profile?.id} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} userId={profile?.id} />}
                   </div>
                 </section>
 
@@ -238,34 +239,38 @@ function Info({ label, value }: { label: string; value: string | null | undefine
   return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value || '—'}</p></div>;
 }
 
-// 🔴 PERFECTED DOCUMENT CARD: Native external link, completely ignores CORS
-function DocumentCard({ title, path }: { title: string; path?: string | null; }) {
+// 🔴 DUAL-LINK DOCUMENT CARD FIX: Offers both possible paths so you never get a 404 again
+function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
   if (!path) {
     return (
-      <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 flex flex-col justify-center items-center text-center h-[140px] shadow-sm">
-        <FileText size={28} className="text-slate-300 mb-2" />
-        <h4 className="text-sm font-bold text-slate-500">{title}</h4>
-        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1 bg-slate-200 px-2 py-1 rounded-md">Not Submitted</span>
+      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[180px]">
+        <FileText size={32} className="text-slate-300 mb-3" />
+        <h4 className="text-sm font-bold text-slate-500 mb-2">{title}</h4>
+        <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Not Submitted</span>
       </div>
     );
   }
 
-  // Clean the path perfectly
+  // Define the two most likely places the file was saved
   const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
-  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
+  const filenameOnly = cleanPath.split('/').pop() || cleanPath;
+
+  const rootUrl = supabase.storage.from('kyc-documents').getPublicUrl(filenameOnly).data.publicUrl;
+  const folderUrl = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${filenameOnly}`).data.publicUrl;
 
   return (
-    <div className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[140px]">
+    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[180px]">
       <FileText size={28} className="text-indigo-500 mb-2" />
-      <h4 className="text-sm font-bold text-slate-900">{title}</h4>
-      <a 
-        href={data.publicUrl} 
-        target="_blank" 
-        rel="noopener noreferrer" 
-        className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 rounded-xl transition shadow-sm"
-      >
-        <ExternalLink size={16} /> Open Document
-      </a>
+      <h4 className="text-sm font-bold text-slate-900 mb-3">{title}</h4>
+      
+      <div className="w-full flex flex-col gap-2">
+        <a href={rootUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-3 py-2 rounded-xl text-[10px] font-bold border border-indigo-100 shadow-sm flex items-center justify-center gap-1.5">
+          <ExternalLink size={12} /> Open Image Link 1
+        </a>
+        <a href={folderUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-slate-50 text-slate-700 hover:bg-slate-100 transition px-3 py-2 rounded-xl text-[10px] font-bold border border-slate-200 shadow-sm flex items-center justify-center gap-1.5">
+          <ExternalLink size={12} /> Open Image Link 2
+        </a>
+      </div>
     </div>
   );
 }

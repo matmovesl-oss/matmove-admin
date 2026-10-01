@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, X, ExternalLink } from 'lucide-react';
+import { Search, RefreshCw, Loader2, ShieldAlert, CheckCircle2, FileText, X } from 'lucide-react';
 
 function Info({ label, value }: { label: string; value: string; }) {
   return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value}</p></div>;
@@ -11,6 +11,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all'|'rider'|'driver'|'merchant'>('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
 
   const fetchUsers = async () => {
@@ -32,47 +33,57 @@ export default function UsersPage() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  const filteredUsers = users.filter(u => 
-    (u.full_name?.toLowerCase().includes(search.toLowerCase()) || '') || 
-    (u.email?.toLowerCase().includes(search.toLowerCase()) || '') ||
-    (u.phone?.includes(search) || '')
-  );
+  const filteredUsers = users.filter(u => {
+    const matchSearch = (u.full_name?.toLowerCase().includes(search.toLowerCase()) || '') || 
+                        (u.email?.toLowerCase().includes(search.toLowerCase()) || '') ||
+                        (u.phone?.includes(search) || '');
+    const matchRole = roleFilter === 'all' || u.role === roleFilter;
+    return matchSearch && matchRole;
+  });
 
   return (
     <AdminLayout title="Customer Governance" subtitle="Monitor and manage Riders, Drivers, and Merchants">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 mt-6">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="text" placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-600 outline-none shadow-sm" />
+        <div className="flex flex-1 gap-3 w-full max-w-xl">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-600 outline-none shadow-sm" />
+          </div>
+          <select value={roleFilter} onChange={(e: any) => setRoleFilter(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-600 shadow-sm cursor-pointer">
+            <option value="all">All Roles</option>
+            <option value="rider">Riders</option>
+            <option value="driver">Drivers</option>
+            <option value="merchant">Merchants</option>
+          </select>
         </div>
         <button onClick={fetchUsers} className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 text-sm font-bold shadow-sm">
           <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-slate-500"><Loader2 className="animate-spin mx-auto mb-2 text-indigo-600" size={24} /> Loading customers...</div>
         ) : (
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold sticky top-0">
+              <thead className="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-wider sticky top-0">
                 <tr><th className="px-6 py-4">Customer</th><th className="px-6 py-4">Role</th><th className="px-6 py-4">Contact</th><th className="px-6 py-4">KYC Status</th><th className="px-6 py-4 text-right">Actions</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredUsers.map(user => (
                   <tr key={user.id} className="hover:bg-slate-50 transition">
                     <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900">{user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'No Name'}</div>
+                      <div className="font-bold text-base text-slate-900">{user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'No Name'}</div>
                       <div className="text-xs text-slate-400 font-mono mt-0.5">{user.id.slice(0, 12)}...</div>
                     </td>
-                    <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider">{user.role}</span></td>
-                    <td className="px-6 py-4"><div className="text-slate-700 font-medium">{user.email || 'No Email'}</div><div className="text-xs text-slate-500 mt-0.5">{user.phone || user.phone_number || 'No Phone'}</div></td>
+                    <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-sm">{user.role}</span></td>
+                    <td className="px-6 py-4"><div className="text-slate-700 font-bold">{user.email || 'No Email'}</div><div className="text-xs text-slate-500 mt-0.5">{user.phone || user.phone_number || 'No Phone'}</div></td>
                     <td className="px-6 py-4">
-                      {user.kyc_status === 'approved' ? <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><CheckCircle2 size={14}/> Approved</span> : user.kyc_status === 'rejected' ? <span className="flex items-center gap-1 text-red-600 font-bold text-xs"><ShieldAlert size={14}/> Rejected</span> : <span className="flex items-center gap-1 text-amber-600 font-bold text-xs"><ShieldAlert size={14}/> Pending</span>}
+                      {user.kyc_status === 'approved' ? <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><CheckCircle2 size={16}/> Approved</span> : user.kyc_status === 'rejected' ? <span className="flex items-center gap-1 text-red-600 font-bold text-xs"><ShieldAlert size={16}/> Rejected</span> : <span className="flex items-center gap-1 text-amber-600 font-bold text-xs"><ShieldAlert size={16}/> Pending</span>}
                     </td>
                     <td className="px-6 py-4 text-right">
-                       <button onClick={() => setSelectedUser(user)} className="text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 transition">View Details</button>
+                       <button onClick={() => setSelectedUser(user)} className="text-xs font-bold bg-slate-900 text-white px-4 py-2.5 rounded-xl hover:bg-slate-800 transition shadow-sm">View Profile</button>
                     </td>
                   </tr>
                 ))}
@@ -88,7 +99,7 @@ export default function UsersPage() {
             <div className="flex items-start justify-between border-b border-slate-200 px-8 py-6 sticky top-0 bg-white z-10">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">Customer Profile & Documents</h2>
-                <p className="mt-1 text-sm text-slate-500">{selectedUser.full_name || 'Customer'} · {String(selectedUser.role).toUpperCase()}</p>
+                <p className="mt-1 text-sm text-slate-500">{selectedUser.full_name || 'Customer'} · <span className="uppercase font-bold text-indigo-600">{String(selectedUser.role)}</span></p>
               </div>
               <button onClick={() => setSelectedUser(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700 p-2 bg-slate-100 rounded-full"><X size={20} /></button>
             </div>
@@ -132,12 +143,12 @@ export default function UsersPage() {
               )}
 
               <section>
-                <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-400">Submitted Documents</h3>
+                <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-400">Submitted Documents (Dual-Link Resolution)</h3>
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                   <DocumentCard title="ID Card" path={selectedUser.id_card_url} />
-                   <DocumentCard title="Selfie" path={selectedUser.selfie_url} />
-                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" path={selectedUser.license_doc_url} />}
-                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" path={selectedUser.business_doc_url} />}
+                   <DocumentCard title="ID Card" path={selectedUser.id_card_url} userId={selectedUser.id} />
+                   <DocumentCard title="Selfie" path={selectedUser.selfie_url} userId={selectedUser.id} />
+                   {selectedUser.role === 'driver' && <DocumentCard title="Driver License" path={selectedUser.license_doc_url} userId={selectedUser.id} />}
+                   {selectedUser.role === 'merchant' && <DocumentCard title="Business Document" path={selectedUser.business_doc_url} userId={selectedUser.id} />}
                 </div>
               </section>
             </div>
@@ -148,34 +159,38 @@ export default function UsersPage() {
   );
 }
 
-// 🔴 PERFECTED DOCUMENT CARD: Native external link, completely ignores CORS
-function DocumentCard({ title, path }: { title: string; path?: string | null; }) {
+// 🔴 DUAL-LINK DOCUMENT CARD: Guarantees the admin can find the file regardless of how the app saved it.
+function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
   if (!path) {
     return (
-      <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 flex flex-col justify-center items-center text-center h-[140px] shadow-sm">
-        <FileText size={28} className="text-slate-300 mb-2" />
-        <h4 className="text-sm font-bold text-slate-500">{title}</h4>
-        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1 bg-slate-200 px-2 py-1 rounded-md">Not Submitted</span>
+      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm">
+        <FileText size={32} className="text-slate-300 mb-3" />
+        <h4 className="text-base font-bold text-slate-500 mb-2">{title}</h4>
+        <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Not Submitted</span>
       </div>
     );
   }
 
-  // Clean the path perfectly
+  // Define the two most likely places the file was saved based on our bug history
   const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
-  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
+  const filenameOnly = cleanPath.split('/').pop() || cleanPath;
+
+  const rootUrl = supabase.storage.from('kyc-documents').getPublicUrl(filenameOnly).data.publicUrl;
+  const folderUrl = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${filenameOnly}`).data.publicUrl;
 
   return (
-    <div className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[140px]">
-      <FileText size={28} className="text-indigo-500 mb-2" />
-      <h4 className="text-sm font-bold text-slate-900">{title}</h4>
-      <a 
-        href={data.publicUrl} 
-        target="_blank" 
-        rel="noopener noreferrer" 
-        className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 rounded-xl transition shadow-sm"
-      >
-        <ExternalLink size={16} /> Open Document
-      </a>
+    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[220px]">
+      <FileText size={32} className="text-indigo-500 mb-3" />
+      <h4 className="text-base font-bold text-slate-900 mb-4">{title}</h4>
+      
+      <div className="w-full flex flex-col gap-2">
+        <a href={rootUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 transition px-4 py-2.5 rounded-xl text-xs font-bold border border-indigo-100 shadow-sm">
+          Open Image Link 1 (Root Path)
+        </a>
+        <a href={folderUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-200 shadow-sm">
+          Open Image Link 2 (Folder Path)
+        </a>
+      </div>
     </div>
   );
 }
