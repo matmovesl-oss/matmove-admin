@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { FileText, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { FileText, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -196,11 +196,11 @@ export function KycPage() {
 
                 <section>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <DocumentCard title="ID Card" path={profile?.id_card_url} userId={profile?.id} />
-                    <DocumentCard title="Selfie" path={profile?.selfie_url} userId={profile?.id} />
-                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} userId={profile?.id} />}
-                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} userId={profile?.id} />}
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <DocumentCard title="ID Card" path={profile?.id_card_url} />
+                    <DocumentCard title="Selfie" path={profile?.selfie_url} />
+                    {selected.target_role === 'driver' && <DocumentCard title="Driver License" path={profile?.license_doc_url} />}
+                    {selected.target_role === 'merchant' && <DocumentCard title="Business Document" path={profile?.business_doc_url} />}
                   </div>
                 </section>
 
@@ -238,68 +238,34 @@ function Info({ label, value }: { label: string; value: string | null | undefine
   return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value || '—'}</p></div>;
 }
 
-// 🔴 THE NEW DOCUMENT CARD: Open safely in a new tab, no inline image fails.
-function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
-  const [validUrl, setValidUrl] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
+// 🔴 PERFECTED DOCUMENT CARD: Native external link, completely ignores CORS
+function DocumentCard({ title, path }: { title: string; path?: string | null; }) {
+  if (!path) {
+    return (
+      <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 flex flex-col justify-center items-center text-center h-[140px] shadow-sm">
+        <FileText size={28} className="text-slate-300 mb-2" />
+        <h4 className="text-sm font-bold text-slate-500">{title}</h4>
+        <span className="text-[10px] uppercase font-bold text-slate-400 mt-1 bg-slate-200 px-2 py-1 rounded-md">Not Submitted</span>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (!path) return;
-    if (path.startsWith('http')) { 
-      setValidUrl(path); 
-      return; 
-    }
-    
-    setIsChecking(true);
-    const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
-    const filenameOnly = cleanPath.split('/').pop() || cleanPath;
-
-    const possiblePaths = [
-      cleanPath,
-      `${userId}/${filenameOnly}`,
-      `kyc/${userId}/${filenameOnly}`
-    ];
-    
-    const uniquePaths = Array.from(new Set(possiblePaths));
-    const urls = uniquePaths.map(p => supabase.storage.from('kyc-documents').getPublicUrl(p).data.publicUrl);
-    
-    // Test the URLs in the background to find the one that works
-    const findValidUrl = async () => {
-      for (const u of urls) {
-        const isValid = await new Promise<boolean>((resolve) => {
-          const img = new Image();
-          img.onload = () => resolve(true);
-          img.onerror = () => resolve(false);
-          img.src = u;
-        });
-        if (isValid) {
-          setValidUrl(u);
-          setIsChecking(false);
-          return;
-        }
-      }
-      setValidUrl(urls[0]); // Fallback
-      setIsChecking(false);
-    };
-
-    findValidUrl();
-  }, [path, userId]);
+  // Clean the path perfectly
+  const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+  const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
 
   return (
-    <div className="border border-slate-200 rounded-xl p-5 bg-white shadow-sm flex flex-col justify-center items-center text-center group transition hover:border-indigo-300 min-h-[160px]">
-      <div className="mb-4">
-        <FileText size={32} className="text-indigo-400 mx-auto mb-2" />
-        <h4 className="text-sm font-bold text-slate-900">{title}</h4>
-      </div>
-      {!path ? (
-        <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg w-full block">Not Submitted</span>
-      ) : isChecking ? (
-        <span className="text-xs font-bold text-slate-500 flex items-center justify-center gap-2 w-full py-1.5"><Loader2 size={14} className="animate-spin" /> Locating file...</span>
-      ) : validUrl ? (
-        <a href={validUrl} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition px-4 py-2.5 rounded-xl shadow-sm">
-          <ExternalLink size={14} /> Open Document
-        </a>
-      ) : null}
+    <div className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[140px]">
+      <FileText size={28} className="text-indigo-500 mb-2" />
+      <h4 className="text-sm font-bold text-slate-900">{title}</h4>
+      <a 
+        href={data.publicUrl} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 rounded-xl transition shadow-sm"
+      >
+        <ExternalLink size={16} /> Open Document
+      </a>
     </div>
   );
 }
