@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { FileText, Eye, X, ExternalLink } from 'lucide-react';
+import { FileText, Eye, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -12,7 +12,7 @@ type KycSubmission = { id: string; profile_id: string | null; target_role: Targe
 
 const statusLabel = (status: KycStatus | null) => { switch (status) { case 'approved': return 'Approved'; case 'rejected': return 'Rejected'; case 'resubmission_required': return 'Resubmission Required'; case 'pending': default: return 'Pending'; } };
 const roleLabel = (role: TargetRole | null) => { switch (role) { case 'driver': return 'Driver'; case 'merchant': return 'Merchant'; case 'rider': return 'Rider'; default: return 'Customer'; } };
-const statusClass = (status: KycStatus | null) => { switch (status) { case 'approved': return 'bg-green-100 text-green-700'; case 'rejected': return 'bg-red-100 text-red-700'; case 'resubmission_required': return 'bg-yellow-100 text-yellow-700'; case 'pending': default: return 'bg-blue-100 text-blue-700'; } };
+const statusClass = (status: KycStatus | null) => { switch (status) { case 'approved': return 'bg-green-100 text-green-700 border-green-200'; case 'rejected': return 'bg-red-100 text-red-700 border-red-200'; case 'resubmission_required': return 'bg-yellow-100 text-yellow-700 border-yellow-200'; case 'pending': default: return 'bg-blue-100 text-blue-700 border-blue-200'; } };
 const formatDate = (value: string | null) => { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString(); };
 const getCustomerName = (profile: Profile | null) => { if (!profile) return 'Unknown customer'; const fullName = profile.full_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim(); return fullName || 'Unnamed customer'; };
 
@@ -76,7 +76,6 @@ export function KycPage() {
       const { error: updateError } = await supabase.from('profiles').update({ kyc_status: decision }).eq('id', selected.profile_id);
       if (updateError) throw updateError;
       
-      // Audit logging
       await supabase.from('audit_logs').insert({ 
         action: `KYC_${decision.toUpperCase()}`, 
         details: `Reviewed KYC for profile ${selected.profile_id}. Reason: ${reason || 'Approved'}` 
@@ -97,50 +96,50 @@ export function KycPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone..." className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as KycStatus | 'all')} className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone..." className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as KycStatus | 'all')} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-500">
               <option value="all">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="resubmission_required">Resubmission</option>
             </select>
-            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as TargetRole | 'all')} className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as TargetRole | 'all')} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-indigo-500">
               <option value="all">All account types</option><option value="driver">Driver</option><option value="merchant">Merchant</option>
             </select>
-            <button onClick={() => loadSubmissions(false)} disabled={loading} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <button onClick={() => loadSubmissions(false)} disabled={loading} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full text-sm text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Customer</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Account</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Submitted</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Action</th>
+                  <th className="px-6 py-4">Customer</th>
+                  <th className="px-6 py-4">Account</th>
+                  <th className="px-6 py-4">Submitted</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 bg-white">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">Loading KYC submissions...</td></tr>
+                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-500">Loading KYC submissions...</td></tr>
                 ) : filteredSubmissions.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">No KYC submissions found.</td></tr>
+                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-500">No KYC submissions found.</td></tr>
                 ) : (
                   filteredSubmissions.map((submission) => {
                     const itemProfile = submission.profile;
                     const customerName = getCustomerName(itemProfile);
                     const phone = itemProfile?.phone || itemProfile?.phone_number || '—';
                     return (
-                      <tr key={submission.id} className="hover:bg-gray-50">
-                        <td className="whitespace-nowrap px-6 py-4"><div className="font-medium text-gray-900">{customerName}</div><div className="text-sm text-gray-500">{phone}</div></td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">{roleLabel(submission.target_role)}</td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">{formatDate(submission.submitted_at)}</td>
-                        <td className="whitespace-nowrap px-6 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(submission.status)}`}>{statusLabel(submission.status)}</span></td>
-                        <td className="whitespace-nowrap px-6 py-4 text-right"><button onClick={() => openReview(submission)} className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">Review</button></td>
+                      <tr key={submission.id} className="hover:bg-slate-50">
+                        <td className="whitespace-nowrap px-6 py-4"><div className="font-bold text-slate-900">{customerName}</div><div className="text-xs text-slate-500 mt-0.5">{phone}</div></td>
+                        <td className="whitespace-nowrap px-6 py-4"><span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-700 px-2 py-1 rounded">{roleLabel(submission.target_role)}</span></td>
+                        <td className="whitespace-nowrap px-6 py-4 text-slate-500">{formatDate(submission.submitted_at)}</td>
+                        <td className="whitespace-nowrap px-6 py-4"><span className={`inline-flex border rounded-full px-2.5 py-1 text-[10px] uppercase font-bold ${statusClass(submission.status)}`}>{statusLabel(submission.status)}</span></td>
+                        <td className="whitespace-nowrap px-6 py-4 text-right"><button onClick={() => openReview(submission)} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition">Review</button></td>
                       </tr>
                     );
                   })
@@ -153,15 +152,15 @@ export function KycPage() {
         {selected && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-              <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5 sticky top-0 bg-white z-10">
-                <div><h2 className="text-xl font-bold text-gray-900">KYC Review</h2><p className="mt-1 text-sm text-gray-500">{getCustomerName(profile)} · {roleLabel(selected.target_role)}</p></div>
-                <button onClick={closeReview} className="text-2xl leading-none text-gray-400 hover:text-gray-700">×</button>
+              <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5 sticky top-0 bg-white z-10">
+                <div><h2 className="text-xl font-bold text-slate-900">KYC Review</h2><p className="mt-1 text-sm text-slate-500">{getCustomerName(profile)} · {roleLabel(selected.target_role)}</p></div>
+                <button onClick={closeReview} className="text-2xl leading-none text-slate-400 hover:text-slate-700">×</button>
               </div>
 
               <div className="space-y-6 p-6">
                 <section>
-                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Customer Information</h3>
-                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Customer Information</h3>
+                  <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
                     <Info label="Full name" value={getCustomerName(profile)} />
                     <Info label="Phone" value={profile?.phone || profile?.phone_number || '—'} />
                     <Info label="Email" value={profile?.email || '—'} />
@@ -176,8 +175,8 @@ export function KycPage() {
 
                 {selected.target_role === 'driver' && (
                   <section>
-                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Driver Information</h3>
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Driver Information</h3>
+                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
                       <Info label="Vehicle type" value={profile?.vehicle_type || '—'} />
                       <Info label="Plate number" value={profile?.plate_number || '—'} />
                       <Info label="Driver license" value={profile?.driver_license_no || '—'} />
@@ -187,8 +186,8 @@ export function KycPage() {
 
                 {selected.target_role === 'merchant' && (
                   <section>
-                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Business Information</h3>
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
+                    <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Business Information</h3>
+                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200 p-4 md:grid-cols-3 bg-slate-50">
                       <Info label="Business name" value={profile?.business_name || '—'} />
                       <Info label="Business type" value={profile?.business_type || '—'} />
                       <Info label="Tax ID" value={profile?.tax_id || '—'} />
@@ -197,7 +196,7 @@ export function KycPage() {
                 )}
 
                 <section>
-                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-700">Submitted Documents</h3>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">Submitted Documents</h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <DocumentCard title="ID Card" path={profile?.id_card_url} onView={setPreviewDoc} />
                     <DocumentCard title="Selfie" path={profile?.selfie_url} onView={setPreviewDoc} />
@@ -206,8 +205,8 @@ export function KycPage() {
                   </div>
                 </section>
 
-                <section className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-                  <h3 className="text-sm font-bold uppercase tracking-wide text-gray-700">Admin Decision</h3>
+                <section className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">Admin Decision</h3>
                   <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                     <DecisionButton active={decision === 'approved'} onClick={() => setDecision('approved')} title="Approve KYC" description="Customer passes KYC review." />
                     <DecisionButton active={decision === 'rejected'} onClick={() => setDecision('rejected')} title="Reject" description="Permanently reject this submission." />
@@ -215,16 +214,16 @@ export function KycPage() {
                   </div>
                   {decision !== 'approved' && (
                     <div className="mt-4">
-                      <label className="mb-2 block text-sm font-semibold text-gray-700">Reason <span className="text-red-600">*</span></label>
-                      <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none" />
+                      <label className="mb-2 block text-sm font-bold text-slate-700">Reason <span className="text-red-600">*</span></label>
+                      <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-indigo-500" />
                     </div>
                   )}
                 </section>
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
-                <button onClick={closeReview} className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold hover:bg-gray-50">Cancel</button>
-                <button onClick={submitDecision} disabled={actionLoading || (decision !== 'approved' && !reason.trim())} className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50">
+              <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                <button onClick={closeReview} className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold hover:bg-slate-50">Cancel</button>
+                <button onClick={submitDecision} disabled={actionLoading || (decision !== 'approved' && !reason.trim())} className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50">
                   {actionLoading ? 'Processing...' : 'Submit Decision'}
                 </button>
               </div>
@@ -233,7 +232,7 @@ export function KycPage() {
         )}
 
         {previewDoc && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4">
             <div className="relative w-full max-w-4xl bg-transparent flex flex-col items-center">
               <button onClick={() => setPreviewDoc(null)} className="absolute -top-12 right-0 text-white hover:text-slate-300 transition"><X size={36} /></button>
               <img src={previewDoc} alt="Document Preview" className="w-full h-auto max-h-[85vh] object-contain rounded-xl shadow-2xl" />
@@ -246,10 +245,10 @@ export function KycPage() {
 }
 
 function Info({ label, value }: { label: string; value: string; }) {
-  return <div><p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p><p className="mt-1 break-words text-sm font-medium text-gray-900">{value}</p></div>;
+  return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value}</p></div>;
 }
 
-// 🔴 Fix applied: Supabase Public URL resolution instead of relying on Signed URLs
+// 🔴 THE EXACT FIX: Uses the literal path directly against the public URL endpoint
 function DocumentCard({ title, path, onView }: { title: string; path: string | null | undefined; onView: (url: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -261,32 +260,36 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
       return; 
     }
     
-    // Resolve clean public URL directly from the public bucket
-    const cleanPath = path.replace(/^(kyc-documents\/|kyc\/)/, '');
+    // 1. Remove bucket name if mistakenly appended
+    let cleanPath = path.replace(/^kyc-documents\//, '');
+    // 2. Remove leading slashes
+    cleanPath = cleanPath.replace(/^\//, '');
+
+    // Get the explicit public URL assuming no subfolders
     const { data } = supabase.storage.from('kyc-documents').getPublicUrl(cleanPath);
     setUrl(data.publicUrl);
   }, [path]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white group transition hover:shadow-md">
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 bg-gray-50">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white group transition hover:shadow-md">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 bg-slate-50">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-indigo-600" />
-          <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
+          <h4 className="text-sm font-bold text-slate-900">{title}</h4>
         </div>
         {url && !isError && (
           <div className="flex gap-2">
-            <button onClick={() => onView(url)} className="flex items-center gap-1 text-xs font-bold text-indigo-600 group-hover:text-indigo-800 transition bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+            <button onClick={() => onView(url)} className="flex items-center gap-1 text-[10px] uppercase font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition">
               <Eye size={14} /> Preview
             </button>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-              <ExternalLink size={14} /> Open Link
+            <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] uppercase font-bold text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition">
+              <ExternalLink size={14} /> Open
             </a>
           </div>
         )}
       </div>
       {url ? (
-        <div className="relative h-48 w-full bg-slate-100 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError) onView(url); }}>
+        <div className="relative h-48 w-full bg-slate-50 overflow-hidden flex items-center justify-center p-2 cursor-pointer" onClick={() => { if (!isError) onView(url); }}>
           <img 
              src={url} 
              alt={title} 
@@ -294,12 +297,12 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
              onError={(e) => { 
                setIsError(true);
                (e.target as HTMLElement).style.display = 'none'; 
-               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-500 font-bold">Image not found in Supabase Storage Bucket</span>';
+               (e.target as HTMLElement).parentElement!.innerHTML = '<span class="text-xs text-red-500 font-bold bg-red-50 px-4 py-2 rounded text-center">Image not found in Storage Bucket</span>';
              }} 
           />
         </div>
       ) : (
-        <div className="flex h-32 items-center justify-center bg-gray-50 text-sm text-gray-400">No document submitted</div>
+        <div className="flex h-48 items-center justify-center bg-slate-50 text-xs font-bold text-slate-400">No document submitted</div>
       )}
     </div>
   );
@@ -307,9 +310,14 @@ function DocumentCard({ title, path, onView }: { title: string; path: string | n
 
 function DecisionButton({ active, onClick, title, description }: { active: boolean; onClick: () => void; title: string; description: string; }) {
   return (
-    <button type="button" onClick={onClick} className={`rounded-xl border p-4 text-left transition ${active ? 'border-gray-900 bg-white shadow-sm' : 'border-gray-200 bg-white hover:border-gray-400'}`}>
-      <div className="flex items-center gap-2"><span className={`h-3 w-3 rounded-full border ${active ? 'border-gray-900 bg-gray-900' : 'border-gray-300 bg-white'}`} /><span className="text-sm font-bold text-gray-900">{title}</span></div>
-      <p className="mt-2 text-xs leading-5 text-gray-500">{description}</p>
+    <button type="button" onClick={onClick} className={`rounded-xl border p-4 text-left transition ${active ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+      <div className="flex items-center gap-2">
+        <span className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${active ? 'border-indigo-600' : 'border-slate-300'}`}>
+          {active && <span className="h-2 w-2 rounded-full bg-indigo-600" />}
+        </span>
+        <span className="text-sm font-bold text-slate-900">{title}</span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{description}</p>
     </button>
   );
 }
