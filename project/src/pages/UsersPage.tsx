@@ -159,11 +159,35 @@ export default function UsersPage() {
   );
 }
 
-// 🔴 THE "SHOP METHOD" DOCUMENT CARD: Directly constructs the full URL
+// 🔴 THE SECURE API DOCUMENT CARD
 function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleViewDocument = async () => {
+    if (!path) return;
+    setLoading(true);
+    try {
+      const response = await fetch('/api/admin-kyc-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, userId })
+      });
+      const data = await response.json();
+      
+      if (data.signedUrl2) window.open(data.signedUrl2, '_blank');
+      else if (data.signedUrl1) window.open(data.signedUrl1, '_blank');
+      else alert("Document not found in bucket or access denied.");
+    } catch (err) {
+      console.error(err);
+      alert('Error generating secure link.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!path) {
     return (
-      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[180px]">
+      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[160px]">
         <FileText size={32} className="text-slate-300 mb-3" />
         <h4 className="text-sm font-bold text-slate-500 mb-2">{title}</h4>
         <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Not Submitted</span>
@@ -171,33 +195,18 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
     );
   }
 
-  // 1. If it's already a full http URL (like the Shop uses), just use it.
-  // 2. Otherwise, construct the full Supabase URL assuming it was placed in the userId folder.
-  let finalUrl = path;
-  if (!path.startsWith('http')) {
-    const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
-    const filename = cleanPath.split('/').pop() || cleanPath;
-    finalUrl = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${filename}`).data.publicUrl;
-  }
-
   return (
-    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[180px]">
-      <FileText size={28} className="text-indigo-500 mb-2" />
-      <h4 className="text-sm font-bold text-slate-900 mb-2">{title}</h4>
-      
-      <a 
-        href={finalUrl} 
-        target="_blank" 
-        rel="noopener noreferrer" 
-        className="bg-indigo-600 text-white hover:bg-indigo-700 transition px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 mb-2"
+    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[160px]">
+      <FileText size={28} className="text-indigo-500 mb-3" />
+      <h4 className="text-sm font-bold text-slate-900 mb-3">{title}</h4>
+      <button 
+        onClick={handleViewDocument}
+        disabled={loading}
+        className="w-full bg-indigo-600 text-white hover:bg-indigo-700 transition px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
       >
-        <ExternalLink size={16} /> Open Document
-      </a>
-
-      {/* Debug string so you can see exactly what path the DB has */}
-      <p className="text-[9px] text-slate-400 font-mono break-all px-2 leading-tight">
-        Raw DB Path: {path}
-      </p>
+        {loading ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+        {loading ? 'Generating...' : 'View Secure Document'}
+      </button>
     </div>
   );
 }

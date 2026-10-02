@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
-import { Layout } from './components/Layout';
 import LoginPage from './pages/LoginPage';
 
 import DashboardPage from './pages/DashboardPage';
@@ -11,10 +10,12 @@ import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage'; 
 import { StaffGovernancePage } from './pages/StaffGovernancePage';
 import { LogsPage } from './pages/LogsPage';
+import WalletsPage from './pages/WalletsPage';
+import WithdrawalsPage from './pages/WithdrawalsPage';
 import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage'; 
-import { TransactionsPage } from './pages/TransactionsPage'; // Make sure you created this file!
+import { TransactionsPage } from './pages/TransactionsPage'; 
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
@@ -25,11 +26,9 @@ export default function App() {
       setSession(session);
       setLoading(false);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -54,23 +53,23 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* We use standard routes here, AdminLayout wraps the individual pages now */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dispatch" element={<DispatchRadarPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/kyc" element={<KycPage />} />
-        
-        {/* 🔴 CORRECTED SIDEBAR ROUTE MAPPINGS */}
         <Route path="/financials" element={<FinancialsPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/payouts" element={<PayoutsPage />} />
         <Route path="/customers" element={<UsersPage />} />
-        
         <Route path="/staff" element={<StaffGovernancePage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/logs" element={<LogsPage />} />
-
+        
+        {/* Fallbacks */}
+        <Route path="/wallets" element={<Navigate to="/financials" replace />} />
+        <Route path="/withdrawals" element={<Navigate to="/payouts" replace />} />
+        <Route path="/users" element={<Navigate to="/customers" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>

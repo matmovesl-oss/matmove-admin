@@ -27,8 +27,12 @@ export function PricingPage({ adminProfile }: any) {
 
   const handleSave = async (id: string, type: string) => {
     try {
-      const { error } = await supabase.from('pricing_settings').update({ min_fare: editForm.base_fare, per_km_rate: editForm.per_km_rate }).eq('vehicle_type', type);
-      if (error) throw error;
+      const res = await fetch('/api/update-pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicle_type: type, min_fare: editForm.base_fare, per_km_rate: editForm.per_km_rate })
+      });
+      if (!res.ok) throw new Error('Failed to update pricing via secure API');
       
       await supabase.from('audit_logs').insert({ admin_id: adminProfile?.id || null, action: 'UPDATE_PRICING', details: `Updated ${type} pricing: Base SLE ${editForm.base_fare}, Per Km SLE ${editForm.per_km_rate}` });
       
@@ -40,8 +44,13 @@ export function PricingPage({ adminProfile }: any) {
   const handleAddNew = async () => {
     if (!newType.trim()) return alert("Enter a service or vehicle type (e.g. delivery)");
     try {
-      const { error } = await supabase.from('pricing_settings').insert({ vehicle_type: newType.toLowerCase().trim(), min_fare: newBase, per_km_rate: newPerKm });
-      if (error) throw error;
+      const res = await fetch('/api/update-pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicle_type: newType.toLowerCase().trim(), min_fare: newBase, per_km_rate: newPerKm })
+      });
+      if (!res.ok) throw new Error('Failed to add pricing via secure API');
+
       setNewType(''); setNewBase(0); setNewPerKm(0);
       fetchPricing();
     } catch (err: any) { alert("Failed to add: " + err.message); }
