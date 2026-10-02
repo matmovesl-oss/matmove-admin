@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { FileText, X, ExternalLink, Loader2 } from 'lucide-react';
+import { FileText, X, ExternalLink, ShieldCheck, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 type KycDecision = 'approved' | 'rejected' | 'resubmission_required';
 type KycStatus = 'pending' | 'approved' | 'rejected' | 'resubmission_required';
@@ -21,11 +21,9 @@ export function KycPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | KycStatus>('all');
   const [roleFilter, setRoleFilter] = useState<'all' | TargetRole>('all');
-
   const [selected, setSelected] = useState<KycSubmission | null>(null);
   const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
@@ -36,7 +34,6 @@ export function KycPage() {
     try {
       const { data, error: queryError } = await supabase.from('profiles').select('*').in('role', ['driver', 'merchant']).order('updated_at', { ascending: false });
       if (queryError) throw queryError;
-
       const normalized = (data ?? []).map((profile: any) => ({
         id: profile.id, profile_id: profile.id, target_role: profile.role, status: profile.kyc_status || 'pending', rejection_reason: null, submitted_at: profile.updated_at || profile.created_at, created_at: profile.created_at, profile: profile
       }));
@@ -74,12 +71,10 @@ export function KycPage() {
     try {
       const { error: updateError } = await supabase.from('profiles').update({ kyc_status: decision }).eq('id', selected.profile_id);
       if (updateError) throw updateError;
-      
       await supabase.from('audit_logs').insert({ 
         action: `KYC_${decision.toUpperCase()}`, 
         details: `Reviewed KYC for profile ${selected.profile_id}. Reason: ${reason || 'Approved'}` 
       });
-
       closeReview(); await loadSubmissions(true);
     } catch (err: any) { setError(err?.message || 'Unable to complete the KYC review.'); } finally { setActionLoading(false); }
   };
@@ -89,11 +84,7 @@ export function KycPage() {
   return (
     <AdminLayout title="KYC Review" subtitle="Review customer identity documents and make secure KYC decisions.">
       <div className="space-y-6 mt-6">
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
-            <span>{error}</span><button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button>
-          </div>
-        )}
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between"><span>{error}</span><button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button></div>}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -114,13 +105,7 @@ export function KycPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
-                <tr>
-                  <th className="px-6 py-4">Customer</th>
-                  <th className="px-6 py-4">Account</th>
-                  <th className="px-6 py-4">Submitted</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
+                <tr><th className="px-6 py-4">Customer</th><th className="px-6 py-4">Account</th><th className="px-6 py-4">Submitted</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
@@ -252,15 +237,10 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
         body: JSON.stringify({ path, userId })
       });
       const data = await response.json();
-      
-      // If a signed URL was generated, open it safely in a new tab
-      if (data.signedUrl2) {
-        window.open(data.signedUrl2, '_blank');
-      } else if (data.signedUrl1) {
-        window.open(data.signedUrl1, '_blank');
-      } else {
-        alert("Document not found in bucket or access denied.");
-      }
+
+      if (data.signedUrl2) window.open(data.signedUrl2, '_blank');
+      else if (data.signedUrl1) window.open(data.signedUrl1, '_blank');
+      else alert("Document not found in bucket or access denied.");
     } catch (err) {
       console.error(err);
       alert('Error generating secure link.');

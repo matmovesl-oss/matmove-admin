@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
     const filenameOnly = cleanPath.split('/').pop() || cleanPath;
 
-    // We aggressively generate signed URLs for both possible storage locations
+    // Create a 5-minute (300 seconds) signed URL for both possible storage locations
     const url1 = await supabase.storage.from('kyc-documents').createSignedUrl(filenameOnly, 300);
     const url2 = await supabase.storage.from('kyc-documents').createSignedUrl(`${userId}/${filenameOnly}`, 300);
 

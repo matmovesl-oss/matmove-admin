@@ -10,7 +10,6 @@ export default async function handler(req, res) {
   try {
     const { vehicle_type, min_fare, per_km_rate } = req.body;
     
-    // Upsert bypasses RLS because it uses the service role key
     const { error } = await supabase.from('pricing_settings').upsert({
       vehicle_type, min_fare, per_km_rate
     }, { onConflict: 'vehicle_type' });

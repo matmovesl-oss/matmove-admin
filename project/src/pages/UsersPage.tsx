@@ -173,7 +173,7 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
         body: JSON.stringify({ path, userId })
       });
       const data = await response.json();
-      
+
       if (data.signedUrl2) window.open(data.signedUrl2, '_blank');
       else if (data.signedUrl1) window.open(data.signedUrl1, '_blank');
       else alert("Document not found in bucket or access denied.");
