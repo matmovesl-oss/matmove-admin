@@ -19,8 +19,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
   return (
     <>
-      {open && <div className="fixed inset-0 bg-slate-900/60 z-20 lg:hidden" onClick={onClose} />}
-      <aside className={`fixed inset-y-0 left-0 w-[260px] bg-slate-950 text-slate-300 flex flex-col z-30 transform transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      {open && <div className="fixed inset-0 bg-slate-900/60 z-40 lg:hidden" onClick={onClose} />}
+      <aside className={`fixed inset-y-0 left-0 w-[260px] bg-slate-950 text-slate-300 flex flex-col z-50 transform transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800 shrink-0">
           <div className="flex items-center">
             <ShieldAlert className="text-indigo-500 mr-2" size={24} />
@@ -33,7 +33,14 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
-              <Link key={item.name} to={item.path} onClick={() => onClose()} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${isActive ? 'bg-indigo-600/10 text-indigo-400' : 'hover:bg-slate-900 hover:text-white'}`}>
+              <Link
+                key={item.name}
+                to={item.path}
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
+                  isActive ? 'bg-indigo-600/10 text-indigo-400 font-bold' : 'hover:bg-slate-900 hover:text-white'
+                }`}
+              >
                 <item.icon size={18} className={isActive ? 'text-indigo-500' : 'text-slate-500'} />
                 {item.name}
               </Link>

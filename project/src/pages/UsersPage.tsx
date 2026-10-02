@@ -143,7 +143,7 @@ export default function UsersPage() {
               )}
 
               <section>
-                <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-400">Submitted Documents (Dual-Link Resolution)</h3>
+                <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-400">Submitted Documents</h3>
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                    <DocumentCard title="ID Card" path={selectedUser.id_card_url} userId={selectedUser.id} />
                    <DocumentCard title="Selfie" path={selectedUser.selfie_url} userId={selectedUser.id} />
@@ -159,7 +159,7 @@ export default function UsersPage() {
   );
 }
 
-// 🔴 DUAL-LINK DOCUMENT CARD FIX
+// 🔴 THE "SHOP METHOD" DOCUMENT CARD: Directly constructs the full URL
 function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
   if (!path) {
     return (
@@ -171,25 +171,33 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
     );
   }
 
-  const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
-  const filenameOnly = cleanPath.split('/').pop() || cleanPath;
-
-  const rootUrl = supabase.storage.from('kyc-documents').getPublicUrl(filenameOnly).data.publicUrl;
-  const folderUrl = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${filenameOnly}`).data.publicUrl;
+  // 1. If it's already a full http URL (like the Shop uses), just use it.
+  // 2. Otherwise, construct the full Supabase URL assuming it was placed in the userId folder.
+  let finalUrl = path;
+  if (!path.startsWith('http')) {
+    const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+    const filename = cleanPath.split('/').pop() || cleanPath;
+    finalUrl = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${filename}`).data.publicUrl;
+  }
 
   return (
     <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[180px]">
       <FileText size={28} className="text-indigo-500 mb-2" />
-      <h4 className="text-sm font-bold text-slate-900 mb-3">{title}</h4>
+      <h4 className="text-sm font-bold text-slate-900 mb-2">{title}</h4>
       
-      <div className="w-full flex flex-col gap-2">
-        <a href={rootUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-3 py-2 rounded-xl text-[10px] font-bold border border-indigo-100 shadow-sm flex items-center justify-center gap-1.5">
-          <ExternalLink size={12} /> Open Image Link 1
-        </a>
-        <a href={folderUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-slate-50 text-slate-700 hover:bg-slate-100 transition px-3 py-2 rounded-xl text-[10px] font-bold border border-slate-200 shadow-sm flex items-center justify-center gap-1.5">
-          <ExternalLink size={12} /> Open Image Link 2
-        </a>
-      </div>
+      <a 
+        href={finalUrl} 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        className="bg-indigo-600 text-white hover:bg-indigo-700 transition px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 mb-2"
+      >
+        <ExternalLink size={16} /> Open Document
+      </a>
+
+      {/* Debug string so you can see exactly what path the DB has */}
+      <p className="text-[9px] text-slate-400 font-mono break-all px-2 leading-tight">
+        Raw DB Path: {path}
+      </p>
     </div>
   );
 }
