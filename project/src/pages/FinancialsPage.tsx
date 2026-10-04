@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Wallet, TrendingUp, Lock, RefreshCw, Loader2, AlertTriangle, Search, LockKeyhole, Unlock } from 'lucide-react';
+import { Wallet, TrendingUp, Lock, RefreshCw, Loader2, AlertTriangle, Search, LockKeyhole, Unlock, DollarSign } from 'lucide-react';
 
 export function FinancialsPage() {
   const [wallets, setWallets] = useState<any[]>([]);
-  const [stats, setStats] = useState({ totalBalance: 0, activeCount: 0, frozenCount: 0 });
+  const [stats, setStats] = useState({ totalSLE: 0, totalUSD: 0, activeCount: 0, frozenCount: 0 });
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
   const [search, setSearch] = useState('');
@@ -22,7 +22,8 @@ export function FinancialsPage() {
       if (error) throw error;
 
       const monimeAccountsMap = new Map<string, number>();
-      let computedTotalBalance = 0;
+      let computedSLE = 0;
+      let computedUSD = 0;
 
       try {
         const monimeRes = await fetch('/api/get-space-balance');
@@ -32,10 +33,17 @@ export function FinancialsPage() {
         if (monimeData?.accounts && Array.isArray(monimeData.accounts)) {
           monimeData.accounts.forEach((acc: any) => {
             const rawVal = acc.balance?.available?.value ?? acc.balance?.value ?? 0;
-            const sleVal = Number(rawVal) / 100;
-            if (acc.id) monimeAccountsMap.set(acc.id, sleVal);
-            if (acc.reference) monimeAccountsMap.set(acc.reference, sleVal);
-            computedTotalBalance += sleVal; 
+            const val = Number(rawVal) / 100;
+            
+            if (acc.id) monimeAccountsMap.set(acc.id, val);
+            if (acc.reference) monimeAccountsMap.set(acc.reference, val);
+            
+            // Track SLE and USD separately
+            if (acc.currency === 'USD' || acc.balance?.available?.currency === 'USD') {
+              computedUSD += val;
+            } else {
+              computedSLE += val; 
+            }
           });
         }
       } catch (mErr: any) {
@@ -61,7 +69,7 @@ export function FinancialsPage() {
       });
 
       setWallets(blendedWallets);
-      setStats({ totalBalance: computedTotalBalance, activeCount, frozenCount });
+      setStats({ totalSLE: computedSLE, totalUSD: computedUSD, activeCount, frozenCount });
     } catch (err: any) {
       console.error('Error fetching ledger:', err);
     } finally {
@@ -112,18 +120,23 @@ export function FinancialsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* 🔴 FIXED: SLE and USD separate cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-3xl border border-slate-200 flex justify-between items-center shadow-sm">
-          <div><p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">Total System Balance</p><h3 className="text-4xl font-bold text-emerald-600">SLE {stats.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h3></div>
-          <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl"><Wallet size={28} /></div>
+          <div><p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Total SLE Balance</p><h3 className="text-2xl font-bold text-emerald-600">SLE {stats.totalSLE.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h3></div>
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl"><Wallet size={24} /></div>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-200 flex justify-between items-center shadow-sm">
-          <div><p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">Active Wallets</p><h3 className="text-4xl font-bold text-slate-900">{stats.activeCount}</h3></div>
-          <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl"><TrendingUp size={28} /></div>
+          <div><p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Total USD Balance</p><h3 className="text-2xl font-bold text-blue-600">USD {stats.totalUSD.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h3></div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><DollarSign size={24} /></div>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-200 flex justify-between items-center shadow-sm">
-          <div><p className="text-sm font-bold text-slate-500 mb-1 uppercase tracking-wider">Frozen Wallets</p><h3 className="text-4xl font-bold text-amber-600">{stats.frozenCount}</h3></div>
-          <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl"><Lock size={28} /></div>
+          <div><p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Active Wallets</p><h3 className="text-2xl font-bold text-slate-900">{stats.activeCount}</h3></div>
+          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><TrendingUp size={24} /></div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 flex justify-between items-center shadow-sm">
+          <div><p className="text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Frozen Wallets</p><h3 className="text-2xl font-bold text-amber-600">{stats.frozenCount}</h3></div>
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><Lock size={24} /></div>
         </div>
       </div>
 

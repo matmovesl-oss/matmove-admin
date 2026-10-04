@@ -159,35 +159,50 @@ export default function UsersPage() {
   );
 }
 
-// 🔴 THE SECURE API DOCUMENT CARD
+// 🔴 SMART FOLDER DISCOVERY DOCUMENT CARD
 function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
+  const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleViewDocument = async () => {
-    if (!path) return;
-    setLoading(true);
-    try {
-      const response = await fetch('/api/admin-kyc-document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, userId })
-      });
-      const data = await response.json();
+  useEffect(() => {
+    if (!path || !userId) return;
+    if (path.startsWith('http')) { setUrl(path); return; }
 
-      if (data.signedUrl2) window.open(data.signedUrl2, '_blank');
-      else if (data.signedUrl1) window.open(data.signedUrl1, '_blank');
-      else alert("Document not found in bucket or access denied.");
-    } catch (err) {
-      console.error(err);
-      alert('Error generating secure link.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchFile = async () => {
+      setLoading(true);
+      const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+      const fileName = cleanPath.split('/').pop() || cleanPath;
+
+      try {
+        // Look inside the user's specific folder in the bucket
+        const { data } = await supabase.storage.from('kyc-documents').list(userId);
+        
+        if (data && data.length > 0) {
+          // Check if the file is in this folder
+          const match = data.find(f => f.name === fileName || fileName.includes(f.name));
+          if (match) {
+            const { data: pubData } = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${match.name}`);
+            setUrl(pubData.publicUrl);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Fallback: Guess the path directly
+        const { data: fallbackData } = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${fileName}`);
+        setUrl(fallbackData.publicUrl);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFile();
+  }, [path, userId]);
 
   if (!path) {
     return (
-      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[160px]">
+      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[140px]">
         <FileText size={32} className="text-slate-300 mb-3" />
         <h4 className="text-sm font-bold text-slate-500 mb-2">{title}</h4>
         <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Not Submitted</span>
@@ -196,17 +211,26 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
   }
 
   return (
-    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[160px]">
-      <FileText size={28} className="text-indigo-500 mb-3" />
-      <h4 className="text-sm font-bold text-slate-900 mb-3">{title}</h4>
-      <button 
-        onClick={handleViewDocument}
-        disabled={loading}
-        className="w-full bg-indigo-600 text-white hover:bg-indigo-700 transition px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
-      >
-        {loading ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
-        {loading ? 'Generating...' : 'View Secure Document'}
-      </button>
+    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[140px]">
+      <FileText size={28} className="text-indigo-500 mb-2" />
+      <h4 className="text-sm font-bold text-slate-900 mb-2">{title}</h4>
+      
+      {loading ? (
+        <span className="text-xs text-slate-500 font-bold animate-pulse mt-2 flex items-center gap-1.5">
+          <Loader2 size={12} className="animate-spin" /> Locating...
+        </span>
+      ) : url ? (
+        <a 
+          href={url} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="bg-indigo-600 text-white hover:bg-indigo-700 transition px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 mt-2"
+        >
+          <ExternalLink size={16} /> Open Document
+        </a>
+      ) : (
+        <span className="text-[10px] uppercase font-bold text-red-500 bg-red-50 px-3 py-2 rounded-lg w-full border border-red-100 mt-2">Missing</span>
+      )}
     </div>
   );
 }

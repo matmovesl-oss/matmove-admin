@@ -21,9 +21,11 @@ export function KycPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | KycStatus>('all');
   const [roleFilter, setRoleFilter] = useState<'all' | TargetRole>('all');
+
   const [selected, setSelected] = useState<KycSubmission | null>(null);
   const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
@@ -34,6 +36,7 @@ export function KycPage() {
     try {
       const { data, error: queryError } = await supabase.from('profiles').select('*').in('role', ['driver', 'merchant']).order('updated_at', { ascending: false });
       if (queryError) throw queryError;
+
       const normalized = (data ?? []).map((profile: any) => ({
         id: profile.id, profile_id: profile.id, target_role: profile.role, status: profile.kyc_status || 'pending', rejection_reason: null, submitted_at: profile.updated_at || profile.created_at, created_at: profile.created_at, profile: profile
       }));
@@ -71,10 +74,12 @@ export function KycPage() {
     try {
       const { error: updateError } = await supabase.from('profiles').update({ kyc_status: decision }).eq('id', selected.profile_id);
       if (updateError) throw updateError;
+      
       await supabase.from('audit_logs').insert({ 
         action: `KYC_${decision.toUpperCase()}`, 
         details: `Reviewed KYC for profile ${selected.profile_id}. Reason: ${reason || 'Approved'}` 
       });
+
       closeReview(); await loadSubmissions(true);
     } catch (err: any) { setError(err?.message || 'Unable to complete the KYC review.'); } finally { setActionLoading(false); }
   };
@@ -84,7 +89,11 @@ export function KycPage() {
   return (
     <AdminLayout title="KYC Review" subtitle="Review customer identity documents and make secure KYC decisions.">
       <div className="space-y-6 mt-6">
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between"><span>{error}</span><button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button></div>}
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+            <span>{error}</span><button onClick={() => setError(null)} className="font-semibold hover:underline">Dismiss</button>
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -105,7 +114,13 @@ export function KycPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
-                <tr><th className="px-6 py-4">Customer</th><th className="px-6 py-4">Account</th><th className="px-6 py-4">Submitted</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Action</th></tr>
+                <tr>
+                  <th className="px-6 py-4">Customer</th>
+                  <th className="px-6 py-4">Account</th>
+                  <th className="px-6 py-4">Submitted</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Action</th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {loading ? (
@@ -223,35 +238,50 @@ function Info({ label, value }: { label: string; value: string | null | undefine
   return <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-bold text-slate-900">{value || '—'}</p></div>;
 }
 
-// 🔴 THE SECURE API DOCUMENT CARD
+// 🔴 SMART FOLDER DISCOVERY DOCUMENT CARD
 function DocumentCard({ title, path, userId }: { title: string; path?: string | null; userId?: string | null; }) {
+  const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleViewDocument = async () => {
-    if (!path) return;
-    setLoading(true);
-    try {
-      const response = await fetch('/api/admin-kyc-document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, userId })
-      });
-      const data = await response.json();
+  useEffect(() => {
+    if (!path || !userId) return;
+    if (path.startsWith('http')) { setUrl(path); return; }
 
-      if (data.signedUrl2) window.open(data.signedUrl2, '_blank');
-      else if (data.signedUrl1) window.open(data.signedUrl1, '_blank');
-      else alert("Document not found in bucket or access denied.");
-    } catch (err) {
-      console.error(err);
-      alert('Error generating secure link.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchFile = async () => {
+      setLoading(true);
+      const cleanPath = path.replace(/^kyc-documents\//, '').replace(/^\//, '');
+      const fileName = cleanPath.split('/').pop() || cleanPath;
+
+      try {
+        // Look inside the user's specific folder in the bucket
+        const { data } = await supabase.storage.from('kyc-documents').list(userId);
+        
+        if (data && data.length > 0) {
+          // Check if the file is in this folder
+          const match = data.find(f => f.name === fileName || fileName.includes(f.name));
+          if (match) {
+            const { data: pubData } = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${match.name}`);
+            setUrl(pubData.publicUrl);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Fallback: Guess the path directly
+        const { data: fallbackData } = supabase.storage.from('kyc-documents').getPublicUrl(`${userId}/${fileName}`);
+        setUrl(fallbackData.publicUrl);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFile();
+  }, [path, userId]);
 
   if (!path) {
     return (
-      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[160px]">
+      <div className="border border-slate-200 rounded-3xl p-6 bg-slate-50 flex flex-col justify-center items-center text-center shadow-sm h-[140px]">
         <FileText size={32} className="text-slate-300 mb-3" />
         <h4 className="text-sm font-bold text-slate-500 mb-2">{title}</h4>
         <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Not Submitted</span>
@@ -260,17 +290,26 @@ function DocumentCard({ title, path, userId }: { title: string; path?: string | 
   }
 
   return (
-    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[160px]">
-      <FileText size={28} className="text-indigo-500 mb-3" />
-      <h4 className="text-sm font-bold text-slate-900 mb-3">{title}</h4>
-      <button 
-        onClick={handleViewDocument}
-        disabled={loading}
-        className="w-full bg-indigo-600 text-white hover:bg-indigo-700 transition px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
-      >
-        {loading ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
-        {loading ? 'Generating...' : 'View Secure Document'}
-      </button>
+    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm flex flex-col justify-center items-center text-center hover:border-indigo-300 transition h-[140px]">
+      <FileText size={28} className="text-indigo-500 mb-2" />
+      <h4 className="text-sm font-bold text-slate-900 mb-2">{title}</h4>
+      
+      {loading ? (
+        <span className="text-xs text-slate-500 font-bold animate-pulse mt-2 flex items-center gap-1.5">
+          <Loader2 size={12} className="animate-spin" /> Locating...
+        </span>
+      ) : url ? (
+        <a 
+          href={url} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="bg-indigo-600 text-white hover:bg-indigo-700 transition px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-2 mt-2"
+        >
+          <ExternalLink size={16} /> Open Document
+        </a>
+      ) : (
+        <span className="text-[10px] uppercase font-bold text-red-500 bg-red-50 px-3 py-2 rounded-lg w-full border border-red-100 mt-2">Missing</span>
+      )}
     </div>
   );
 }
