@@ -953,7 +953,7 @@ type DocumentField =
   | 'license_doc_url'
   | 'business_doc_url';
 
-function DocumentCard({
+
   title,
   documentType,
   userId,
