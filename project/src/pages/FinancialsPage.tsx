@@ -1,12 +1,6 @@
-import {
-  useEffect,
-  useState,
-} from 'react';
-
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-
-type Currency = 'SLE' | 'USD';
 
 type Row = {
   id: string;
@@ -14,11 +8,10 @@ type Row = {
   currency: string;
   balance: number;
   is_frozen: boolean;
-
+  monime_account_id?: string | null;
   metadata: {
     monime_account_id?: string;
   } | null;
-
   profiles: {
     full_name?: string;
     phone?: string;
@@ -27,10 +20,9 @@ type Row = {
   } | null;
 };
 
-type GatewayAccount = {
+type Account = {
   id: string;
   currency: string;
-
   balance?: {
     available?: {
       currency: string;
@@ -39,135 +31,128 @@ type GatewayAccount = {
   };
 };
 
-const formatMoney = (
-  value: number,
-  currency: string
-) =>
-  `${currency} ${Number(
-    value
-  ).toLocaleString(undefined, {
+type Platform = {
+  escrowAccountId: string | null;
+  feeAccountId: string | null;
+};
+
+const emptyPlatform: Platform = {
+  escrowAccountId: null,
+  feeAccountId: null,
+};
+
+const money = (value: number, currency: string) =>
+  `${currency} ${value.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
+const accountId = (wallet: Row) =>
+  wallet.monime_account_id ||
+  wallet.metadata?.monime_account_id ||
+  '';
+
+const availableBalance = (
+  account?: Account
+): number | null => {
+  const amount = account?.balance?.available;
+
+  return amount &&
+    amount.currency === account?.currency &&
+    Number.isSafeInteger(amount.value) &&
+    amount.value >= 0
+    ? amount.value / 100
+    : null;
+};
+
 export function FinancialsPage() {
-  const [wallets, setWallets] =
-    useState<Row[]>([]);
-
-  const [accounts, setAccounts] =
-    useState<GatewayAccount[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [busy, setBusy] =
-    useState<string | null>(null);
-
-  const [error, setError] =
-    useState('');
-
-  const [gatewayError, setGatewayError] =
-    useState('');
-
-  const [search, setSearch] =
-    useState('');
-
-  const [currencyFilter, setCurrencyFilter] =
-    useState('all');
-
-  const [reason, setReason] =
-    useState('');
-
-  const [target, setTarget] =
-    useState<Row | null>(null);
+  const [wallets, setWallets] = useState<Row[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [platform, setPlatform] =
+    useState<Platform>(emptyPlatform);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [gatewayError, setGatewayError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [search, setSearch] = useState('');
+  const [currency, setCurrency] = useState('all');
+  const [target, setTarget] = useState<Row | null>(null);
+  const [reason, setReason] = useState('');
 
   async function load() {
     setLoading(true);
     setError('');
     setGatewayError('');
     setAccounts([]);
+    setPlatform(emptyPlatform);
 
     try {
-      if (!supabase) {
-        throw new Error(
-          'Supabase is not configured.'
-        );
-      }
-
       const {
         data,
         error: dbError,
       } = await supabase
         .from('wallets')
-        .select(
-          'id,user_id,currency,balance,is_frozen,metadata,profiles(full_name,phone,email,role)'
-        )
-        .order('created_at', {
-          ascending: false,
-        });
+        .select('*,profiles(full_name,phone,email,role)')
+        .order('created_at', { ascending: false });
 
       if (dbError) throw dbError;
 
-      setWallets(
-        (data || []) as unknown as Row[]
-      );
-
-      try {
-        const {
-          data: sessionData,
-        } =
-          await supabase.auth.getSession();
-
-        if (!sessionData.session) {
-          throw new Error(
-            'Please sign in again.'
-          );
-        }
-
-        const response = await fetch(
-          '/api/admin-wallet-balances',
-          {
-            headers: {
-              Authorization:
-                `Bearer ${sessionData.session.access_token}`,
-            },
-            cache: 'no-store',
-          }
-        );
-
-        const result =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            result.error ||
-              'Gateway balances could not be loaded.'
-          );
-        }
-
-        if (
-          !Array.isArray(
-            result.accounts
-          )
-        ) {
-          throw new Error(
-            'Unexpected gateway account response.'
-          );
-        }
-
-        setAccounts(result.accounts);
-      } catch (err: any) {
-        setGatewayError(
-          err.message ||
-            'Gateway balances are unavailable.'
-        );
-      }
+      setWallets((data || []) as unknown as Row[]);
     } catch (err: any) {
       setWallets([]);
-
       setError(
         err.message ||
-          'Wallets could not be loaded.'
+        'Customer wallets could not be loaded.'
+      );
+    }
+
+    try {
+      const {
+        data: sessionData,
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      if (!sessionData.session) {
+        throw new Error('Please sign in again.');
+      }
+
+      const response = await fetch(
+        '/api/admin-wallet-balances',
+        {
+          headers: {
+            Authorization:
+              `Bearer ${sessionData.session.access_token}`,
+          },
+          cache: 'no-store',
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || 'Monime balances unavailable.'
+        );
+      }
+
+      if (!Array.isArray(result.accounts)) {
+        throw new Error('Invalid account response.');
+      }
+
+      setAccounts(result.accounts);
+
+      setPlatform({
+        escrowAccountId:
+          result.platform?.escrowAccountId || null,
+        feeAccountId:
+          result.platform?.feeAccountId || null,
+      });
+    } catch (err: any) {
+      setGatewayError(
+        err.message || 'Monime balances unavailable.'
       );
     } finally {
       setLoading(false);
@@ -179,18 +164,13 @@ export function FinancialsPage() {
   }, []);
 
   const accountMap = new Map(
-    accounts.map((account) => [
-      account.id,
-      account,
-    ])
+    accounts.map(account => [account.id, account])
   );
 
-  const linkCounts =
-    new Map<string, number>();
+  const linkCounts = new Map<string, number>();
 
-  wallets.forEach((wallet) => {
-    const id =
-      wallet.metadata?.monime_account_id;
+  wallets.forEach(wallet => {
+    const id = accountId(wallet);
 
     if (id) {
       linkCounts.set(
@@ -200,138 +180,89 @@ export function FinancialsPage() {
     }
   });
 
-  function getGatewayBalance(
-    wallet: Row
-  ): number | null {
-    const id =
-      wallet.metadata?.monime_account_id;
+  function customerBalance(wallet: Row) {
+    const id = accountId(wallet);
+    const account = accountMap.get(id);
+    const direct = wallet.monime_account_id;
+    const metadata = wallet.metadata?.monime_account_id;
 
     if (
-      !id ||
-      linkCounts.get(id) !== 1
+      gatewayError ||
+      (direct && metadata && direct !== metadata) ||
+      linkCounts.get(id) !== 1 ||
+      account?.currency !== wallet.currency ||
+      id === platform.escrowAccountId ||
+      id === platform.feeAccountId
     ) {
       return null;
     }
 
-    const account =
-      accountMap.get(id);
-
-    const amount =
-      account?.balance?.available;
-
-    if (
-      !account ||
-      account.currency !==
-        wallet.currency ||
-      amount?.currency !==
-        wallet.currency
-    ) {
-      return null;
-    }
-
-    if (
-      typeof amount.value !== 'number' ||
-      !Number.isSafeInteger(
-        amount.value
-      ) ||
-      amount.value < 0
-    ) {
-      return null;
-    }
-
-    return amount.value / 100;
+    return availableBalance(account);
   }
 
-  const totals:
-    Record<Currency, number> = {
-      SLE: 0,
-      USD: 0,
-    };
+  const filtered = wallets.filter(wallet => {
+    const text = [
+      wallet.profiles?.full_name,
+      wallet.profiles?.phone,
+      wallet.profiles?.email,
+      wallet.profiles?.role,
+      accountId(wallet),
+    ].join(' ').toLowerCase();
 
-  wallets.forEach((wallet) => {
-    const amount =
-      getGatewayBalance(wallet);
-
-    if (
-      amount !== null &&
+    return (
+      text.includes(search.trim().toLowerCase()) &&
       (
-        wallet.currency === 'SLE' ||
-        wallet.currency === 'USD'
+        currency === 'all' ||
+        wallet.currency === currency
       )
-    ) {
-      totals[wallet.currency] +=
-        amount;
-    }
+    );
   });
 
-  const filtered = wallets.filter(
-    (wallet) => {
-      const text =
-        `${
-          wallet.profiles?.full_name ||
-          ''
-        } ${
-          wallet.profiles?.phone ||
-          ''
-        } ${
-          wallet.profiles?.email ||
-          ''
-        } ${
-          wallet.metadata
-            ?.monime_account_id ||
-          ''
-        }`.toLowerCase();
-
-      return (
-        text.includes(
-          search
-            .trim()
-            .toLowerCase()
-        ) &&
-        (
-          currencyFilter === 'all' ||
-          wallet.currency ===
-            currencyFilter
-        )
-      );
-    }
-  );
-
   async function saveFreeze() {
-    if (!target || !reason.trim()) {
+    if (
+      !target ||
+      busy ||
+      reason.trim().length < 3
+    ) {
       return;
     }
 
-    setBusy(target.id);
+    setBusy(true);
     setError('');
+    setNotice('');
 
     try {
-      if (!supabase) {
-        throw new Error(
-          'Supabase is not configured.'
-        );
-      }
+      const desired = !target.is_frozen;
 
       const {
         data,
         error: rpcError,
       } = await supabase.rpc(
-        'admin_set_wallet_active',
+        'matmove_admin_set_wallet_frozen',
         {
           p_wallet_id: target.id,
-          p_is_active:
-            target.is_frozen === true,
+          p_is_frozen: desired,
           p_reason: reason.trim(),
         }
       );
 
       if (rpcError) throw rpcError;
 
-      if (!data?.success) {
+      if (
+        data?.success !== true ||
+        data.wallet_id !== target.id ||
+        data.is_frozen !== desired
+      ) {
         throw new Error(
-          'The database did not confirm the wallet update.'
+          'Freeze status was not confirmed.'
         );
       }
+
+      setNotice(
+        desired
+          ? 'Wallet frozen. New MatMove wallet operations are blocked.'
+          : 'Wallet freeze removed. Other account restrictions still apply.'
+      );
 
       setTarget(null);
       setReason('');
@@ -340,70 +271,50 @@ export function FinancialsPage() {
     } catch (err: any) {
       setError(
         err.message ||
-          'The wallet could not be updated.'
+        'Wallet freeze could not be updated.'
       );
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
   return (
     <AdminLayout
       title="Financial & Wallet Control Center"
-      subtitle="Customer wallets, currency-specific balances and freeze controls"
+      subtitle="Platform escrow, live customer balances and wallet freeze controls"
     >
-      <div className="space-y-5 mt-6">
+      <div className="mt-6 space-y-5">
         <div className="flex flex-wrap gap-3">
           <input
             value={search}
-            onChange={(event) =>
-              setSearch(
-                event.target.value
-              )
-            }
+            onChange={e => setSearch(e.target.value)}
             placeholder="Search customer or Monime ID"
-            className="border rounded-lg p-3 flex-1"
+            className="flex-1 rounded-lg border p-3"
           />
 
           <select
-            value={currencyFilter}
-            onChange={(event) =>
-              setCurrencyFilter(
-                event.target.value
-              )
-            }
-            className="border rounded-lg p-3"
+            value={currency}
+            onChange={e => setCurrency(e.target.value)}
+            className="rounded-lg border p-3"
           >
-            <option value="all">
-              All currencies
-            </option>
-            <option value="SLE">
-              SLE
-            </option>
-            <option value="USD">
-              USD
-            </option>
+            <option value="all">All currencies</option>
+            <option value="SLE">SLE</option>
+            <option value="USD">USD</option>
           </select>
 
           <button
-            disabled={
-              loading || !!busy
-            }
-            onClick={() =>
-              void load()
-            }
-            className="border rounded-lg px-4 py-2 disabled:opacity-50"
+            disabled={loading || busy}
+            onClick={() => void load()}
+            className="rounded-lg border px-4 py-2 disabled:opacity-50"
           >
-            {loading
-              ? 'Loading...'
-              : 'Refresh'}
+            {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>
 
         {error && (
           <p
             role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700"
+            className="rounded-lg bg-red-50 p-4 text-red-700"
           >
             {error}
           </p>
@@ -411,124 +322,209 @@ export function FinancialsPage() {
 
         {gatewayError && (
           <p
-            role="status"
-            className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800"
+            role="alert"
+            className="rounded-lg bg-amber-50 p-4 text-amber-800"
           >
-            {gatewayError}{' '}
-            Local balances are shown
-            separately below.
+            {gatewayError}
           </p>
         )}
 
-        <div className="grid gap-4 md:grid-cols-4">
-          {(
-            ['SLE', 'USD'] as Currency[]
-          ).map((currency) => (
-            <div
-              key={currency}
-              className="bg-white border rounded-xl p-5"
-            >
-              <p className="text-sm text-slate-500">
-                Linked customer gateway
-                balance — {currency}
-              </p>
+        {notice && (
+          <p
+            role="status"
+            className="rounded-lg bg-emerald-50 p-4 text-emerald-800"
+          >
+            {notice}
+          </p>
+        )}
 
-              <p className="text-2xl font-bold mt-2">
-                {loading ||
-                gatewayError
-                  ? 'Unavailable'
-                  : formatMoney(
-                      totals[currency],
-                      currency
+        <section className="rounded-xl border border-indigo-200 bg-white p-5">
+          <h2 className="text-lg font-bold">
+            Platform Escrow &amp; Fees
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Live Monime balance includes held trip funds
+            and retained fees. It is not fee earnings alone.
+          </p>
+
+          {loading ? (
+            <p className="mt-4">
+              Loading platform account...
+            </p>
+          ) : gatewayError ? (
+            <p className="mt-4 text-amber-800">
+              Platform balance unavailable.
+            </p>
+          ) : !platform.escrowAccountId ? (
+            <p className="mt-4 text-amber-800">
+              Configure the Admin server escrow and fee
+              account IDs, then redeploy.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {([
+                [
+                  'Escrow account',
+                  platform.escrowAccountId,
+                ],
+                [
+                  'Platform fee account',
+                  platform.feeAccountId,
+                ],
+              ] as const).map(([label, id]) => {
+                const account = id
+                  ? accountMap.get(id)
+                  : undefined;
+
+                const balance =
+                  account?.currency === 'SLE'
+                    ? availableBalance(account)
+                    : null;
+
+                return (
+                  <div
+                    key={label}
+                    className="rounded-lg bg-slate-50 p-4"
+                  >
+                    <p className="font-semibold">
+                      {label}
+                    </p>
+
+                    <p className="mt-2 break-all font-mono text-xs">
+                      {id || 'Not configured'}
+                    </p>
+
+                    <p className="mt-3 text-2xl font-bold">
+                      {balance === null
+                        ? 'Unavailable'
+                        : money(balance, 'SLE')}
+                    </p>
+
+                    {balance === null && (
+                      <p className="mt-2 text-sm text-amber-800">
+                        Check the configured account ID,
+                        token, Space, currency and
+                        Live/Test mode.
+                      </p>
                     )}
-              </p>
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          )}
 
-          <div className="bg-white border rounded-xl p-5">
+          {!loading &&
+            !gatewayError &&
+            platform.escrowAccountId &&
+            platform.feeAccountId && (
+              <p className="mt-4 text-sm text-slate-600">
+                {platform.escrowAccountId ===
+                platform.feeAccountId
+                  ? 'Shared account: the two cards show one balance. Do not add them together. After confirmed completion, the driver receives 85% and the fee remains here.'
+                  : 'Separate accounts: fees go to the configured fee account. Use the same ID for both settings to retain fees in escrow.'}
+              </p>
+            )}
+        </section>
+
+        <div className="grid gap-4 md:grid-cols-4">
+          {['SLE', 'USD'].map(unit => {
+            const verified = wallets
+              .filter(w => w.currency === unit)
+              .map(customerBalance)
+              .filter(
+                (v): v is number => v !== null
+              );
+
+            return (
+              <div
+                key={unit}
+                className="rounded-xl border bg-white p-5"
+              >
+                <p className="text-sm text-slate-500">
+                  Linked customer gateway balance — {unit}
+                </p>
+
+                <p className="mt-2 text-2xl font-bold">
+                  {loading ||
+                  gatewayError ||
+                  !verified.length
+                    ? 'Unavailable'
+                    : money(
+                        verified.reduce(
+                          (a, b) => a + b,
+                          0
+                        ),
+                        unit
+                      )}
+                </p>
+              </div>
+            );
+          })}
+
+          <div className="rounded-xl border bg-white p-5">
             <p>Active wallets</p>
-
-            <p className="text-2xl font-bold mt-2">
-              {
-                wallets.filter(
-                  (wallet) =>
-                    wallet.is_frozen ===
-                    false
-                ).length
-              }
+            <p className="mt-2 text-2xl font-bold">
+              {wallets.filter(
+                w => w.is_frozen === false
+              ).length}
             </p>
           </div>
 
-          <div className="bg-white border rounded-xl p-5">
+          <div className="rounded-xl border bg-white p-5">
             <p>Frozen wallets</p>
-
-            <p className="text-2xl font-bold mt-2">
-              {
-                wallets.filter(
-                  (wallet) =>
-                    wallet.is_frozen ===
-                    true
-                ).length
-              }
+            <p className="mt-2 text-2xl font-bold">
+              {wallets.filter(
+                w => w.is_frozen === true
+              ).length}
             </p>
           </div>
         </div>
 
         <p className="text-xs text-slate-500">
-          Gateway totals include only
-          wallets with one verified
-          account link and matching
-          currency. Unlinked, shared,
-          mismatched or unavailable
-          accounts are excluded.
+          Customer totals exclude platform accounts and
+          missing, conflicting, shared or unavailable links.
+          Freeze controls block new MatMove wallet operations;
+          they do not freeze Monime directly.
         </p>
 
         {target && (
-          <div className="border rounded-xl bg-white p-5 space-y-3">
+          <div className="space-y-3 rounded-xl border bg-white p-5">
             <p className="font-bold">
-              {target.is_frozen
-                ? 'Unfreeze'
-                : 'Freeze'}{' '}
-              {target.profiles?.full_name ||
-                'customer'}{' '}
-              — {target.currency} wallet
+              {target.is_frozen ? 'Unfreeze' : 'Freeze'}{' '}
+              {target.profiles?.full_name || 'customer'}{' '}
+              — {target.currency}
             </p>
 
             <input
               value={reason}
-              onChange={(event) =>
-                setReason(
-                  event.target.value
-                )
+              onChange={e =>
+                setReason(e.target.value)
               }
-              placeholder="Enter a reason for the audit log"
               maxLength={1000}
-              className="border rounded-lg p-3 w-full"
+              placeholder="Reason for the audit log (at least 3 characters)"
+              className="w-full rounded-lg border p-3"
             />
 
             <div className="flex gap-3">
               <button
                 disabled={
-                  !!busy ||
-                  !reason.trim()
+                  busy ||
+                  reason.trim().length < 3
                 }
-                onClick={() =>
-                  void saveFreeze()
-                }
-                className="bg-slate-900 text-white rounded-lg px-4 py-2 disabled:opacity-50"
+                onClick={() => void saveFreeze()}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
               >
-                {busy
-                  ? 'Saving...'
-                  : 'Confirm'}
+                {busy ? 'Saving...' : 'Confirm'}
               </button>
 
               <button
-                disabled={!!busy}
+                disabled={busy}
                 onClick={() => {
                   setTarget(null);
                   setReason('');
                 }}
-                className="border rounded-lg px-4 py-2"
+                className="rounded-lg border px-4 py-2"
               >
                 Cancel
               </button>
@@ -537,73 +533,40 @@ export function FinancialsPage() {
         )}
 
         <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="w-full text-sm text-left">
+          <table className="w-full text-left text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="p-4">
-                  Customer
-                </th>
-                <th className="p-4">
-                  Currency
-                </th>
-                <th className="p-4">
-                  Monime account
-                </th>
-                <th className="p-4">
-                  Gateway available
-                </th>
-                <th className="p-4">
-                  Local balance
-                </th>
-                <th className="p-4">
-                  Status
-                </th>
-                <th className="p-4">
-                  Controls
-                </th>
+                {[
+                  'Customer',
+                  'Currency',
+                  'Monime account',
+                  'Gateway available',
+                  'Local balance',
+                  'Status',
+                  'Controls',
+                ].map(label => (
+                  <th key={label} className="p-4">
+                    {label}
+                  </th>
+                ))}
               </tr>
             </thead>
 
             <tbody>
-              {!loading &&
-                filtered.length ===
-                  0 && (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="p-6 text-center text-slate-500"
-                    >
-                      No wallets found.
-                    </td>
-                  </tr>
-                )}
+              {!loading && !filtered.length && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-6 text-center"
+                  >
+                    No customer wallets found.
+                  </td>
+                </tr>
+              )}
 
-              {filtered.map((wallet) => {
-                const id =
-                  wallet.metadata
-                    ?.monime_account_id;
-
+              {filtered.map(wallet => {
                 const balance =
-                  getGatewayBalance(
-                    wallet
-                  );
-
-                const account = id
-                  ? accountMap.get(id)
-                  : undefined;
-
-                const linkStatus = !id
-                  ? 'Not linked to Monime'
-                  : linkCounts.get(id)! >
-                    1
-                  ? 'Shared account link — review required'
-                  : gatewayError
-                  ? 'Gateway unavailable'
-                  : !account
-                  ? 'Linked account not returned by Monime'
-                  : balance === null
-                  ? 'Currency/balance mismatch — review required'
-                  : '';
+                  customerBalance(wallet);
 
                 return (
                   <tr
@@ -612,82 +575,54 @@ export function FinancialsPage() {
                   >
                     <td className="p-4">
                       <p className="font-bold">
-                        {wallet.profiles
-                          ?.full_name ||
-                          'Incomplete profile'}
+                        {wallet.profiles?.full_name ||
+                          'Unknown customer'}
                       </p>
-
                       <p className="text-xs text-slate-500">
-                        {wallet.profiles
-                          ?.phone ||
-                          wallet.profiles
-                            ?.email}{' '}
-                        ·{' '}
-                        {
-                          wallet.profiles
-                            ?.role
-                        }
+                        {wallet.profiles?.role}{' '}
+                        {wallet.profiles?.phone}
                       </p>
-                    </td>
-
-                    <td className="p-4 font-bold">
-                      {wallet.currency}
                     </td>
 
                     <td className="p-4">
-                      <p className="font-mono text-xs">
-                        {id ||
-                          `${wallet.currency} — not provisioned`}
-                      </p>
-
-                      {linkStatus && (
-                        <p className="text-xs text-amber-700 mt-1">
-                          {linkStatus}
-                        </p>
-                      )}
+                      {wallet.currency}
                     </td>
 
-                    <td className="p-4 font-bold">
-                      {balance === null
+                    <td className="max-w-xs break-all p-4 font-mono text-xs">
+                      {accountId(wallet) || 'Not linked'}
+                    </td>
+
+                    <td className="p-4">
+                      {loading || balance === null
                         ? 'Unavailable'
-                        : formatMoney(
+                        : money(
                             balance,
                             wallet.currency
                           )}
                     </td>
 
                     <td className="p-4">
-                      {formatMoney(
-                        wallet.balance,
+                      {money(
+                        Number(wallet.balance || 0),
                         wallet.currency
                       )}
                     </td>
 
                     <td className="p-4">
-                      {wallet.is_frozen ===
-                      true
+                      {wallet.is_frozen
                         ? 'Frozen'
-                        : wallet.is_frozen ===
-                          false
-                        ? 'Active'
-                        : 'Unknown'}
+                        : 'Active'}
                     </td>
 
                     <td className="p-4">
                       <button
-                        disabled={
-                          !!busy ||
-                          loading ||
-                          wallet.is_frozen ===
-                            null
-                        }
+                        disabled={loading || busy}
                         onClick={() => {
-                          setTarget(
-                            wallet
-                          );
+                          setTarget(wallet);
                           setReason('');
+                          setNotice('');
                         }}
-                        className="border rounded-lg px-3 py-2 disabled:opacity-50"
+                        className="rounded-lg border px-3 py-2 disabled:opacity-50"
                       >
                         {wallet.is_frozen
                           ? 'Unfreeze Wallet'
