@@ -1,60 +1,58 @@
 
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
-import { spinOdds, spinEconomics, validateSpinTiers, type SpinTier, type SpinSector } from '../../shared/spin-rules.js';
+import { validateSixTiers, sixEconomics, sixLabel, type SixTier } from '../../shared/six-spin-rules.js';
 const money=(n:number)=>`SLE ${(n/100).toFixed(2)}`;
-type Snapshot={config:{id:number;enabled:boolean;tiers:SpinTier[]|null};reservedMinor:number;entryReceivedMinor:number;winsPaidMinor:number;winsOwedMinor:number};
+type Snapshot={config:{id:number;enabled:boolean;six_tiers:SixTier[]|null};reservedMinor:number;entryReceivedMinor:number;winsPaidMinor:number;winsOwedMinor:number};
 function GameSettings({selectedPlayer}: {selectedPlayer:string}){
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
-  const [tiers,setTiers]=useState<SpinTier[]>([]);
-  const [selected,setSelected]=useState(500);
+  const [tiers,setTiers]=useState<SixTier[]>([]);
+  const [selected,setSelected]=useState('0');
   const [enabled,setEnabled]=useState(false);
   const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false);
   const [account,setAccount]=useState<{id:string;balance:number}|null>(null);const [accountError,setAccountError]=useState('');
   const [receiptRound,setReceiptRound]=useState('');const [receiptIndex,setReceiptIndex]=useState('0');const [providerId,setProviderId]=useState('');
   const refresh=useCallback(async()=>{
-    const {data,error}=await supabase.rpc('matmove_spin_admin_snapshot');
-    if(error)throw new Error(error.message);
-    if(!data.config.tiers)throw new Error('Run SPIN_TIERS_SETUP.sql before configuring the new bundles.');
-    setSnapshot(data);setEnabled(data.config.enabled);setTiers(validateSpinTiers(data.config.tiers));
+    const {data,error}=await supabase.rpc('matmove_spin_admin_snapshot');if(error)throw new Error(error.message);
+    if(!data.config.six_tiers)throw new Error('Run SPIN_SIX_SEGMENTS_SETUP.sql before editing the six-segment game.');
+    setSnapshot(data);setEnabled(data.config.enabled);setTiers(validateSixTiers(data.config.six_tiers));
     try{
       const {data:{session}}=await supabase.auth.getSession();if(!session)throw new Error('Sign in again.');
       const response=await fetch('/api/admin-wallet-balances',{headers:{Authorization:`Bearer ${session.access_token}`}});const body=await response.json();
       if(!response.ok)throw new Error(body.error||'Live Spin balance unavailable.');
       const id=body.platform?.spinAccountId,found=body.accounts?.find((a:any)=>a.id===id),amount=found?.balance?.available;
-      if(!id||!found||found.currency!=='SLE'||amount?.currency!=='SLE'||!Number.isSafeInteger(amount.value))throw new Error('Verify MONIME_SPIN_ACCOUNT_ID and its SLE account in the Admin Vercel project.');
+      if(!id||!found||found.currency!=='SLE'||amount?.currency!=='SLE'||!Number.isSafeInteger(amount.value))throw new Error('Check MONIME_SPIN_ACCOUNT_ID in Admin Vercel.');
       setAccount({id,balance:amount.value});setAccountError('');
     }catch(e){setAccount(null);setAccountError(e instanceof Error?e.message:'Balance unavailable.');}
   },[]);
   useEffect(()=>{void refresh().catch(e=>setError(e.message));},[refresh]);
-  async function execute(action:()=>Promise<void>){if(busy)return;setBusy(true);setError('');setNotice('');try{await action();await refresh();setNotice('Saved. Paid-round prices and probabilities were retained.');}catch(e){setError(e instanceof Error?e.message:'Unable to save.');}finally{setBusy(false);}}
-  const tier=tiers.find(t=>t.entryMinor===selected);
-  let validation='';let economics:ReturnType<typeof spinEconomics>|null=null;
-  try{if(tiers.length){validateSpinTiers(tiers);if(tier)economics=spinEconomics(tier.sectors,tier.entryMinor);}}catch(e){validation=e instanceof Error?e.message:'Invalid tier.';}
-  let odds:ReturnType<typeof spinOdds>=[];try{if(tier)odds=spinOdds(tier.sectors);}catch{/* Invalid draft shown above. */}
-  function change(i:number,patch:Partial<SpinSector>){setTiers(old=>old.map(t=>t.entryMinor!==selected?t:{...t,sectors:t.sectors.map((s,j)=>i===j?{...s,...patch}:s)}));}
-  return <AdminLayout title="Games — bundle settings" subtitle="Three spins at SLE 5, 10 or 20, with published tier probabilities">
+  async function execute(action:()=>Promise<void>){if(busy)return;setBusy(true);setError('');setNotice('');try{await action();await refresh();setNotice('Saved. Existing purchased games retained their rules.');}catch(e){setError(e instanceof Error?e.message:'Unable to save.');}finally{setBusy(false);}}
+  const tier=tiers.find(t=>t.id===selected);let validation='';let economics:ReturnType<typeof sixEconomics>|null=null;
+  try{if(tiers.length){validateSixTiers(tiers);if(tier)economics=sixEconomics(tier.sectors,tier.entryMinor);}}catch(e){validation=e instanceof Error?e.message:'Invalid wheel.';}
+  function changeFee(value:number){setTiers(old=>old.map(t=>t.id===selected?{...t,entryMinor:value}:t));}
+  function changePrize(index:number,value:number){setTiers(old=>old.map(t=>t.id!==selected?t:{...t,sectors:t.sectors.map((s,i)=>i===index?{...s,prizeMinor:value}:s)}));}
+  return <AdminLayout title="Games — six-segment settings" subtitle="Edit three fees and four cash prizes per wheel">
     <GameTabs active="settings"/>
     {error&&<p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
     {notice&&<p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-emerald-700">{notice}</p>}
-    <button disabled={busy} onClick={()=>void execute(refresh)} className="mb-5 rounded-xl border bg-white px-5 py-3 font-bold">Refresh saved settings and balance</button>
-    {!snapshot?<p>Loading tier setup…</p>:<div className="space-y-6">
+    <button disabled={busy} onClick={()=>void execute(refresh)} className="mb-5 rounded-xl border bg-white px-5 py-3 font-bold">Refresh settings and balance</button>
+    {!snapshot?<p>Loading settings…</p>:<div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[['Entries received',snapshot.entryReceivedMinor],['Winnings credited',snapshot.winsPaidMinor],['Prizes still owed',snapshot.winsOwedMinor],['Reserved prize capacity',snapshot.reservedMinor]].map(([label,value])=><div key={String(label)} className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{money(Number(value))}</p></div>)}</div>
-      <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Dedicated Spin Account</h2>{account?<><p className="mt-2 break-all font-mono text-sm">{account.id}</p><p className="mt-2">Live available balance: <b>{money(account.balance)}</b></p></>:<p className="mt-2 text-red-700">{accountError||'Balance unavailable.'}</p>}<p className="mt-3 border-t pt-3 text-sm text-slate-500">New bundles reserve SLE 150 for three possible SLE 50 prizes. Legacy paid rounds keep their original reserve. Fund the separate Spin Account from business funds. Existing escrow flows continue separately.</p></div>
-      <div className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Automatic player eligibility</h2><p className="mt-3 text-slate-600">No separate game-admin approval or customer UUID entry is required. Before charging, the backend checks the customer's existing approved identity status, adult date of birth, wallet ownership, freeze status and current available balance.</p><p className="mt-3 border-t pt-3 text-sm text-slate-500">Each bundle buys three spins. Every confirmed prize is credited in full to the original customer SLE account, with no winnings fee. Payment uncertainty retains the original receipt for review.</p></div>
-      <div className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Price tiers and odds</h2><p className="mt-2 text-sm text-slate-600">The exact probabilities are shown before payment. Higher prices must have higher SLE 50 chances. Changes affect future purchases, never a paid round.</p>
-        <label className="my-4 flex items-center gap-3"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>Allow new entries (customer MATMOVE_SPIN_ENABLED must also be true)</label>
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">{tiers.map(t=>{let jackpot=0;try{jackpot=spinOdds(t.sectors).find(o=>o.prizeMinor===5000)?.probability||0;}catch{/* Invalid edited tier. */}return <button key={t.entryMinor} onClick={()=>setSelected(t.entryMinor)} aria-pressed={selected===t.entryMinor} className={`rounded-xl border p-4 text-left ${selected===t.entryMinor?'border-purple-700 bg-purple-50':'bg-slate-50'}`}><b>{money(t.entryMinor)} · 3 spins</b><p className="mt-2 text-sm">SLE 50 chance: {(jackpot*100).toFixed(4)}% per spin</p></button>;})}</div>
-        {economics&&<div className="mb-4 rounded-xl bg-slate-50 p-4"><p>Expected total prize cost: <b>{money(economics.expectedRoundPrizeMinor)}</b></p><p>Expected margin before provider fees: <b>{money(economics.expectedMarginMinor)}</b></p><p>Expected payout rate: {(economics.expectedRoundPrizeMinor/selected*100).toFixed(2)}%</p>{economics.expectedMarginMinor<=0&&<p className="mt-2 text-red-700">This draft pays at least as much as its fee on average.</p>}</div>}
-        {validation&&<p role="alert" className="mb-3 text-red-700">{validation}</p>}
-        {tier&&<div className="max-h-96 overflow-auto"><table className="w-full text-left text-sm"><thead><tr><th>Wheel number</th><th>Prize</th><th>Probability weight</th></tr></thead><tbody>{tier.sectors.map((s,i)=><tr key={i} className="border-t"><td className="py-2"><input aria-label={`Number ${i+1}`} value={s.digit} onChange={e=>change(i,{digit:e.target.value})} className="w-20 rounded-lg border p-2"/></td><td>{money(s.prizeMinor)}</td><td><input aria-label={`Probability weight for ${money(s.prizeMinor)}`} type="number" min="1" max="1000000" step="1" value={s.weight??1} onChange={e=>change(i,{weight:Number(e.target.value)})} className="w-32 rounded-lg border p-2"/></td></tr>)}</tbody></table></div>}
-        <p className="mt-3 text-xs text-slate-500">Chance equals the prize's probability weight divided by the tier's total weight. Wheel segment sizes use the same proportions. All prizes SLE 1–20 and SLE 50 must remain possible.</p>
-        <button disabled={busy||!!validation||!economics} onClick={()=>void execute(async()=>{const clean=validateSpinTiers(tiers);const {error}=await supabase.rpc('matmove_spin_admin_save_tiers',{p_expected:snapshot.config.id,p_enabled:enabled,p_tiers:clean});if(error)throw error;})} className="mt-4 rounded-xl bg-purple-700 px-5 py-3 font-bold text-white disabled:opacity-50">Publish all three tiers for future purchases</button>
-        <div className="mt-4 grid gap-2 sm:grid-cols-4">{odds.map(o=><p key={o.prizeMinor} className="rounded-lg bg-slate-50 p-3 text-sm">{money(o.prizeMinor)}<br/>{(o.probability*100).toFixed(4)}%</p>)}</div>
+      <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Dedicated Spin Account</h2>{account?<><p className="mt-2 break-all font-mono text-sm">{account.id}</p><p className="mt-2">Available: <b>{money(account.balance)}</b></p></>:<p className="mt-2 text-red-700">{accountError}</p>}<p className="mt-3 text-sm text-slate-600">New games reserve their largest possible cash prize. A bonus never adds a second cash prize. Existing three-spin games retain their original reserve. Entry payments go from customer to Spin Account; prizes go from Spin Account to that customer, without a winnings fee.</p></div>
+      <div className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Fees and prizes</h2>
+        <label className="my-4 flex gap-3"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>Allow new entries (Customer MATMOVE_SPIN_ENABLED must also be true)</label>
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">{tiers.map(t=><button key={t.id} onClick={()=>setSelected(t.id)} className={`rounded-xl border p-4 ${selected===t.id?'border-purple-700 bg-purple-50':'bg-slate-50'}`}><b>Wheel {Number(t.id)+1}: {money(t.entryMinor)}</b></button>)}</div>
+        {tier&&<><label className="block font-bold">Entry fee (SLE)<input type="number" min="1" max="10000" step="1" value={tier.entryMinor/100} onChange={e=>changeFee(Number(e.target.value)*100)} className="ml-3 w-32 rounded-lg border p-2"/></label><div className="mt-4 grid gap-3 sm:grid-cols-2">{tier.sectors.map((s,i)=><div key={i} className="rounded-xl border p-4"><p className="font-bold">Segment {i+1}</p>{i<4?<label>Cash prize (SLE)<input type="number" min="1" max="10000" step="1" value={s.prizeMinor/100} onChange={e=>changePrize(i,Number(e.target.value)*100)} className="mt-2 w-full rounded-lg border p-2"/></label>:<p className="mt-2 font-bold text-purple-700">{sixLabel(s)} — fixed</p>}</div>)}</div></>}
+        {economics&&<div className="mt-4 rounded-xl bg-slate-50 p-4"><p>Expected payout per purchase: <b>{money(economics.expectedPrizeMinor)}</b></p><p>Expected margin before provider fees: <b>{money(economics.expectedMarginMinor)}</b></p><p>Reserve needed per purchase: <b>{money(economics.maximumPrizeMinor)}</b></p>{economics.expectedMarginMinor<=0&&<p className="mt-2 text-red-700">These prizes cost at least as much as the entry fee on average. Reduce prizes or increase the fee if you need a positive expected margin.</p>}</div>}
+        <p className="mt-4 text-sm text-slate-600">Six equal segments: each first-spin outcome has a 1 in 6 chance. Spin again grants one free final spin among the four cash segments and Better luck next time, each with a 1 in 5 chance. No second bonus. Cash or no-prize results end the game. Changes affect future purchases only; customers see the saved prices, prizes and rules before paying.</p>
+        {validation&&<p role="alert" className="mt-3 text-red-700">{validation}</p>}
+        <button disabled={busy||!!validation||!economics} onClick={()=>void execute(async()=>{const clean=validateSixTiers(tiers);const {error}=await supabase.rpc('matmove_spin_admin_save_six',{p_expected:snapshot.config.id,p_enabled:enabled,p_tiers:clean});if(error)throw error;})} className="mt-4 rounded-xl bg-purple-700 px-5 py-3 font-bold text-white disabled:opacity-50">Publish fees and prizes for future games</button>
       </div>
-      <div className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Receipt recovery</h2><p className="mt-2 text-sm text-slate-600">For an uncertain transfer, locate its existing Monime receipt using the recorded request key. Attaching the matching receipt does not resend money. Failed prizes remain owed and require support resolution.</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={receiptRound} onChange={e=>setReceiptRound(e.target.value)} placeholder="Game UUID" className="rounded-xl border p-3"/><select value={receiptIndex} onChange={e=>setReceiptIndex(e.target.value)} className="rounded-xl border p-3"><option value="0">Entry</option>{[1,2,3].map(i=><option key={i} value={i}>Spin {i}</option>)}</select><input value={providerId} onChange={e=>setProviderId(e.target.value)} placeholder="Actual Monime trn-... ID" className="rounded-xl border p-3"/></div><button disabled={busy} onClick={()=>void execute(async()=>{const {error}=await supabase.rpc('matmove_spin_admin_receipt',{p_id:receiptRound.trim(),p_index:Number(receiptIndex),p_provider:providerId.trim()});if(error)throw error;})} className="mt-4 rounded-xl border px-5 py-3 font-bold">Attach existing receipt for verification</button></div>
+      <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Player eligibility</h2><p className="mt-2">Automatic wallet ownership, available balance, adult date of birth, approved identity and freeze checks remain. No separate game approval.</p></div>
+      <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Receipt recovery</h2><p className="mt-2">Attach only an existing matching Monime receipt. This never resends an uncertain transfer.</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={receiptRound} onChange={e=>setReceiptRound(e.target.value)} placeholder="Game UUID" className="rounded-xl border p-3"/><select value={receiptIndex} onChange={e=>setReceiptIndex(e.target.value)} className="rounded-xl border p-3"><option value="0">Entry</option>{[1,2,3].map(i=><option key={i} value={i}>Spin {i}</option>)}</select><input value={providerId} onChange={e=>setProviderId(e.target.value)} placeholder="Existing trn-... ID" className="rounded-xl border p-3"/></div><button disabled={busy} onClick={()=>void execute(async()=>{const {error}=await supabase.rpc('matmove_spin_admin_receipt',{p_id:receiptRound.trim(),p_index:Number(receiptIndex),p_provider:providerId.trim()});if(error)throw error;})} className="mt-4 rounded-xl border px-5 py-3 font-bold">Attach receipt for verification</button></div>
     </div>}
   </AdminLayout>;
 }
@@ -74,7 +72,7 @@ export function GamesPage(){
   if(tab==='settings')return <GameSettings key={player} selectedPlayer={player}/>;
   return <AdminLayout title={`Games — ${gameTabs.find(([key])=>key===tab)?.[1]}`} subtitle="Individual players, entry payments, winnings and recorded game activity">
     <GameTabs active={tab}/>
-    <GameReports key={`${tab}:${player}`} tab={tab} player={player}/>
+    <GameReports key={`${tab}:${player}`} tab={tab} player={player}/>{tab==='overview'&&<GameOutcomeHistory/>}
   </AdminLayout>;
 }
 
@@ -147,4 +145,10 @@ function GameReports({tab,player}:{tab:Exclude<GameTab,'settings'>;player:string
       </>}
     </div>
   </div>;
+}
+
+function GameOutcomeHistory(){
+ const [page,setPage]=useState(1);const [data,setData]=useState<{rows:any[];total:number}|null>(null);const [error,setError]=useState('');
+ useEffect(()=>{let live=true;const load=async()=>{const r=await supabase.rpc('matmove_spin_admin_outcomes',{p_page:page});if(!live)return;if(r.error)setError(r.error.message);else{setData(r.data);setError('');}};void load();const timer=setInterval(()=>void load(),15000);return()=>{live=false;clearInterval(timer);};},[page]);
+ return <section className="mt-6 rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Six-segment outcomes — including bonuses and no-prize results</h2>{error&&<p role="alert" className="mt-3 text-red-700">{error}</p>}<div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Player</th><th>Entry fee</th><th>Spin</th><th>Outcome</th><th>Payment status</th><th>Time</th></tr></thead><tbody>{data?.rows.map(r=><tr key={`${r.round_id}:${r.spin_index}`} className="border-t"><td className="py-3"><PlayerName row={r}/><p className="mt-1 break-all text-xs">Game: {r.round_id}</p></td><td>{money(Number(r.entry_minor))}</td><td>{r.spin_index===2?'Free final spin':'Paid spin'}</td><td>{r.kind==='cash'?money(Number(r.amount_minor)):r.kind==='again'?'Spin again':'Better luck next time'}</td><td>{r.payment_status}<p className="break-all text-xs">{r.provider_id||'No provider receipt'}</p></td><td>{stamp(r.created_at)}</td></tr>)}</tbody></table></div>{data&&!data.rows.length&&<p className="mt-3">No six-segment outcomes yet.</p>}<div className="mt-4 flex gap-3"><button disabled={page===1} onClick={()=>setPage(p=>p-1)} className="rounded-lg border p-2 disabled:opacity-50">Previous</button><span>Page {page}</span><button disabled={!data||page*25>=data.total} onClick={()=>setPage(p=>p+1)} className="rounded-lg border p-2 disabled:opacity-50">Next</button></div></section>;
 }
