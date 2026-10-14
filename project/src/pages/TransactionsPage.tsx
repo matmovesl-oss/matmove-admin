@@ -1,3 +1,5 @@
+
+import {adminFetch} from '@/lib/adminFetch';
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { Search, RefreshCw, Loader2, ArrowUpRight, ArrowDownLeft, Activity } from 'lucide-react';
@@ -11,7 +13,7 @@ export function TransactionsPage() {
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/get-user-transactions');
+      const res = await adminFetch('/api/get-user-transactions');
       const data = await res.json();
       if (data.transactions) {
         setTransactions(data.transactions);

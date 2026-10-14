@@ -1,4 +1,7 @@
 
+import {requireAdmin} from '../server/admin-auth.js';
+import {canAdminAccess} from '../shared/admin-permissions.js';
+
 import { createClient } from '@supabase/supabase-js';
 
 export function createHandler(
@@ -62,27 +65,8 @@ export function createHandler(
         });
       }
 
-      const {
-        data: admin,
-        error: adminError
-      } = await client
-        .from('admins')
-        .select('id')
-        .eq('id', authData.user.id)
-        .maybeSingle();
-
-      if (adminError) {
-        return res.status(502).json({
-          error: 'Unable to verify admin access.'
-        });
-      }
-
-      if (!admin) {
-        return res.status(403).json({
-          error: 'Admin authorization required.'
-        });
-      }
-
+      const {access}=await requireAdmin(req,['financials','games.settings'],{client,env});
+      const financial=canAdminAccess(access,'financials');
       const accounts = new Map();
       const seen = new Set();
       const signal = AbortSignal.timeout(20000);
@@ -159,13 +143,13 @@ export function createHandler(
 
         if (!next) {
           return res.status(200).json({
-            accounts: [...accounts.values()],
+            accounts: [...accounts.values()].filter(a=>financial||a.id===env.MONIME_SPIN_ACCOUNT_ID),
             platform: {
               spinAccountId: env.MONIME_SPIN_ACCOUNT_ID || null,
               escrowAccountId:
-                env.MONIME_ESCROW_ACCOUNT_ID || null,
+                financial?(env.MONIME_ESCROW_ACCOUNT_ID || null):null,
               feeAccountId:
-                env.MONIME_PLATFORM_FEE_ACCOUNT_ID || null
+                financial?(env.MONIME_PLATFORM_FEE_ACCOUNT_ID || null):null
             }
           });
         }
@@ -186,7 +170,8 @@ export function createHandler(
       return res.status(502).json({
         error: 'Account listing exceeded the safe page limit. No partial totals were returned.'
       });
-    } catch {
+    } catch (error) {
+      if(error.status)return res.status(error.status).json({error:error.message});
       return res.status(502).json({
         error: 'Gateway balances are temporarily unavailable. Please retry.'
       });

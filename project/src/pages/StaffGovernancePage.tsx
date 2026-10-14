@@ -1,178 +1,33 @@
-import { useState, useEffect } from 'react';
+
+import {useState,useEffect} from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import Modal from '@/components/Modal';
-import { supabase } from '@/lib/supabase';
-import { Search, RefreshCw, Loader2, UserPlus, ShieldCheck } from 'lucide-react';
-
-export function StaffGovernancePage() {
-  const [staff, setStaff] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  
-  // Add Staff State
-  const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
-  const [newStaff, setNewStaff] = useState({ email: '', fullName: '', role: 'admin_dispatch', defaultPassword: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const fetchStaff = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
-      if (error) throw error;
-      
-      // Filter locally to find ANY user with an admin role
-      const admins = (data || []).filter(u => {
-        const roleStr = (u.role || '').toLowerCase();
-        return roleStr.includes('admin');
-      });
-
-      setStaff(admins);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchStaff(); }, []);
-
-  const handleAddStaff = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-         email: newStaff.email,
-         password: newStaff.defaultPassword,
-         options: {
-           data: {
-             full_name: newStaff.fullName,
-             role: newStaff.role
-           }
-         }
-      });
-      if (authError) throw authError;
-
-      if (authData.user) {
-         await supabase.from('profiles').update({ 
-           must_change_password: true,
-           role: newStaff.role
-         }).eq('id', authData.user.id);
-      }
-
-      alert(`Staff account generated for ${newStaff.email}! They will be forced to change the default password on first login.`);
-      setIsAddStaffOpen(false);
-      setNewStaff({ email: '', fullName: '', role: 'admin_dispatch', defaultPassword: '' });
-      fetchStaff();
-    } catch (err: any) {
-      alert(`Error creating staff: ${err.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const filteredStaff = staff.filter(u => 
-    (u.full_name?.toLowerCase().includes(search.toLowerCase()) || '') || 
-    (u.email?.toLowerCase().includes(search.toLowerCase()) || '')
-  );
-
-  return (
-    <AdminLayout title="Staff & Department Governance" subtitle="Manage internal employees and RBAC assignments">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 mt-6">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="text" placeholder="Search staff..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600 outline-none" />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <button onClick={fetchStaff} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium">
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
-          </button>
-          <button onClick={() => setIsAddStaffOpen(true)} className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-sm font-bold flex-1 sm:flex-none shadow-sm">
-            <UserPlus size={16} /> Hire Staff
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24} /> Loading staff records...</div>
-        ) : staff.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">No staff accounts found.</div>
-        ) : (
-          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide sticky top-0">
-                <tr><th className="px-6 py-4 font-medium">Employee</th><th className="px-6 py-4 font-medium">Department Role</th><th className="px-6 py-4 font-medium">Work Email</th><th className="px-6 py-4 font-medium">Clearance</th></tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredStaff.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition">
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900">{user.full_name || 'No Name'}</div>
-                      <div className="text-xs text-slate-400 font-mono mt-0.5">{user.id.slice(0, 12)}...</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="bg-slate-900 text-white px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
-                        {user.role.replace('admin_', '')}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4"><div className="text-slate-700">{user.email || 'No Email'}</div></td>
-                    <td className="px-6 py-4">
-                      <span className="flex items-center gap-1 text-emerald-600 font-bold text-xs"><ShieldCheck size={14}/> Verified Admin</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <Modal open={isAddStaffOpen} onClose={() => !isSubmitting && setIsAddStaffOpen(false)} title="Create Staff Account" maxWidth="max-w-md">
-        <form onSubmit={handleAddStaff} className="space-y-4">
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-6">
-            <p className="text-xs text-amber-800 leading-relaxed font-semibold">
-              WARNING: The role you select dictates exactly which tabs this employee can see in their sidebar (RBAC). 
-            </p>
-          </div>
-          
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Employee Full Name</label>
-            <input required type="text" value={newStaff.fullName} onChange={e => setNewStaff({...newStaff, fullName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500" placeholder="e.g. Jane Doe" />
-          </div>
-          
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Work Email</label>
-            <input required type="email" value={newStaff.email} onChange={e => setNewStaff({...newStaff, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500" placeholder="jane.doe@matmove.com" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Department Assignment (RBAC)</label>
-            <select value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500 font-semibold">
-              <option value="admin_dispatch">Dispatch Unit (Radar Access)</option>
-              <option value="admin_compliance">Compliance Unit (KYC Access)</option>
-              <option value="admin_finance">Finance Unit (Wallets & Payouts)</option>
-              <option value="super_admin">Super Admin (All Access)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Set Default Password</label>
-            <input required type="text" value={newStaff.defaultPassword} onChange={e => setNewStaff({...newStaff, defaultPassword: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 outline-none focus:border-indigo-500 font-mono" placeholder="e.g. MatMoveStaff2024!" />
-            <p className="text-[10px] text-slate-400 mt-1">They will be forced to change this upon first login.</p>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
-            <button type="button" onClick={() => setIsAddStaffOpen(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-sm">Cancel</button>
-            <button type="submit" disabled={isSubmitting} className="flex items-center gap-2 px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-sm disabled:opacity-50">
-              {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />} Authorize Staff
-            </button>
-          </div>
-        </form>
-      </Modal>
-    </AdminLayout>
-  );
+import {adminFetch} from '@/lib/adminFetch';
+import {SECTION_GROUPS,useAdminAccess} from '@/lib/adminAccess';
+const empty={id:'',email:'',fullName:'',permissions:[] as string[],isActive:true};
+export function StaffGovernancePage(){
+ const access=useAdminAccess();const owner=!!(access?.is_owner||access?.role==='super_admin');
+ const [staff,setStaff]=useState<any[]>([]);const [loading,setLoading]=useState(true);const [search,setSearch]=useState('');const [open,setOpen]=useState(false);const [draft,setDraft]=useState(empty);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');
+ async function refresh(){setLoading(true);try{const r=await adminFetch('/api/admin-staff');const b=await r.json();if(!r.ok)throw new Error(b.error);setStaff(b.staff||[]);}catch(e){setError(e instanceof Error?e.message:'Staff unavailable.');}finally{setLoading(false);}}
+ useEffect(()=>{void refresh();},[]);
+ function toggle(keys:string[],checked:boolean){setDraft(d=>({...d,permissions:checked?[...new Set([...d.permissions,...keys])]:d.permissions.filter(k=>!keys.includes(k))}));}
+ async function request(body:any){if(busy)return;setBusy(true);setError('');setNotice('');try{const r=await adminFetch('/api/admin-staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const b=await r.json();if(!r.ok)throw new Error(b.error);setNotice(b.message);setOpen(false);setDraft(empty);await refresh();}catch(e){setError(e instanceof Error?e.message:'Unable to authorize staff.');}finally{setBusy(false);}}
+ const rows=staff.filter(s=>`${s.full_name||''} ${s.email||''} ${s.department||''}`.toLowerCase().includes(search.toLowerCase()));
+ return <AdminLayout title="Staff & Department Governance" subtitle="Email invitations and individual section assignments">
+  {error&&<p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}{notice&&<p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-emerald-700">{notice}</p>}
+  <div className="mb-5 flex flex-wrap gap-3"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search staff" className="rounded-xl border p-3"/><button onClick={()=>void refresh()} className="rounded-xl border bg-white p-3">Refresh</button>{owner&&<button onClick={()=>{setDraft(empty);setOpen(true);}} className="rounded-xl bg-indigo-700 p-3 font-bold text-white">Invite staff</button>}</div>
+  {!owner&&<p className="mb-4 text-sm text-slate-600">You can view the staff directory. Only the owner can authorize staff or change assignments.</p>}
+  <div className="overflow-auto rounded-xl border bg-white"><table className="w-full text-left text-sm"><thead><tr><th className="p-4">Staff member</th><th>Departments</th><th>Assignments</th><th>Status</th><th>Actions</th></tr></thead><tbody>{rows.map(s=><tr key={s.id} className="border-t"><td className="p-4"><b>{s.full_name||'Staff'}</b><p>{s.email}</p></td><td>{s.department||'Owner'}</td><td>{s.is_owner||s.role==='super_admin'?'Owner — all sections':SECTION_GROUPS.flatMap(g=>g.items).filter(([k])=>s.permissions?.includes(k)).map(([,name])=>name).join(', ')||'No assignments'}</td><td>{s.is_active?'Active':'Disabled'}<p>{s.invite_state}</p></td><td>{owner&&!s.is_owner&&s.role!=='super_admin'&&<div className="flex flex-wrap gap-2 p-3"><button onClick={()=>{setDraft({id:s.id,email:s.email||'',fullName:s.full_name||'',permissions:s.permissions||[],isActive:s.is_active});setOpen(true);}} className="rounded-lg border p-2">Edit assignments</button><button disabled={busy||!s.is_active} onClick={()=>void request({action:'resend',id:s.id})} className="rounded-lg border p-2 disabled:opacity-50">Send login email</button></div>}</td></tr>)}</tbody></table>{loading&&<p className="p-4">Loading staff…</p>}</div>
+  <Modal open={open} onClose={()=>{if(!busy)setOpen(false);}} title={draft.id?'Edit staff assignments':'Invite staff by email'} maxWidth="max-w-3xl">
+   <form onSubmit={e=>{e.preventDefault();void request({action:draft.id?'update':'invite',...draft});}} className="space-y-4">
+    {error&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
+    <label className="block">Full name<input required value={draft.fullName} onChange={e=>setDraft({...draft,fullName:e.target.value})} className="mt-1 w-full rounded-lg border p-3"/></label>
+    <label className="block">Work email<input required type="email" disabled={!!draft.id} value={draft.email} onChange={e=>setDraft({...draft,email:e.target.value})} className="mt-1 w-full rounded-lg border p-3"/></label>
+    <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-900">Select departments and individual assignments. Games expands into separate permissions. Staff set their own password using an email link.</p>
+    <div className="max-h-[45vh] space-y-3 overflow-auto">{SECTION_GROUPS.map(g=>{const keys=g.items.map(i=>i[0]);return <details key={g.label} open className="rounded-xl border p-4"><summary className="cursor-pointer font-bold">{g.label}</summary><label className="mt-3 flex gap-2"><input type="checkbox" checked={keys.every(k=>draft.permissions.includes(k))} onChange={e=>toggle(keys,e.target.checked)}/>All {g.label} assignments</label><div className="mt-3 grid gap-3 pl-6 sm:grid-cols-2">{g.items.map(([key,name])=><label key={key} className="flex gap-2"><input type="checkbox" checked={draft.permissions.includes(key)} onChange={e=>toggle([key],e.target.checked)}/>{name}</label>)}</div></details>;})}</div>
+    {draft.id&&<label className="flex gap-2"><input type="checkbox" checked={draft.isActive} onChange={e=>setDraft({...draft,isActive:e.target.checked})}/>Staff account active</label>}
+    <div className="flex justify-end gap-3"><button type="button" disabled={busy} onClick={()=>setOpen(false)} className="rounded-lg border p-3">Cancel</button><button disabled={busy||!draft.permissions.length} className="rounded-lg bg-indigo-700 p-3 font-bold text-white disabled:opacity-50">{busy?'Saving…':draft.id?'Save assignments':'Authorize and send invitation'}</button></div>
+   </form>
+  </Modal>
+ </AdminLayout>;
 }

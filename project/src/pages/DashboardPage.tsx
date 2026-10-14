@@ -1,3 +1,6 @@
+
+import {canAccess,useAdminAccess} from '@/lib/adminAccess';
+import {adminFetch} from '@/lib/adminFetch';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '@/components/AdminLayout';
@@ -7,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { FileCheck, Wallet, Banknote, Users, ShieldAlert, Clock, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
 
 export default function DashboardPage() {
+  const access=useAdminAccess();
   const [stats, setStats] = useState({ pendingKyc: 0, totalBalance: 0, pendingWithdrawals: 0, totalUsers: 0 });
   const [recentBookings, setRecentBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,8 +29,7 @@ export default function DashboardPage() {
         }
 
         // 🔴 Fetch TRUE Balances from Monime API
-        const monimeRes = await fetch('/api/get-space-balance');
-        const monimeData = await monimeRes.json();
+        const monimeData=canAccess(access,'financials')?await (await adminFetch('/api/get-space-balance')).json():{accounts:[]};
         let trueTotalBalance = 0;
         
         if (monimeData.accounts) {
@@ -38,8 +41,7 @@ export default function DashboardPage() {
         }
 
         // 🔴 Fetch TRUE Payouts from Monime API
-        const payoutRes = await fetch('/api/get-payouts');
-        const payoutData = await payoutRes.json();
+        const payoutData=canAccess(access,'payouts')?await (await adminFetch('/api/get-payouts')).json():{payouts:[]};
         let pendingPayoutsCount = 0;
 
         if (payoutData.payouts) {
@@ -68,8 +70,8 @@ export default function DashboardPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <StatCard label="Pending KYC" value={String(stats.pendingKyc)} icon={Clock} tone="amber" hint="Awaiting review" />
-            <StatCard label="True System Balance" value={`SLE ${stats.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Wallet} tone="emerald" hint="Live Monime Ledger" />
-            <StatCard label="Pending Payouts" value={String(stats.pendingWithdrawals)} icon={Banknote} tone="amber" hint="Awaiting Settlement" />
+            <StatCard label="True System Balance" value={canAccess(access,'financials')?`SLE ${stats.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`:'Access denied'} icon={Wallet} tone="emerald" hint="Live Monime Ledger" />
+            <StatCard label="Pending Payouts" value={canAccess(access,'payouts')?String(stats.pendingWithdrawals):'Access denied'} icon={Banknote} tone="amber" hint="Awaiting Settlement" />
             <StatCard label="Active Users" value={String(stats.totalUsers)} icon={Users} tone="indigo" hint="Riders & Drivers" />
           </div>
 

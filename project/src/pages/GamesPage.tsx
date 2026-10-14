@@ -1,4 +1,7 @@
 
+import {canAccess,useAdminAccess} from '@/lib/adminAccess';
+import {adminFetch} from '@/lib/adminFetch';
+
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -14,14 +17,13 @@ function GameSettings({selectedPlayer}: {selectedPlayer:string}){
   const [enabled,setEnabled]=useState(false);
   const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false);
   const [account,setAccount]=useState<{id:string;balance:number}|null>(null);const [accountError,setAccountError]=useState('');
-  const [receiptRound,setReceiptRound]=useState('');const [receiptIndex,setReceiptIndex]=useState('0');const [providerId,setProviderId]=useState('');
   const refresh=useCallback(async()=>{
     const {data,error}=await supabase.rpc('matmove_spin_admin_snapshot');if(error)throw new Error(error.message);
     if(!data.config.six_tiers)throw new Error('Run SPIN_SIX_SEGMENTS_SETUP.sql before editing the six-segment game.');
     setSnapshot(data);setEnabled(data.config.enabled);setTiers(validateSixTiers(data.config.six_tiers));
     try{
       const {data:{session}}=await supabase.auth.getSession();if(!session)throw new Error('Sign in again.');
-      const response=await fetch('/api/admin-wallet-balances',{headers:{Authorization:`Bearer ${session.access_token}`}});const body=await response.json();
+      const response=await adminFetch('/api/admin-wallet-balances',{headers:{Authorization:`Bearer ${session.access_token}`}});const body=await response.json();
       if(!response.ok)throw new Error(body.error||'Live Spin balance unavailable.');
       const id=body.platform?.spinAccountId,found=body.accounts?.find((a:any)=>a.id===id),amount=found?.balance?.available;
       if(!id||!found||found.currency!=='SLE'||amount?.currency!=='SLE'||!Number.isSafeInteger(amount.value))throw new Error('Check MONIME_SPIN_ACCOUNT_ID in Admin Vercel.');
@@ -52,16 +54,16 @@ function GameSettings({selectedPlayer}: {selectedPlayer:string}){
         <button disabled={busy||!!validation||!economics} onClick={()=>void execute(async()=>{const clean=validateSixTiers(tiers);const {error}=await supabase.rpc('matmove_spin_admin_save_six',{p_expected:snapshot.config.id,p_enabled:enabled,p_tiers:clean});if(error)throw error;})} className="mt-4 rounded-xl bg-purple-700 px-5 py-3 font-bold text-white disabled:opacity-50">Publish fees and prizes for future games</button>
       </div>
       <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Player eligibility</h2><p className="mt-2">Automatic wallet ownership, available balance, adult date of birth, approved identity and freeze checks remain. No separate game approval.</p></div>
-      <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Receipt recovery</h2><p className="mt-2">Attach only an existing matching Monime receipt. This never resends an uncertain transfer.</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={receiptRound} onChange={e=>setReceiptRound(e.target.value)} placeholder="Game UUID" className="rounded-xl border p-3"/><select value={receiptIndex} onChange={e=>setReceiptIndex(e.target.value)} className="rounded-xl border p-3"><option value="0">Entry</option>{[1,2,3].map(i=><option key={i} value={i}>Spin {i}</option>)}</select><input value={providerId} onChange={e=>setProviderId(e.target.value)} placeholder="Existing trn-... ID" className="rounded-xl border p-3"/></div><button disabled={busy} onClick={()=>void execute(async()=>{const {error}=await supabase.rpc('matmove_spin_admin_receipt',{p_id:receiptRound.trim(),p_index:Number(receiptIndex),p_provider:providerId.trim()});if(error)throw error;})} className="mt-4 rounded-xl border px-5 py-3 font-bold">Attach receipt for verification</button></div>
     </div>}
   </AdminLayout>;
 }
 
-const gameTabs = [['overview','Overview'],['players','Players'],['entries','Entry payments'],['winnings','Winnings'],['settings','Settings & access']] as const;
+const gameTabs = [['overview','Overview'],['players','Players'],['entries','Entry payments'],['winnings','Winnings'],['settings','Settings & access'],['recovery','Receipt recovery']] as const;
 type GameTab = typeof gameTabs[number][0];
 function GameTabs({active}:{active:GameTab}){
+  const access=useAdminAccess();
   return <nav aria-label="Games sections" className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-purple-200 bg-white p-3">
-    {gameTabs.map(([tab,label])=><Link key={tab} to={`/games?tab=${tab}`} aria-current={active===tab?'page':undefined} className={`rounded-xl px-4 py-2 text-sm font-bold ${active===tab?'bg-purple-700 text-white':'bg-slate-50 text-slate-600 hover:bg-purple-50'}`}>{label}</Link>)}
+    {gameTabs.filter(([tab])=>canAccess(access,`games.${tab}`)).map(([tab,label])=><Link key={tab} to={`/games?tab=${tab}`} aria-current={active===tab?'page':undefined} className={`rounded-xl px-4 py-2 text-sm font-bold ${active===tab?'bg-purple-700 text-white':'bg-slate-50 text-slate-600 hover:bg-purple-50'}`}>{label}</Link>)}
   </nav>;
 }
 export function GamesPage(){
@@ -69,6 +71,7 @@ export function GamesPage(){
   const requested=params.get('tab')||'overview';
   const tab:GameTab=gameTabs.some(([key])=>key===requested)?requested as GameTab:'overview';
   const player=params.get('player')||'';
+  if(tab==='recovery')return <AdminLayout title="Games — receipt recovery"><GameTabs active="recovery"/><ReceiptRecovery/></AdminLayout>;
   if(tab==='settings')return <GameSettings key={player} selectedPlayer={player}/>;
   return <AdminLayout title={`Games — ${gameTabs.find(([key])=>key===tab)?.[1]}`} subtitle="Individual players, entry payments, winnings and recorded game activity">
     <GameTabs active={tab}/>
@@ -85,7 +88,7 @@ function StatusTag({value}:{value:string}){
 function PlayerName({row}:{row:any}){
   return <div><Link to={`/games?tab=players&player=${row.user_id}`} className="font-bold text-purple-700 hover:underline">{row.customer_name}</Link><p className="mt-1 text-xs text-slate-500">{row.customer_email||row.customer_role||'Customer'}</p><p className="mt-1 break-all font-mono text-[10px] text-slate-400">{row.user_id}</p></div>;
 }
-function GameReports({tab,player}:{tab:Exclude<GameTab,'settings'>;player:string}){
+function GameReports({tab,player}:{tab:Exclude<GameTab,'settings'|'recovery'>;player:string}){
   const view=tab==='overview'?'rounds':tab;
   const [page,setPage]=useState(1);
   const [searchDraft,setSearchDraft]=useState('');
@@ -116,8 +119,8 @@ function GameReports({tab,player}:{tab:Exclude<GameTab,'settings'>;player:string
   const filters=tab==='players'?['all','paid','unpaid','in_progress']:tab==='overview'?['all','entry_pending','active','win_pending','completed','failed','review_required']:['all','pending','processing','completed','failed','review_required'];
   const stats=data?.stats;
   const pages=data?Math.max(1,Math.ceil(data.total/data.pageSize)):1;
-  const count=(field:string)=>stats?Number(stats[field]).toLocaleString():'—';
-  const amount=(field:string)=>stats?money(Number(stats[field])):'—';
+  const count=(field:string)=>stats?(stats[field]===undefined?'Access denied':Number(stats[field]).toLocaleString()):'—';
+  const amount=(field:string)=>stats?(stats[field]===undefined?'Access denied':money(Number(stats[field]))):'—';
   return <div className="space-y-5">
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {[
@@ -151,4 +154,10 @@ function GameOutcomeHistory(){
  const [page,setPage]=useState(1);const [data,setData]=useState<{rows:any[];total:number}|null>(null);const [error,setError]=useState('');
  useEffect(()=>{let live=true;const load=async()=>{const r=await supabase.rpc('matmove_spin_admin_outcomes',{p_page:page});if(!live)return;if(r.error)setError(r.error.message);else{setData(r.data);setError('');}};void load();const timer=setInterval(()=>void load(),15000);return()=>{live=false;clearInterval(timer);};},[page]);
  return <section className="mt-6 rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Six-segment outcomes — including bonuses and no-prize results</h2>{error&&<p role="alert" className="mt-3 text-red-700">{error}</p>}<div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th>Player</th><th>Entry fee</th><th>Spin</th><th>Outcome</th><th>Payment status</th><th>Time</th></tr></thead><tbody>{data?.rows.map(r=><tr key={`${r.round_id}:${r.spin_index}`} className="border-t"><td className="py-3"><PlayerName row={r}/><p className="mt-1 break-all text-xs">Game: {r.round_id}</p></td><td>{money(Number(r.entry_minor))}</td><td>{r.spin_index===2?'Free final spin':'Paid spin'}</td><td>{r.kind==='cash'?money(Number(r.amount_minor)):r.kind==='again'?'Spin again':'Better luck next time'}</td><td>{r.payment_status}<p className="break-all text-xs">{r.provider_id||'No provider receipt'}</p></td><td>{stamp(r.created_at)}</td></tr>)}</tbody></table></div>{data&&!data.rows.length&&<p className="mt-3">No six-segment outcomes yet.</p>}<div className="mt-4 flex gap-3"><button disabled={page===1} onClick={()=>setPage(p=>p-1)} className="rounded-lg border p-2 disabled:opacity-50">Previous</button><span>Page {page}</span><button disabled={!data||page*25>=data.total} onClick={()=>setPage(p=>p+1)} className="rounded-lg border p-2 disabled:opacity-50">Next</button></div></section>;
+}
+
+function ReceiptRecovery(){
+ const [round,setRound]=useState('');const [index,setIndex]=useState(0);const [provider,setProvider]=useState('');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [error,setError]=useState('');
+ async function attach(){setBusy(true);setError('');setMessage('');try{const r=await supabase.rpc('matmove_spin_admin_receipt',{p_id:round.trim(),p_index:index,p_provider:provider.trim()});if(r.error)throw r.error;setMessage('Existing receipt attached. The Customer status check will verify the provider receipt; no transfer was resent.');}catch(e){setError(e instanceof Error?e.message:(e as any)?.message||'Unable to attach receipt.');}finally{setBusy(false);}}
+ return <section className="rounded-xl border bg-white p-5"><h2 className="text-xl font-bold">Attach an existing provider receipt</h2><p className="mt-3">Use the original request key to locate the matching Monime transfer. Attaching a receipt does not send money again.</p>{error&&<p role="alert" className="mt-3 text-red-700">{error}</p>}{message&&<p role="status" className="mt-3 text-emerald-700">{message}</p>}<div className="mt-4 grid gap-3 sm:grid-cols-3"><input value={round} onChange={e=>setRound(e.target.value)} placeholder="Game UUID" className="rounded-lg border p-3"/><select value={index} onChange={e=>setIndex(Number(e.target.value))} className="rounded-lg border p-3"><option value={0}>Entry</option>{[1,2,3].map(n=><option key={n} value={n}>Spin {n}</option>)}</select><input value={provider} onChange={e=>setProvider(e.target.value)} placeholder="Existing trn-... ID" className="rounded-lg border p-3"/></div><button disabled={busy} onClick={()=>void attach()} className="mt-4 rounded-lg bg-purple-700 p-3 font-bold text-white disabled:opacity-50">Attach existing receipt</button></section>;
 }

@@ -1,3 +1,5 @@
+
+import {adminFetch} from '@/lib/adminFetch';
 import {
   useCallback,
   useEffect,
@@ -130,7 +132,7 @@ export function useWallets() {
       let monimeAccounts: any[] = [];
 
       try {
-        const apiRes = await fetch(
+        const apiRes = await adminFetch(
           '/api/get-space-balance'
         );
 

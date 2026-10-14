@@ -1,3 +1,5 @@
+
+import {adminFetch} from '@/lib/adminFetch';
 import { useState, useEffect, useMemo } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import StatCard from '@/components/StatCard';
@@ -14,7 +16,7 @@ export function PayoutsPage() {
     setLoading(true);
     setApiError('');
     try {
-      const res = await fetch('/api/get-payouts');
+      const res = await adminFetch('/api/get-payouts');
       const data = await res.json();
       
       if (!res.ok) throw new Error(data.error || 'Failed to connect to Monime API');

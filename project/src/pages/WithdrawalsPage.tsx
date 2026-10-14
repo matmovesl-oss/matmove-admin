@@ -1,3 +1,5 @@
+
+import {adminFetch} from '@/lib/adminFetch';
 import { useState, useEffect, useMemo } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import StatCard from '@/components/StatCard';
@@ -12,7 +14,7 @@ export default function WithdrawalsPage() {
   const fetchRealPayouts = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/get-payouts');
+      const res = await adminFetch('/api/get-payouts');
       const data = await res.json();
       if (data.payouts) {
         setPayouts(data.payouts.sort((a: any, b: any) => new Date(b.createTime).getTime() - new Date(a.createTime).getTime()));

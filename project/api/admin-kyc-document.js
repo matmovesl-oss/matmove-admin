@@ -1,3 +1,5 @@
+
+import {requireAdmin} from '../server/admin-auth.js';
 import { createClient } from '@supabase/supabase-js';
 
 const BUCKET = 'kyc-documents';
@@ -219,28 +221,7 @@ export function createHandler(
         );
       }
 
-      const {
-        data: admin,
-        error: adminError,
-      } = await client
-        .from('admins')
-        .select('id')
-        .eq('id', authData.user.id)
-        .maybeSingle();
-
-      if (adminError) {
-        throw fail(
-          502,
-          'Unable to verify admin access.'
-        );
-      }
-
-      if (!admin) {
-        throw fail(
-          403,
-          'KYC viewing requires membership in the admins table.'
-        );
-      }
+      await requireAdmin(req,['kyc'],{client,env});
 
       let body = req.body;
 

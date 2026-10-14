@@ -1,4 +1,5 @@
 
+
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -146,16 +147,7 @@ export default function AdminLayout({
     }
   }
 
-  const visibleItems = navItems.filter(item => {
-    if (access) {
-      return canAccess(access, item.key);
-    }
-
-    // Preserve the existing navigation while the remaining
-    // replacement files are being installed.
-    // The updated App will provide verified admin access.
-    return item.key !== 'marketplace';
-  });
+  const visibleItems=navItems.filter(item=>item.key!=='marketplace'&&canAccess(access,item.key));
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
@@ -226,8 +218,8 @@ export default function AdminLayout({
                   {gamesExpanded && <div id="games-submenu" className="mb-2 ml-5 space-y-1 border-l border-purple-800 pl-3 pr-2">
                     {[
                       ['overview', 'Overview'], ['players', 'Players'], ['entries', 'Entry payments'],
-                      ['winnings', 'Winnings'], ['settings', 'Settings & access'],
-                    ].map(([tab,label]) => (
+                      ['winnings', 'Winnings'], ['settings', 'Settings & access'], ['recovery', 'Receipt recovery'],
+                    ].filter(([tab])=>canAccess(access,`games.${tab}`)).map(([tab,label]) => (
                       <Link key={tab} to={`/games?tab=${tab}`} onClick={() => setSidebarOpen(false)}
                         aria-current={isActive && selected === tab ? 'page' : undefined}
                         className={`block rounded-lg px-3 py-2 text-xs font-semibold ${isActive && selected === tab ? 'bg-purple-700 text-white' : 'text-slate-300 hover:bg-purple-900/50'}`}>

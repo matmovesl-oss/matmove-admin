@@ -1,3 +1,5 @@
+
+import {adminFetch} from '@/lib/adminFetch';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
@@ -691,7 +693,7 @@ export function DocumentCard({
           throw new Error('Please sign in to the admin portal.');
         }
 
-        const response = await fetch('/api/admin-kyc-document', {
+        const response = await adminFetch('/api/admin-kyc-document', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

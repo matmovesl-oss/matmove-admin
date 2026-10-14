@@ -1,7 +1,11 @@
+
+import {requireAdmin} from '../server/admin-auth.js';
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method Not Allowed' });
 
   try {
+    await requireAdmin(req,["transactions"]);
     const monimeRes = await fetch('https://api.monime.io/v1/financial-transactions?limit=50', {
       method: 'GET',
       headers: {
@@ -18,6 +22,6 @@ export default async function handler(req, res) {
     const transactions = rawData.result || [];
     return res.status(200).json({ transactions });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    return res.status(error.status||500).json({ error: error.status?error.message:"Admin provider data unavailable." });
   }
 }

@@ -1,3 +1,5 @@
+
+import {adminFetch} from '@/lib/adminFetch';
 import { useState, useEffect } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
@@ -26,7 +28,7 @@ export function PricingPage({ adminProfile }: any) {
 
   const handleSave = async (id: string, type: string) => {
     try {
-      const res = await fetch('/api/update-pricing', {
+      const res = await adminFetch('/api/update-pricing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vehicle_type: type, min_fare: editForm.base_fare, per_km_rate: editForm.per_km_rate })
@@ -43,7 +45,7 @@ export function PricingPage({ adminProfile }: any) {
   const handleAddNew = async () => {
     if (!newType.trim()) return alert("Enter a service or vehicle type (e.g. delivery)");
     try {
-      const res = await fetch('/api/update-pricing', {
+      const res = await adminFetch('/api/update-pricing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vehicle_type: newType.toLowerCase().trim(), min_fare: newBase, per_km_rate: newPerKm })
