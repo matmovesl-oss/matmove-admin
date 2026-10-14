@@ -1,8 +1,10 @@
+
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import {
   Activity,
+  ChevronDown,
   ArrowRightLeft,
   Car,
   CreditCard,
@@ -32,6 +34,7 @@ interface AdminLayoutProps {
 }
 
 const navItems = [
+  { key: 'games', name: 'Games — Spin & Win', path: '/games', icon: Activity },
   {
     key: 'dashboard',
     name: 'Overview',
@@ -109,6 +112,7 @@ export default function AdminLayout({
   const access = useAdminAccess();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [gamesExpanded, setGamesExpanded] = useState(location.pathname === '/games');
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
 
@@ -207,6 +211,33 @@ export default function AdminLayout({
                 item.path === '/dashboard' &&
                 location.pathname === '/'
               );
+
+            if (item.key === 'games') {
+              const selected = new URLSearchParams(location.search).get('tab') || 'overview';
+              return (
+                <div key="games" className="rounded-xl border border-purple-900/40 bg-purple-950/20">
+                  <button type="button" aria-expanded={gamesExpanded} aria-controls="games-submenu"
+                    onClick={() => setGamesExpanded(open => !open)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold ${isActive ? 'text-amber-300' : 'text-purple-200 hover:bg-slate-900'}`}>
+                    <Activity size={18} />
+                    <span className="flex-1">Games — Spin & Win</span>
+                    <ChevronDown size={16} className={gamesExpanded ? 'rotate-180' : ''} />
+                  </button>
+                  {gamesExpanded && <div id="games-submenu" className="mb-2 ml-5 space-y-1 border-l border-purple-800 pl-3 pr-2">
+                    {[
+                      ['overview', 'Overview'], ['players', 'Players'], ['entries', 'Entry payments'],
+                      ['winnings', 'Winnings'], ['settings', 'Settings & access'],
+                    ].map(([tab,label]) => (
+                      <Link key={tab} to={`/games?tab=${tab}`} onClick={() => setSidebarOpen(false)}
+                        aria-current={isActive && selected === tab ? 'page' : undefined}
+                        className={`block rounded-lg px-3 py-2 text-xs font-semibold ${isActive && selected === tab ? 'bg-purple-700 text-white' : 'text-slate-300 hover:bg-purple-900/50'}`}>
+                        {label}
+                      </Link>
+                    ))}
+                  </div>}
+                </div>
+              );
+            }
 
             return (
               <Link

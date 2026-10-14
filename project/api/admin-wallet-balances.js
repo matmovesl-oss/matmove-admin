@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 export function createHandler(
@@ -160,6 +161,7 @@ export function createHandler(
           return res.status(200).json({
             accounts: [...accounts.values()],
             platform: {
+              spinAccountId: env.MONIME_SPIN_ACCOUNT_ID || null,
               escrowAccountId:
                 env.MONIME_ESCROW_ACCOUNT_ID || null,
               feeAccountId:

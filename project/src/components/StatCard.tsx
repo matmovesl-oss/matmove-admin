@@ -1,14 +1,16 @@
+
 import type { LucideIcon } from 'lucide-react';
 
 interface StatCardProps {
   label: string;
   value: string;
   icon: LucideIcon;
-  tone?: 'indigo' | 'emerald' | 'amber' | 'slate';
+  tone?: 'indigo' | 'emerald' | 'amber' | 'slate' | 'red';
   hint?: string;
 }
 
 const toneMap = {
+  red: { bg: 'bg-red-50', text: 'text-red-600', ring: 'ring-red-100' },
   indigo: {
     bg: 'bg-indigo-50',
     text: 'text-indigo-600',

@@ -1,3 +1,5 @@
+
+import { GamesPage } from './pages/GamesPage';
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
@@ -57,6 +59,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dispatch" element={<DispatchRadarPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/games" element={<GamesPage />} />
         <Route path="/kyc" element={<KycPage />} />
         <Route path="/financials" element={<FinancialsPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />

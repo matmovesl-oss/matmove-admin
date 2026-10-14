@@ -1,3 +1,4 @@
+
 export type KycStatus = 'pending' | 'approved' | 'rejected';
 export type LicenseStatus = 'valid' | 'expired' | 'pending' | 'rejected';
 export type Role = 'rider' | 'driver' | 'vendor' | 'ops_manager' | 'super_admin';
@@ -33,6 +34,8 @@ export interface KycQueueItem extends Profile {
 
 export interface Wallet {
   wallet_id: string;
+  reserved_balance?: number;
+  available_balance?: number;
   user_id: string;
   owner_name: string;
   balance: number;
