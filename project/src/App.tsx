@@ -1,5 +1,7 @@
 
 
+
+import {loadAdminSession} from './lib/adminSession';
 import { GamesPage } from './pages/GamesPage';
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
@@ -22,15 +24,27 @@ import {AdminAccessContext,canAccess,homeFor,type AdminAccess} from './lib/admin
 import AdminLayout from './components/AdminLayout';
 import StaffPasswordPage from './pages/StaffPasswordPage';
 
-function Denied({message='Access denied. This section has not been assigned to your staff account.'}:{message?:string}){return <AdminLayout title="Access denied"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">{message}</p></AdminLayout>;}
+function Denied({message='Access denied. This section has not been assigned to your staff account.',retry}:{message?:string;retry?:()=>void}){return <AdminLayout title="Access denied"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">{message}</p>{retry&&<button type="button" onClick={retry} className="mt-4 rounded-xl border bg-white px-5 py-3 font-bold">Retry permission check</button>}</AdminLayout>;}
 function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
 function GameGate({access}:{access:AdminAccess}){const loc=useLocation();const tab=new URLSearchParams(loc.search).get('tab');if(!tab){const first=['overview','players','entries','winnings','settings','recovery'].find(t=>canAccess(access,`games.${t}`));return first?<Navigate to={`/games?tab=${first}`} replace/>:<Denied/>;}if(!['overview','players','entries','winnings','settings','recovery'].includes(tab))return <Denied/>;return <Gate access={access} section={`games.${tab}`}><GamesPage/></Gate>;}
 function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean;onRecoveryDone:()=>void}){
- const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();
- useEffect(()=>{let live=true;const refresh=async()=>{const r=await supabase.rpc('matmove_admin_me');if(!live)return;if(r.error){setError('Unable to verify staff permissions. Run STAFF_ACCESS_SETUP.sql and refresh.');setAccess(null);}else{setAccess(r.data);setError('');}setLoading(false);};void refresh();const timer=setInterval(()=>void refresh(),15000);return()=>{live=false;clearInterval(timer);};},[session.user.id]);
- async function finished(){const r=await supabase.rpc('matmove_admin_me');if(!r.error)setAccess(r.data);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
+ const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();
+ useEffect(()=>{
+  let live=true,inFlight=false;
+  const refresh=async()=>{
+   if(inFlight)return;inFlight=true;
+   try{const row=await loadAdminSession(supabase,session);if(live){setAccess(row);setError('');}}
+   catch(e){if(live){setAccess(null);setError(e instanceof Error?e.message:'Unable to verify staff permissions.');}}
+   finally{inFlight=false;if(live)setLoading(false);}
+  };
+  setAccess(null);setLoading(true);void refresh();
+  const timer=setInterval(()=>void refresh(),15000);
+  return()=>{live=false;clearInterval(timer);};
+ },[session.user.id,session.access_token,reload]);
+ async function finished(){try{setAccess(await loadAdminSession(supabase,session));onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}catch(e){setError(e instanceof Error?e.message:'Unable to refresh permissions.');}}
+
  if(loading)return <p className="p-8">Checking staff assignments…</p>;
- return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage onComplete={()=>void finished()}/>:<Routes>
+ return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage onComplete={()=>void finished()}/>:<Routes>
  <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
  <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
  <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage/></Gate>}/>

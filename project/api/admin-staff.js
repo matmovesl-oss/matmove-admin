@@ -1,13 +1,19 @@
 
+
 import {requireAdmin,failure} from '../server/admin-auth.js';
-import {validPermissions,SECTION_GROUPS} from '../shared/admin-permissions.js';
+import {validPermissions,SECTION_GROUPS,PERMISSION_KEYS} from '../shared/admin-permissions.js';
 export function createHandler({authorize=requireAdmin,env=process.env}={}){return async(req,res)=>{
  res.setHeader('Cache-Control','no-store');
  if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Method not allowed.'});
  try{
-  const {client,user,access}=await authorize(req,['staff'],{env});
+  const view=req.query?.view??new URL(req.url||'/api/admin-staff','https://admin.invalid').searchParams.get('view');
+  if(view!=null&&view!=='me')throw failure(400,'Invalid staff view.');
+  if(view==='me'&&req.method!=='GET')throw failure(405,'Use GET for your staff session.');
+  const self=view==='me';
+  const {client,user,access}=await authorize(req,self?PERMISSION_KEYS:['staff'],{env});
+  if(self)return res.status(200).json({access:{id:user.id,email:access.email,full_name:access.full_name,department:access.department,is_owner:access.is_owner===true,is_active:access.is_active===true,permissions:Array.isArray(access.permissions)?access.permissions:[],requires_password_setup:access.requires_password_setup===true}});
   if(req.method==='GET'){const r=await client.from('matmove_staff_access').select('*').order('created_at',{ascending:false});if(r.error)throw failure(503,'Staff directory unavailable.');return res.status(200).json({staff:(r.data||[]).map(({id,email,full_name,department,permissions,is_active,is_owner,requires_password_setup,invite_state})=>({id,email,full_name,department,permissions,is_active,is_owner,requires_password_setup,invite_state}))});}
-  if(!access.is_owner&&access.role!=='super_admin')throw failure(403,'Access denied. Only the owner can authorize or change staff.');
+  if(access.is_owner!==true)throw failure(403,'Access denied. Only the owner can authorize or change staff.');
   const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};const action=body.action;
   if(!['invite','update','resend'].includes(action))throw failure(400,'Invalid staff action.');
   let targetId=body.id;
@@ -31,7 +37,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){retur
   if(typeof targetId!=='string'||!/^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}$/.test(targetId))throw failure(400,'Valid staff ID required.');
   if(action==='update'||action==='resend'){
    const target=await client.from('matmove_staff_access').select('*').eq('id',targetId).maybeSingle();if(target.error||!target.data)throw failure(404,'Staff account not found.');
-   if(target.data.is_owner||target.data.role==='super_admin'||targetId===user.id)throw failure(403,'Owner access cannot be changed here.');email=target.data.email;
+   if(target.data.is_owner||targetId===user.id)throw failure(403,'Owner access cannot be changed here.');email=target.data.email;
    if(action==='resend'&&target.data.is_active!==true)throw failure(409,'Reactivate this staff member before sending a login email.');
   }
   if(action!=='resend'){

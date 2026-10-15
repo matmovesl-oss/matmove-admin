@@ -1,6 +1,7 @@
+
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Shield, Loader2, Mail, Lock } from 'lucide-react';
+import { Loader2, Mail, Lock } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -13,13 +14,14 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authError) {
-      setError(authError.message);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(), password,
+      });
+      if (authError) throw authError;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to sign in. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -28,8 +30,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl border border-slate-200">
         <div className="bg-slate-900 px-8 py-10 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg mb-4">
-            <Shield size={32} className="text-white" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg mb-4">
+            <img src="/logo.png" alt="MatMove logo" className="h-16 w-16 rounded-2xl object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">MatMove Admin</h1>
           <p className="mt-2 text-sm text-slate-400">Enter your credentials to access the console</p>
@@ -56,7 +58,8 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="block w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                  placeholder="admin@matmove.com"
+                  placeholder="Your authorized work email"
+                  autoComplete="username"
                 />
               </div>
             </div>
@@ -74,6 +77,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
               </div>
             </div>

@@ -1,4 +1,5 @@
 
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {canAdminAccess,homeFor,validPermissions} from '../shared/admin-permissions.js';
@@ -16,3 +17,41 @@ function fixture(existing=false){let sent=0,saved=0,resets=0;const client={auth:
 test('owner invitation sends email with configured callback and narrow assignments',async()=>{const f=fixture();const handler=createHandler({authorize:async()=>({client:f.client,user:{id:ownerId},access:{is_owner:true}}),env:{ADMIN_APP_URL:'https://admin.example.com'}});const res=response();await handler({method:'POST',headers:{},body:{action:'invite',email:'staff@example.com',fullName:'Staff Member',permissions:['games.entries']}},res);assert.equal(res.code,200);assert.equal(f.sent,1);assert.equal(f.saved,1);assert.equal(f.resets,0);});
 test('existing identity gets login email without duplicate auth account',async()=>{const f=fixture(true);const handler=createHandler({authorize:async()=>({client:f.client,user:{id:ownerId},access:{is_owner:true}}),env:{ADMIN_APP_URL:'https://admin.example.com'}});const res=response();await handler({method:'POST',headers:{},body:{action:'invite',email:'staff@example.com',fullName:'Staff Member',permissions:['games.entries']}},res);assert.equal(res.code,200);assert.equal(f.sent,0);assert.equal(f.saved,1);assert.equal(f.resets,1);});
 test('invalid assignments or missing callback fail before sending email',async()=>{for(const body of [{action:'invite',email:'staff@example.com',fullName:'Staff',permissions:['unknown']},{action:'invite',email:'staff@example.com',fullName:'Staff',permissions:['games.entries']}]){const f=fixture();const handler=createHandler({authorize:async()=>({client:f.client,user:{id:ownerId},access:{is_owner:true}}),env:{}});const res=response();await handler({method:'POST',headers:{},body},res);assert.ok([400,503].includes(res.code));assert.equal(f.sent,0);assert.equal(f.saved,0);}});
+test('self-session endpoint accepts a narrow game assignment and never lists other staff',async()=>{
+ let keys;const handler=createHandler({authorize:async(req,requested)=>{keys=requested;return {client:{from(){throw new Error('Must not read the staff directory');}},user:{id},access:row};}});
+ const r=response();await handler({method:'GET',url:'/api/admin-staff?view=me',headers:{}},r);assert.equal(r.code,200);assert.equal(r.body.access.id,id);assert.deepEqual(r.body.access.permissions,['games.entries']);assert.equal(r.body.staff,undefined);assert.ok(keys.includes('games.entries'));
+});
+test('self-session endpoint preserves authentication failures and cannot be used for a POST',async()=>{
+ const handler=createHandler({authorize:async()=>{throw Object.assign(new Error('Session expired'),{status:401});}});
+ const r=response();await handler({method:'GET',query:{view:'me'},headers:{}},r);assert.equal(r.code,401);
+ const post=response();await handler({method:'POST',query:{view:'me'},headers:{},body:{is_owner:true}},post);assert.equal(post.code,405);
+});
+test('browser RPC permission failure recovers only through verified server access; inactive and wrong identities stay denied',async()=>{
+ const {build}=await import('esbuild');const {mkdtemp,rm}=await import('node:fs/promises');const {join}=await import('node:path');const {pathToFileURL}=await import('node:url');const dir=await mkdtemp(join(process.cwd(),'.staff-session-test-'));
+ try{
+ const file=join(dir,'session.mjs');await build({entryPoints:['src/lib/adminSession.ts'],bundle:true,platform:'node',format:'esm',outfile:file});const {loadAdminSession}=await import(pathToFileURL(file));
+ const session={user:{id},access_token:'verified-token'};const failed={rpc:async()=>({data:null,error:{code:'42501',message:'permission denied'}})};
+ const recovered=await loadAdminSession(failed,session,async(url,options)=>{assert.equal(url,'/api/admin-staff?view=me');assert.equal(options.headers.Authorization,'Bearer verified-token');return {ok:true,json:async()=>({access:row})};});assert.deepEqual(recovered,row);
+ assert.equal(await loadAdminSession({rpc:async()=>({data:null,error:null})},session,async()=>{throw new Error('An unassigned user must not use a fallback role');}),null);
+ await assert.rejects(()=>loadAdminSession(failed,session,async()=>({ok:true,json:async()=>({access:{...row,id:ownerId,is_owner:true}})})),/signed-in/);
+ await assert.rejects(()=>loadAdminSession(failed,session,async()=>({ok:false,json:async()=>({error:'Access denied'})})),/Access denied/);
+ const inactive=await loadAdminSession({rpc:async()=>({data:{...row,is_active:false},error:null})},session);assert.equal(canAdminAccess(inactive,'games.entries'),false);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+
+test('full operational administrator can open every section but cannot invite, update, or resend staff access',async()=>{
+ const {PERMISSION_KEYS}=await import('../shared/admin-permissions.js');
+ const administrator={...row,permissions:[...PERMISSION_KEYS]};
+ for(const key of PERMISSION_KEYS)assert.equal(canAdminAccess(administrator,key),true);
+ for(const action of ['invite','update','resend']){
+  let touched=false;
+  const handler=createHandler({authorize:async()=>({client:new Proxy({},{get(){touched=true;throw new Error('Must reject before touching staff data');}}),user:{id},access:administrator})});
+  const res=response();await handler({method:'POST',headers:{},body:{action,is_owner:true,role:'super_admin'}},res);
+  assert.equal(res.code,403);assert.equal(touched,false);
+ }
+});
+test('legacy role label cannot create owner privileges without the verified owner flag',()=>{
+ assert.equal(canAdminAccess({...row,role:'super_admin'},'staff'),false);
+ assert.equal(canAdminAccess({...row,role:'super_admin'},'games.settings'),false);
+});
