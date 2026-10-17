@@ -1,4 +1,5 @@
 
+
 import {adminFetch} from '@/lib/adminFetch';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
@@ -33,6 +34,8 @@ type Profile = {
   city: string | null;
   address: string | null;
   kyc_status: string | null;
+  kyc_review_version: number;
+  kyc_rejection_reason: string | null;
   role: string | null;
   vehicle_type: string | null;
   plate_number: string | null;
@@ -51,6 +54,7 @@ type Profile = {
 
 type KycSubmission = {
   id: string;
+  submission_id: string | null;
   profile_id: string | null;
   target_role: TargetRole | null;
   status: KycStatus | null;
@@ -141,25 +145,10 @@ export function KycPage() {
         throw new Error('Supabase is not configured.');
       }
 
-      const { data, error: queryError } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('role', ['rider', 'driver', 'merchant'])
-        .order('updated_at', { ascending: false });
-
+      const {data, error: queryError} = await supabase.rpc('matmove_admin_kyc_queue');
       if (queryError) throw queryError;
-
-      const normalized = (data ?? []).map((profile: any) => ({
-        id: profile.id,
-        profile_id: profile.id,
-        target_role: profile.role,
-        status: profile.kyc_status || 'pending',
-        rejection_reason: null,
-        submitted_at: profile.updated_at || profile.created_at,
-        created_at: profile.created_at,
-        profile,
-      }));
-
+      if (!Array.isArray(data)) throw new Error('KYC queue response is invalid.');
+      const normalized = data as KycSubmission[];
       setSubmissions(normalized);
     } catch (err: any) {
       setError(err?.message || 'Unable to load KYC submissions.');
@@ -219,9 +208,10 @@ export function KycPage() {
     setDecision('approved');
   };
 
-  // Existing approval behavior is retained for this document-viewing fix.
+  // Decision, exact reason, review version and audit receipt are committed atomically.
   const submitDecision = async () => {
-    if (!selected) return;
+    if (!selected || actionLoading) return;
+    if (!selected.submission_id) { setError('This customer has not submitted verification.'); return; }
 
     if (
       (decision === 'rejected' || decision === 'resubmission_required') &&
@@ -239,21 +229,16 @@ export function KycPage() {
         throw new Error('Supabase is not configured.');
       }
 
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ kyc_status: decision })
-        .eq('id', selected.profile_id);
-
-      if (updateError) throw updateError;
-
-      await supabase.from('audit_logs').insert({
-        action: `KYC_${decision.toUpperCase()}`,
-        details:
-          `Reviewed KYC for profile ${selected.profile_id}. ` +
-          `Reason: ${reason || 'Approved'}`,
+      const {data, error: updateError} = await supabase.rpc('matmove_review_customer_kyc', {
+        p_profile: selected.profile_id,
+        p_submission: selected.submission_id,
+        p_expected_version: selected.profile?.kyc_review_version ?? 0,
+        p_decision: decision,
+        p_reason: decision === 'approved' ? '' : reason.trim()
       });
-
-      closeReview();
+      if (updateError) throw updateError;
+      if (data?.success !== true) throw new Error('KYC review was not confirmed. Refresh before retrying.');
+      setSelected(null); setReason(''); setDecision('approved');
       await loadSubmissions(true);
     } catch (err: any) {
       setError(err?.message || 'Unable to complete the KYC review.');
@@ -403,6 +388,8 @@ export function KycPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-right">
                           <button
                             onClick={() => openReview(submission)}
+                            disabled={!submission.submission_id}
+                            title={!submission.submission_id ? 'This user has not submitted verification yet.' : 'Review submitted verification'}
                             className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition"
                           >
                             Review
@@ -574,7 +561,7 @@ export function KycPage() {
                       active={decision === 'rejected'}
                       onClick={() => setDecision('rejected')}
                       title="Reject"
-                      description="Permanently reject this submission."
+                      description="Reject and explain the changes required."
                     />
                     <DecisionButton
                       active={decision === 'resubmission_required'}
@@ -587,11 +574,12 @@ export function KycPage() {
                   {decision !== 'approved' && (
                     <div className="mt-4">
                       <label className="mb-2 block text-sm font-bold text-slate-700">
-                        Reason <span className="text-red-600">*</span>
+                        Reason shown to this customer <span className="text-red-600">*</span>
                       </label>
                       <textarea
                         value={reason}
                         onChange={event => setReason(event.target.value)}
+                        maxLength={2000}
                         rows={3}
                         className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-indigo-500"
                       />
