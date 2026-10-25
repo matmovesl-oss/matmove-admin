@@ -1,4 +1,7 @@
-import { useState, useEffect } from 'react';
+
+import {exportCsv, providerAmount} from '@/lib/csvExport';
+import {useAdminAccess,canAccess} from '@/lib/adminAccess';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
 import { DocumentCard } from './KycPage';
@@ -31,6 +34,16 @@ function Info({
 }
 
 export default function UsersPage() {
+  const access=useAdminAccess();
+  const allowed=canAccess(access,'customers');
+  const stamp=JSON.stringify([access?.id,allowed,access?.is_active,access?.permissions]);
+  const current=useRef(stamp);current.current=stamp;
+  const [loadedStamp,setLoadedStamp]=useState('');
+  const [exporting,setExporting]=useState(false);
+  const [exportError,setExportError]=useState('');
+  const [exportNotice,setExportNotice]=useState('');
+  const exportBusy=useRef(false);
+
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -40,45 +53,25 @@ export default function UsersPage() {
   >('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      if (!supabase) {
-        throw new Error('Supabase is not configured.');
-      }
-
-      const { data, error: queryError } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('role', ['rider', 'driver', 'merchant'])
-        .order('created_at', { ascending: false });
-
-      if (queryError) throw queryError;
-      setUsers(data || []);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to load customers.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchUsers();
-  }, []);
+  const mounted=useRef(false),readGeneration=useRef(0);
+  const fetchUsers=useCallback(async()=>{
+    if(!allowed)return;
+    const generation=++readGeneration.current;setLoading(true);setError('');
+    setLoadedStamp(stamp);
+    try{
+      const {data,error:queryError}=await supabase.from('profiles').select('*').in('role',['rider','driver','merchant']).order('created_at',{ascending:false});
+      if(queryError)throw queryError;
+      if(!Array.isArray(data))throw new Error('The customer response could not be verified.');
+      if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setUsers(data);
+    }catch(error:any){if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setError(error.message||'Could not load customers.');}
+    finally{if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setLoading(false);}
+  },[stamp,allowed]);
+  useEffect(()=>{mounted.current=true;setUsers([]);setSelectedUser(null);void fetchUsers();return()=>{mounted.current=false;readGeneration.current++;};},[fetchUsers]);
 
   const filteredUsers = users.filter(user => {
-    const term = search.toLowerCase();
-
-    const matchesSearch =
-      user.full_name?.toLowerCase().includes(term) ||
-      user.email?.toLowerCase().includes(term) ||
-      user.phone?.includes(search);
+    const term = search.trim().toLowerCase();
+    const matchesSearch = !term || [user.full_name,user.first_name,user.last_name,user.email,user.phone,user.phone_number]
+      .some(value=>String(value||'').toLowerCase().includes(term));
 
     const matchesRole =
       roleFilter === 'all' || user.role === roleFilter;
@@ -86,13 +79,39 @@ export default function UsersPage() {
     return matchesSearch && matchesRole;
   });
 
+  async function downloadDisplayed() {
+    if(exportBusy.current||loading||error||!canAccess(access,'customers'))return;
+    exportBusy.current=true;setExporting(true);setExportError('');setExportNotice('');
+    try{
+      const count=await exportCsv({userId:access!.id,section:'customers',filename:'matmove-customers',rows:[...filteredUsers],columns:[
+        {label:'Customer ID',value:(row:any)=>row.id},
+        {label:'Full name',value:(row:any)=>row.full_name||[row.first_name,row.last_name].filter(Boolean).join(' ')},
+        {label:'Role',value:(row:any)=>row.role},
+        {label:'Email',value:(row:any)=>row.email},
+        {label:'Phone',value:(row:any)=>row.phone||row.phone_number},
+        {label:'KYC status',value:(row:any)=>row.kyc_status},
+        {label:'Created at',value:(row:any)=>row.created_at},
+      ]});
+      setExportNotice(`Downloaded ${count} displayed records.`);
+    }catch(error:any){setExportError(error.message||'CSV export failed.');}
+    finally{exportBusy.current=false;setExporting(false);}
+  }
+
+  if(!allowed)return <AdminLayout title="Customer Governance"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
+  if(loadedStamp!==stamp)return <AdminLayout title="Customer Governance"><p className="p-6">Loading customers...</p></AdminLayout>;
   return (
     <AdminLayout
       title="Customer Governance"
       subtitle="Monitor and manage Riders, Drivers, and Merchants"
     >
+      <section aria-label="CSV export" className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4">
+        <div><p className="text-sm font-bold">Export displayed records</p><p className="text-xs text-slate-600">Exports the currently loaded records matching your filters. This is the loaded customer list, not a complete database backup.</p></div>
+        <button type="button" onClick={()=>void downloadDisplayed()} disabled={exporting||loading||!!error||!filteredUsers.length||!canAccess(access,'customers')} className="min-h-11 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{exporting?'Exporting…':'Export displayed CSV'}</button>
+        {exportError&&<p role="alert" className="w-full text-sm text-red-800">{exportError}</p>}
+        {exportNotice&&<p role="status" className="w-full text-sm text-emerald-800">{exportNotice}</p>}
+      </section>
       <div className="mb-6 mt-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex w-full max-w-xl flex-1 gap-3">
+        <div className="flex w-full max-w-xl flex-1 flex-wrap gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -120,6 +139,7 @@ export default function UsersPage() {
 
         <button
           onClick={() => void fetchUsers()}
+          disabled={loading}
           className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
         >
           <RefreshCw
@@ -148,7 +168,9 @@ export default function UsersPage() {
             />
             Loading customers...
           </div>
-        ) : (
+        ) : error ? (
+          <p role="alert" className="p-6 text-red-800">Customer records could not be loaded.<button type="button" onClick={()=>void fetchUsers()} className="ml-2 min-h-11 font-bold underline">Retry customers</button></p>
+        ) : !filteredUsers.length ? <p className="p-6 text-slate-600">No customers match the selected filters.</p> : (
           <div className="max-h-[600px] overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="sticky top-0 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -168,7 +190,7 @@ export default function UsersPage() {
                       <div className="text-base font-bold text-slate-900">
                         {user.full_name ||
                           `${user.first_name || ''} ${user.last_name || ''}`.trim() ||
-                          'No Name'}
+                          user.email || user.phone || user.phone_number || user.id}
                       </div>
                       <div className="mt-0.5 font-mono text-xs text-slate-400">
                         {user.id.slice(0, 12)}...
@@ -207,7 +229,11 @@ export default function UsersPage() {
                           <ShieldAlert size={16} />
                           {user.kyc_status === 'rejected'
                             ? 'Rejected'
-                            : 'Pending'}
+                            : ['not_started','draft'].includes(user.kyc_status)
+                              ? 'KYC not submitted'
+                              : user.kyc_status === 'resubmission_required'
+                                ? 'Resubmission required'
+                                : user.kyc_status === 'pending' ? 'Pending review' : 'KYC status unavailable'}
                         </span>
                       )}
                     </td>
@@ -237,7 +263,7 @@ export default function UsersPage() {
                   Customer Profile & Documents
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {selectedUser.full_name || 'Customer'} ·{' '}
+                  {selectedUser.full_name || `${selectedUser.first_name || ''} ${selectedUser.last_name || ''}`.trim() || selectedUser.email || selectedUser.phone || selectedUser.phone_number || selectedUser.id} ·{' '}
                   <span className="font-bold uppercase text-indigo-600">
                     {selectedUser.role}
                   </span>

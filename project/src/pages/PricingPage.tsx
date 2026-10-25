@@ -1,6 +1,7 @@
 
+
 import {adminFetch} from '@/lib/adminFetch';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
 import { Loader2, Edit, Save, X, Tag, Plus } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Loader2, Edit, Save, X, Tag, Plus } from 'lucide-react';
 export function PricingPage({ adminProfile }: any) {
   const [pricing, setPricing] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ base_fare: 0, per_km_rate: 0 });
   
@@ -15,16 +17,23 @@ export function PricingPage({ adminProfile }: any) {
   const [newBase, setNewBase] = useState(0);
   const [newPerKm, setNewPerKm] = useState(0);
 
-  const fetchPricing = async () => {
-    setLoading(true);
+  const mounted = useRef(false), generation = useRef(0);
+  const fetchPricing = useCallback(async () => {
+    const token = ++generation.current;
+    setLoading(true); setLoadError('');
     try {
-      const { data, error } = await supabase.from('pricing_settings').select('*').order('vehicle_type');
+      const {data,error} = await supabase.from('pricing_settings').select('*').order('vehicle_type');
       if (error) throw error;
-      setPricing(data || []);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
-  };
+      if (!Array.isArray(data)) throw new Error('Could not verify the pricing response.');
+      if (mounted.current && token === generation.current) setPricing(data);
+    } catch (error: any) {
+      if (mounted.current && token === generation.current) setLoadError(error.message || 'Could not load this section. Please retry.');
+    } finally {
+      if (mounted.current && token === generation.current) setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { fetchPricing(); }, []);
+  useEffect(() => { mounted.current = true; void fetchPricing(); return () => { mounted.current = false; generation.current++; }; }, [fetchPricing]);
 
   const handleSave = async (id: string, type: string) => {
     try {
@@ -72,16 +81,16 @@ export function PricingPage({ adminProfile }: any) {
           <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Per KM (SLE)</label>
           <input type="number" value={newPerKm} onChange={e => setNewPerKm(Number(e.target.value))} className="mt-1 w-full border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500" />
         </div>
-        <button onClick={handleAddNew} className="w-full md:w-auto bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2">
+        <button disabled={loading||!!loadError} onClick={handleAddNew} className="w-full md:w-auto bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2">
           <Plus size={16} /> Add Pricing
         </button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-x-auto">
         <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <div className="flex items-center gap-2 text-indigo-700"><Tag size={18} /><h3 className="font-bold">Active Fleet & Service Pricing</h3></div>
         </div>
-        {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Loading pricing models...</div> : (
+        {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Loading pricing models...</div> : loadError ? <p role="alert" className="p-6 text-red-800">{loadError}<button type="button" onClick={() => void fetchPricing()} className="ml-2 min-h-11 font-bold underline">Retry pricing</button></p> : pricing.length === 0 ? <p className="p-6 text-slate-600">No pricing models have been configured.</p> : (
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-100 text-slate-500 text-[10px] uppercase font-bold tracking-wider">
               <tr><th className="px-6 py-4">Service Type</th><th className="px-6 py-4">Base Fare (SLE)</th><th className="px-6 py-4">Per KM Rate (SLE)</th><th className="px-6 py-4 text-right">Action</th></tr>

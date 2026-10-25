@@ -1,5 +1,6 @@
 
 
+
 import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -26,6 +27,7 @@ import { supabase } from '@/lib/supabase';
 import {
   canAccess,
   useAdminAccess,
+  sections,
 } from '@/lib/adminAccess';
 
 interface AdminLayoutProps {
@@ -35,6 +37,7 @@ interface AdminLayoutProps {
 }
 
 const navItems = [
+  {key: 'reports', name: 'Reports & CSV', path: '/reports', icon: FileText},
   { key: 'games', name: 'Games — Spin & Win', path: '/games', icon: Activity },
   {
     key: 'dashboard',
@@ -147,7 +150,7 @@ export default function AdminLayout({
     }
   }
 
-  const visibleItems=navItems.filter(item=>item.key!=='marketplace'&&canAccess(access,item.key));
+  const visibleItems=navItems.filter(item=>item.key!=='marketplace'&&(item.key==='reports'?sections.some(([key])=>canAccess(access,key)):canAccess(access,item.key)));
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">

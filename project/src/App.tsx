@@ -1,4 +1,6 @@
 
+import ReportsPage from './pages/ReportsPage';
+
 
 
 import {loadAdminSession} from './lib/adminSession';
@@ -20,7 +22,7 @@ import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage'; 
 import { TransactionsPage } from './pages/TransactionsPage'; 
 
-import {AdminAccessContext,canAccess,homeFor,type AdminAccess} from './lib/adminAccess';
+import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
 import StaffPasswordPage from './pages/StaffPasswordPage';
 
@@ -47,6 +49,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage onComplete={()=>void finished()}/>:<Routes>
  <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
  <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
+ <Route path="/reports" element={sections.some(([key])=>canAccess(access,key))?<ReportsPage key={access.id}/>:<Denied/>}/>
  <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage/></Gate>}/>
  <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage/></Gate>}/>
  <Route path="/games" element={<GameGate access={access}/>}/>

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+
+import { useEffect, useState, useRef, useCallback } from 'react';
+import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
 
@@ -34,11 +36,13 @@ type Account = {
 type Platform = {
   escrowAccountId: string | null;
   feeAccountId: string | null;
+  spinAccountId: string | null;
 };
 
 const emptyPlatform: Platform = {
   escrowAccountId: null,
   feeAccountId: null,
+  spinAccountId: null,
 };
 
 const money = (value: number, currency: string) =>
@@ -66,6 +70,11 @@ const availableBalance = (
 };
 
 export function FinancialsPage() {
+  const access=useAdminAccess(),allowed=canAccess(access,'financials');
+  const stamp=JSON.stringify([access?.id,allowed,access?.is_active,access?.permissions]);
+  const current=useRef(stamp);current.current=stamp;
+  const mounted=useRef(false),generation=useRef(0),writeLock=useRef(false);
+  const [loadedStamp,setLoadedStamp]=useState('');
   const [wallets, setWallets] = useState<Row[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [platform, setPlatform] =
@@ -80,7 +89,11 @@ export function FinancialsPage() {
   const [target, setTarget] = useState<Row | null>(null);
   const [reason, setReason] = useState('');
 
-  async function load() {
+  const load=useCallback(async()=> {
+    if(!allowed)return;
+    const token=++generation.current;
+    const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
+    setLoadedStamp(stamp);setWallets([]);
     setLoading(true);
     setError('');
     setGatewayError('');
@@ -97,9 +110,11 @@ export function FinancialsPage() {
         .order('created_at', { ascending: false });
 
       if (dbError) throw dbError;
-
-      setWallets((data || []) as unknown as Row[]);
+      if(!Array.isArray(data))throw new Error('Customer wallet response is invalid.');
+      if(!valid())return;
+      setWallets(data as unknown as Row[]);
     } catch (err: any) {
+      if(!valid())return;
       setWallets([]);
       setError(
         err.message ||
@@ -115,7 +130,8 @@ export function FinancialsPage() {
 
       if (sessionError) throw sessionError;
 
-      if (!sessionData.session) {
+      if(!valid())return;
+      if (!sessionData.session || sessionData.session.user.id!==access?.id) {
         throw new Error('Please sign in again.');
       }
 
@@ -131,6 +147,7 @@ export function FinancialsPage() {
       );
 
       const result = await response.json();
+      if(!valid())return;
 
       if (!response.ok) {
         throw new Error(
@@ -145,23 +162,27 @@ export function FinancialsPage() {
       setAccounts(result.accounts);
 
       setPlatform({
+        spinAccountId: result.platform?.spinAccountId || null,
         escrowAccountId:
           result.platform?.escrowAccountId || null,
         feeAccountId:
           result.platform?.feeAccountId || null,
       });
     } catch (err: any) {
+      if(!valid())return;
       setGatewayError(
         err.message || 'Monime balances unavailable.'
       );
     } finally {
-      setLoading(false);
+      if(valid())setLoading(false);
     }
-  }
+  },[stamp,allowed,access?.id]);
 
   useEffect(() => {
+    mounted.current=true;setTarget(null);setReason('');setNotice('');setBusy(false);
     void load();
-  }, []);
+    return()=>{mounted.current=false;generation.current++;};
+  }, [load]);
 
   const accountMap = new Map(
     accounts.map(account => [account.id, account])
@@ -187,12 +208,12 @@ export function FinancialsPage() {
     const metadata = wallet.metadata?.monime_account_id;
 
     if (
-      gatewayError ||
+      loading || error || gatewayError || loadedStamp!==stamp ||
       (direct && metadata && direct !== metadata) ||
       linkCounts.get(id) !== 1 ||
       account?.currency !== wallet.currency ||
       id === platform.escrowAccountId ||
-      id === platform.feeAccountId
+      id === platform.feeAccountId || id === platform.spinAccountId
     ) {
       return null;
     }
@@ -221,17 +242,23 @@ export function FinancialsPage() {
   async function saveFreeze() {
     if (
       !target ||
+      !allowed || loadedStamp!==stamp || writeLock.current ||
       busy ||
       reason.trim().length < 3
     ) {
       return;
     }
 
+    writeLock.current=true;const actionStamp=stamp;
+    const valid=()=>mounted.current&&current.current===actionStamp;
     setBusy(true);
     setError('');
     setNotice('');
 
     try {
+      const {data:session,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError)throw sessionError;
+      if(!valid()||session.session?.user.id!==access?.id)throw new Error('Session changed. Sign in again before updating a wallet.');
       const desired = !target.is_frozen;
 
       const {
@@ -247,6 +274,7 @@ export function FinancialsPage() {
       );
 
       if (rpcError) throw rpcError;
+      if(!valid())return;
 
       if (
         data?.success !== true ||
@@ -269,14 +297,18 @@ export function FinancialsPage() {
 
       await load();
     } catch (err: any) {
+      if(!valid())return;
       setError(
         err.message ||
         'Wallet freeze could not be updated.'
       );
     } finally {
-      setBusy(false);
+      writeLock.current=false;if(valid())setBusy(false);
     }
   }
+
+  if(!allowed)return <AdminLayout title="Financial & Wallets"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
+  if(loadedStamp!==stamp)return <AdminLayout title="Financial & Wallets"><p className="p-6">Loading wallets...</p></AdminLayout>;
 
   return (
     <AdminLayout
@@ -307,7 +339,7 @@ export function FinancialsPage() {
             onClick={() => void load()}
             className="rounded-lg border px-4 py-2 disabled:opacity-50"
           >
-            {loading ? 'Loading...' : 'Refresh'}
+            {loading ? 'Loading...' : error || gatewayError ? 'Retry financials' : 'Refresh'}
           </button>
         </div>
 
@@ -446,7 +478,7 @@ export function FinancialsPage() {
                 </p>
 
                 <p className="mt-2 text-2xl font-bold">
-                  {loading ||
+                  {loading ? 'Loading...' : error ||
                   gatewayError ||
                   !verified.length
                     ? 'Unavailable'
@@ -465,7 +497,7 @@ export function FinancialsPage() {
           <div className="rounded-xl border bg-white p-5">
             <p>Active wallets</p>
             <p className="mt-2 text-2xl font-bold">
-              {wallets.filter(
+              {loading ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
                 w => w.is_frozen === false
               ).length}
             </p>
@@ -474,7 +506,7 @@ export function FinancialsPage() {
           <div className="rounded-xl border bg-white p-5">
             <p>Frozen wallets</p>
             <p className="mt-2 text-2xl font-bold">
-              {wallets.filter(
+              {loading ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
                 w => w.is_frozen === true
               ).length}
             </p>
@@ -492,7 +524,7 @@ export function FinancialsPage() {
           <div className="space-y-3 rounded-xl border bg-white p-5">
             <p className="font-bold">
               {target.is_frozen ? 'Unfreeze' : 'Freeze'}{' '}
-              {target.profiles?.full_name || 'customer'}{' '}
+              {target.profiles?.full_name || target.profiles?.email || target.profiles?.phone || target.user_id}{' '}
               — {target.currency}
             </p>
 
@@ -553,7 +585,7 @@ export function FinancialsPage() {
             </thead>
 
             <tbody>
-              {!loading && !filtered.length && (
+              {loading ? <tr><td colSpan={7} className="p-6 text-center">Loading customer wallets...</td></tr> : error ? <tr><td colSpan={7} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : !filtered.length && (
                 <tr>
                   <td
                     colSpan={7}
@@ -564,7 +596,7 @@ export function FinancialsPage() {
                 </tr>
               )}
 
-              {filtered.map(wallet => {
+              {!loading && !error && filtered.map(wallet => {
                 const balance =
                   customerBalance(wallet);
 
@@ -576,7 +608,7 @@ export function FinancialsPage() {
                     <td className="p-4">
                       <p className="font-bold">
                         {wallet.profiles?.full_name ||
-                          'Unknown customer'}
+                          wallet.profiles?.email || wallet.profiles?.phone || wallet.user_id}
                       </p>
                       <p className="text-xs text-slate-500">
                         {wallet.profiles?.role}{' '}
@@ -593,7 +625,7 @@ export function FinancialsPage() {
                     </td>
 
                     <td className="p-4">
-                      {loading || balance === null
+                      {balance === null
                         ? 'Unavailable'
                         : money(
                             balance,
@@ -602,10 +634,7 @@ export function FinancialsPage() {
                     </td>
 
                     <td className="p-4">
-                      {money(
-                        Number(wallet.balance || 0),
-                        wallet.currency
-                      )}
+                      {wallet.balance!=null && Number.isFinite(Number(wallet.balance)) ? money(Number(wallet.balance),wallet.currency) : 'Unavailable'}
                     </td>
 
                     <td className="p-4">

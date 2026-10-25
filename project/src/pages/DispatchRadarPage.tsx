@@ -1,264 +1,83 @@
-import { useState, useEffect } from 'react';
+
+import {useEffect,useRef,useState} from 'react';
+import {RefreshCw,MapPin,Navigation} from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import { supabase } from '@/lib/supabase';
-import { Loader2, MapPin, Navigation, RefreshCw, Car, Package, Phone, CalendarClock, UserPlus, X, AlertCircle } from 'lucide-react';
-
-export default function DispatchRadarPage() {
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Dispatch Modal States
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
-  const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
-  const [selectedDriverId, setSelectedDriverId] = useState<string>('');
-  const [actionLoading, setActionLoading] = useState(false);
-
-  const fetchBookings = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          *,
-          rider:rider_id(full_name, phone),
-          driver:driver_id(full_name, phone)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
-        
-      if (error) throw error;
-      setBookings(data || []);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
-  };
-
-  const fetchAvailableDrivers = async () => {
-    try {
-      // Fetch all approved drivers
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, phone, vehicle_type, plate_number')
-        .eq('role', 'driver')
-        .eq('kyc_status', 'approved');
-      if (error) throw error;
-      setAvailableDrivers(data || []);
-    } catch (err) { console.error("Failed to load drivers", err); }
-  };
-
-  useEffect(() => { 
-    fetchBookings(); 
-    fetchAvailableDrivers();
-
-    const channel = supabase.channel('admin-dispatch-radar')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, fetchBookings)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  const handleAssignDriver = async () => {
-    if (!selectedDriverId) return alert('Please select a driver first.');
-    setActionLoading(true);
-    try {
-      // Force accept the booking and assign to specific driver
-      const { error } = await supabase.from('bookings').update({ 
-        status: 'accepted', 
-        driver_id: selectedDriverId 
-      }).eq('id', selectedBooking.id);
-      
-      if (error) throw error;
-      alert('Driver assigned successfully!');
-      setSelectedBooking(null);
-      fetchBookings();
-    } catch (err: any) { alert(err.message); } finally { setActionLoading(false); }
-  };
-
-  const handleCancelTrip = async () => {
-    if (!window.confirm('Are you sure you want to cancel this request?')) return;
-    setActionLoading(true);
-    try {
-      const { error } = await supabase.from('bookings').update({ 
-        status: 'cancelled' 
-      }).eq('id', selectedBooking.id);
-      
-      if (error) throw error;
-      alert('Trip cancelled securely.');
-      setSelectedBooking(null);
-      fetchBookings();
-    } catch (err: any) { alert(err.message); } finally { setActionLoading(false); }
-  };
-
-  return (
-    <AdminLayout title="Dispatch Radar Feed" subtitle="Live tracking and manual assignment of incoming requests">
-      <div className="flex justify-end mb-6 mt-6">
-        <button onClick={fetchBookings} disabled={loading} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-sm">
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh Radar
-        </button>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        {loading ? <div className="p-12 text-center text-slate-500"><Loader2 size={24} className="animate-spin mx-auto mb-2" /> Scanning for active bookings...</div> : bookings.length === 0 ? <div className="p-8 text-center text-slate-500">No active bookings found.</div> : (
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
-              <tr><th className="px-6 py-4">Rider Details</th><th className="px-6 py-4">Driver Details</th><th className="px-6 py-4">Route Info</th><th className="px-6 py-4">Fare (SLE)</th><th className="px-6 py-4">Status</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {bookings.map((b) => {
-                 const statusTone = b.status === 'completed' ? 'emerald' : b.status === 'cancelled' ? 'red' : 'amber';
-                 return (
-                  <tr key={b.id} onClick={() => setSelectedBooking(b)} className="hover:bg-slate-50 transition cursor-pointer group">
-                    {/* RIDER INFO */}
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900 mb-1 group-hover:text-indigo-600 transition">{b.rider?.full_name || 'Unknown Rider'}</div>
-                      <div className="flex items-center gap-1 text-xs text-slate-500"><Phone size={12}/> {b.rider?.phone || 'No Phone'}</div>
-                      <div className="mt-1 flex items-center gap-2">
-                        {b.service_type === 'delivery' ? <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex w-max items-center gap-1"><Package size={12}/> Delivery</span>
-                        : b.service_type === 'scheduled' ? <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex w-max items-center gap-1"><CalendarClock size={12}/> Scheduled</span>
-                        : <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex w-max items-center gap-1"><Car size={12}/> Ride</span>}
-                      </div>
-                    </td>
-                    {/* DRIVER INFO */}
-                    <td className="px-6 py-4">
-                      {b.driver ? (
-                        <>
-                          <div className="font-bold text-slate-900 mb-1">{b.driver.full_name}</div>
-                          <div className="flex items-center gap-1 text-xs text-slate-500"><Phone size={12}/> {b.driver.phone || 'No Phone'}</div>
-                          <span className="font-mono text-slate-400 text-[10px] uppercase block mt-1">{b.vehicle_type || 'Standard'}</span>
-                        </>
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">No driver assigned</span>
-                      )}
-                    </td>
-                    {/* ROUTE INFO */}
-                    <td className="px-6 py-4 max-w-xs">
-                      <div className="flex items-start gap-2 mb-1.5">
-                        <MapPin size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                        <span className="text-xs text-slate-700 truncate" title={b.pickup_location}>{b.pickup_location}</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <Navigation size={14} className="text-red-500 shrink-0 mt-0.5" />
-                        <span className="text-xs text-slate-700 truncate" title={b.destination_location}>{b.destination_location}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-900">{Number(b.fare_amount || 0).toLocaleString()}</td>
-                    <td className="px-6 py-4"><span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-${statusTone}-100 text-${statusTone}-800`}>{b.status || 'pending'}</span></td>
-                  </tr>
-                 );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* DISPATCH MANAGEMENT MODAL */}
-      {selectedBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            
-            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50 shrink-0">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  Dispatch Control 
-                  <span className={`text-[10px] px-2.5 py-1 rounded-full uppercase tracking-widest font-bold ${selectedBooking.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : selectedBooking.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {selectedBooking.status}
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-1 font-mono">ID: {selectedBooking.id}</p>
-              </div>
-              <button onClick={() => setSelectedBooking(null)} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition"><X size={20} /></button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-6">
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <div className="text-xs font-bold text-slate-400 uppercase mb-2 tracking-wider">Rider Details</div>
-                  <div className="font-bold text-slate-900">{selectedBooking.rider?.full_name || 'Unknown'}</div>
-                  <div className="text-sm text-slate-600 mt-1">{selectedBooking.rider?.phone || 'No Phone'}</div>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <div className="text-xs font-bold text-slate-400 uppercase mb-2 tracking-wider">Requested Service</div>
-                  <div className="font-bold text-slate-900 capitalize flex items-center gap-2">
-                    {selectedBooking.service_type === 'delivery' ? <Package size={16} className="text-orange-500"/> : <Car size={16} className="text-blue-500"/>}
-                    {selectedBooking.service_type} ({selectedBooking.vehicle_type || 'Standard'})
-                  </div>
-                  <div className="text-sm font-bold text-emerald-600 mt-1">Fare: SLE {selectedBooking.fare_amount}</div>
-                </div>
-              </div>
-
-              <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                <div className="text-xs font-bold text-blue-400 uppercase mb-3 tracking-wider">Route Information</div>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <MapPin size={18} className="text-emerald-500 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-bold text-slate-500 uppercase">Pickup Location</div>
-                      <div className="text-sm font-semibold text-slate-900">{selectedBooking.pickup_location}</div>
-                    </div>
-                  </div>
-                  <div className="border-l-2 border-dashed border-slate-200 ml-2 h-4"></div>
-                  <div className="flex items-start gap-3">
-                    <Navigation size={18} className="text-red-500 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-bold text-slate-500 uppercase">Destination Location</div>
-                      <div className="text-sm font-semibold text-slate-900">{selectedBooking.destination_location}</div>
-                    </div>
-                  </div>
-                </div>
-                {selectedBooking.scheduled_time && (
-                  <div className="mt-4 pt-4 border-t border-blue-100 flex items-center gap-2 text-sm font-bold text-purple-700">
-                    <CalendarClock size={16} /> Scheduled For: {new Date(selectedBooking.scheduled_time).toLocaleString()}
-                  </div>
-                )}
-              </div>
-
-              {(selectedBooking.status === 'pending' || selectedBooking.status === 'pending_admin') && (
-                <div className="bg-amber-50 p-5 rounded-2xl border border-amber-200">
-                  <div className="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2"><UserPlus size={16} /> Manual Dispatch Override</div>
-                  <p className="text-xs text-amber-700 mb-4">Assign this trip directly to an available, approved driver.</p>
-                  
-                  <select 
-                    value={selectedDriverId}
-                    onChange={(e) => setSelectedDriverId(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-amber-300 bg-white text-sm outline-none focus:ring-2 focus:ring-amber-500 mb-4"
-                  >
-                    <option value="">-- Select Available Driver --</option>
-                    {availableDrivers.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.full_name} ({d.vehicle_type || 'Car'} - {d.plate_number || 'No Plate'}) | {d.phone}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={handleAssignDriver}
-                      disabled={actionLoading || !selectedDriverId}
-                      className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {actionLoading ? <Loader2 size={16} className="animate-spin"/> : 'Assign & Dispatch'}
-                    </button>
-                    <button 
-                      onClick={handleCancelTrip}
-                      disabled={actionLoading}
-                      className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-3 rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      <AlertCircle size={16} /> Cancel Trip
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {selectedBooking.driver && (
-                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                  <div className="text-xs font-bold text-emerald-600 uppercase mb-2 tracking-wider">Assigned Driver</div>
-                  <div className="font-bold text-slate-900">{selectedBooking.driver.full_name}</div>
-                  <div className="text-sm text-slate-600 mt-1">{selectedBooking.driver.phone}</div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-      )}
-    </AdminLayout>
-  );
+import {supabase} from '@/lib/supabase';
+import {canAccess,useAdminAccess} from '@/lib/adminAccess';
+type Booking={id:string;version:string;status:string;fare:string|null;serviceType:string;vehicleType:string|null;pickup:string;destination:string;scheduledTime:string|null;createdAt:string;riderId:string;driverId:string|null;riderLabel:string;driverLabel:string|null;paymentStarted:boolean;pendingOffers:string;agreedDriverId:string|null};
+type Driver={id:string;label:string};
+type Feed={actor:string;bookings:Booking[];drivers:Driver[];generatedAt:string;limit:number};
+type Action='assign'|'unassign'|'cancel';
+export default function DispatchRadarPage(){
+ const access=useAdminAccess(),allowed=canAccess(access,'dispatch');
+ const stamp=JSON.stringify([access?.id,access?.is_active,access?.is_owner,[...(access?.permissions||[])].sort()]);
+ const current=useRef(stamp);current.current=stamp;
+ const mounted=useRef(false),epoch=useRef(0),locked=useRef(false);
+ const [reload,setReload]=useState(0),[feed,setFeed]=useState<Feed|null>(null),[loadedStamp,setLoadedStamp]=useState('');
+ const [loading,setLoading]=useState(true),[error,setError]=useState(''),[actionError,setActionError]=useState(''),[notice,setNotice]=useState('');
+ const [selected,setSelected]=useState(''),[driver,setDriver]=useState(''),[note,setNote]=useState(''),[review,setReview]=useState<Action|null>(null),[busy,setBusy]=useState(false);
+ const draft=useRef<{key:string;booking:string;version:string;action:Action;driver:string|null;note:string}|null>(null);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;epoch.current++;};},[]);
+ useEffect(()=>{
+  let live=true,inFlight=false;const generation=++epoch.current;
+  const valid=()=>live&&mounted.current&&current.current===stamp&&epoch.current===generation;
+  setFeed(null);setLoadedStamp(stamp);setError('');setActionError('');setLoading(allowed);setReview(null);setSelected('');setDriver('');setNote('');locked.current=false;setBusy(false);draft.current=null;
+  async function load(){
+   if(inFlight||!valid()||!allowed)return;inFlight=true;setLoading(true);
+   try{
+    const {data,error}=await supabase.rpc('matmove_admin_dispatch_feed');
+    if(error)throw error;
+    if(!data||data.actor!==access!.id||!Array.isArray(data.bookings)||!Array.isArray(data.drivers)||data.bookings.length>100||
+     data.bookings.some((b:any)=>typeof b?.id!=='string'||typeof b.version!=='string'||!/^\d+$/.test(b.version)||typeof b.paymentStarted!=='boolean')||!Number.isFinite(Date.parse(data.generatedAt)))throw new Error('Dispatch response was not confirmed.');
+    if(valid()){setFeed(data);setError('');}
+   }catch(e){if(valid())setError(e instanceof Error?e.message:String((e as any)?.message||'Dispatch unavailable. Check ADMIN_DISPATCH_SETUP.sql and retry.'));}
+   finally{inFlight=false;if(valid())setLoading(false);}
+  }
+  void load();const timer=window.setInterval(()=>{if(!locked.current&&(typeof document==='undefined'||document.visibilityState!=='hidden'))void load();},15000);
+  return()=>{live=false;epoch.current++;window.clearInterval(timer);};
+ },[stamp,allowed,reload]);
+ const ready=loadedStamp===stamp,booking=ready?feed?.bookings.find(b=>b.id===selected):undefined;
+ const mutable=!!booking&&['pending','pending_admin'].includes(booking.status)&&!booking.paymentStarted;
+ function pick(id:string){if(locked.current)return;setSelected(id);setDriver('');setNote('');setReview(null);setError('');setActionError('');setNotice('');draft.current=null;}
+ async function change(){
+  if(locked.current||!booking||!review||!access||!mutable||note.trim().length<3||note.trim().length>300||(review==='assign'&&!driver))return;
+  const wanted={booking:booking.id,version:booking.version,action:review,driver:review==='assign'?driver:null,note:note.trim()};
+  const previous=draft.current;const payload=previous&&JSON.stringify({...previous,key:undefined})===JSON.stringify(wanted)?previous:{key:crypto.randomUUID(),...wanted};draft.current=payload;
+  const requestStamp=stamp,requestEpoch=epoch.current;locked.current=true;setBusy(true);setActionError('');setNotice('');
+  const valid=()=>mounted.current&&current.current===requestStamp&&epoch.current===requestEpoch;
+  try{
+   const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+   if(sessionError||sessionData.session?.user.id!==access.id)throw new Error('Your account changed. Reopen Dispatch.');
+   if(!valid())return;
+   const {data,error}=await supabase.rpc('matmove_admin_dispatch_change',{p_booking_id:payload.booking,p_expected:payload.version,p_action:payload.action,p_driver:payload.driver,p_request_id:payload.key,p_note:payload.note,p_expected_actor:access.id});
+   if(error)throw error;
+   if(data?.actor!==access.id||data?.applied!==true||data.requestId!==payload.key||data.bookingId!==payload.booking||data.action!==payload.action)throw new Error('Dispatch action was not confirmed. Keep this request and retry to check its receipt.');
+   if(valid()){draft.current=null;setReview(null);setNotice(payload.action==='assign'?'Driver assigned. The request remains pending until the driver accepts through the payment flow.':payload.action==='unassign'?'Pending driver assignment removed.':'Unfunded pending request cancelled. No refund was required.');setReload(n=>n+1);}
+  }catch(e){if(valid())setActionError(String((e as any)?.message||'Dispatch action could not be confirmed.').replace(/^[A-Z_]+:\s*/,''));}
+  finally{if(valid()){locked.current=false;setBusy(false);}}
+ }
+ return <AdminLayout title="Dispatch Radar" subtitle="Assign pending requests at their existing fare. Driver acceptance uses the verified escrow flow.">
+  {!allowed?<p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>:<div className="space-y-4">
+   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">Latest 100 requests. Full booking history is available in Reports & CSV. Last synced: {ready&&feed?new Date(feed.generatedAt).toLocaleString():'Not yet synced'}.</p><button type="button" disabled={loading||busy} onClick={()=>setReload(n=>n+1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50"><RefreshCw size={16}/>Refresh Radar</button></div>
+   {notice&&<p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
+   {error&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}<button type="button" disabled={busy} onClick={()=>setReload(n=>n+1)} className="ml-2 font-bold underline">Retry Dispatch</button></p>}
+   {actionError&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{actionError}</p>}
+   {!ready||(!feed&&loading)?<p role="status" className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading dispatch requests…</p>:!error&&feed&&!feed.bookings.length?<p className="rounded-xl border bg-white p-5 text-sm text-slate-600">No requests have been recorded yet.</p>:!error&&feed?<div className="grid gap-4 lg:grid-cols-2">
+    <section className="space-y-3">{feed.bookings.map(b=><button type="button" key={b.id} disabled={busy} onClick={()=>pick(b.id)} className={`w-full space-y-2 rounded-2xl border bg-white p-4 text-left disabled:opacity-50 ${selected===b.id?'border-indigo-500':'border-slate-200'}`}><div className="flex flex-wrap justify-between gap-2"><span className="font-bold">{b.riderLabel||b.riderId}</span><span className="text-sm font-semibold">{b.fare==null?'Fare unavailable':`SLE ${b.fare}`}</span></div><p className="text-xs capitalize text-slate-500">{b.serviceType} · {b.status.replace(/_/g,' ')}</p><p className="flex gap-2 text-xs text-slate-600"><MapPin size={14} className="shrink-0"/>{b.pickup}</p><p className="flex gap-2 text-xs text-slate-600"><Navigation size={14} className="shrink-0"/>{b.destination}</p><p className="text-xs text-slate-500">Driver: {b.driverLabel||'Awaiting assignment'}</p></button>)}</section>
+    <section className="min-w-0 space-y-4 self-start rounded-2xl border bg-white p-4">{!booking?<p className="text-sm text-slate-500">Select a request to review its dispatch controls.</p>:<>
+     <h2 className="font-bold">Dispatch review</h2><p className="break-all text-xs text-slate-500">{booking.id}</p><p className="text-sm">{booking.riderLabel} · {booking.fare==null?'Fare unavailable':`SLE ${booking.fare}`} · {booking.status.replace(/_/g,' ')}</p>
+     {booking.scheduledTime&&<p className="text-sm">Scheduled: {new Date(booking.scheduledTime).toLocaleString()}</p>}
+     {!mutable?<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{booking.paymentStarted?'Payment processing has started. Reassignment is locked. The customer must use the cancellation/refund flow.':'This request is no longer pending. Dispatch changes are closed.'}</p>:<>
+      <p className="text-xs text-slate-600">Assignment does not accept the trip, change the fare or debit a wallet. Only the selected driver can accept it.</p>
+      {booking.pendingOffers!=='0'&&<p className="text-sm text-amber-800">Resolve pending fare offers before manual assignment.</p>}
+      <label className="block text-sm font-semibold">Approved driver<select aria-label="Approved driver" value={driver} disabled={busy} onChange={e=>{setDriver(e.target.value);setReview(null);draft.current=null;}} className="mt-2 w-full rounded-xl border bg-white p-3 text-base"><option value="">Select an approved driver</option>{feed.drivers.filter(d=>!booking.agreedDriverId||booking.agreedDriverId===d.id).map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select></label>
+      {!feed.drivers.length&&<p className="text-xs text-slate-500">No approved drivers with an unfrozen SLE wallet are currently free of other assignments.</p>}
+      <label className="block text-sm font-semibold">Dispatch note<textarea aria-label="Dispatch note" disabled={busy} value={note} onChange={e=>{setNote(e.target.value);draft.current=null;}} maxLength={300} className="mt-2 w-full rounded-xl border p-3 text-base" placeholder="Reason for this dispatch action"/></label>
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy||!driver||!!booking.driverId||booking.pendingOffers!=='0'} onClick={()=>setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>{booking.driverId&&!booking.agreedDriverId&&<button type="button" disabled={busy} onClick={()=>setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}<button type="button" disabled={busy} onClick={()=>setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation</button></div>
+      {review&&<div role="group" aria-label="Confirm dispatch action" className="space-y-3 rounded-xl border-2 border-indigo-500 p-3"><p className="text-sm">Confirm {review==='assign'?'pending assignment':review==='unassign'?'removing this pending assignment':'cancelling this unfunded request'} at the displayed fare?</p><button type="button" disabled={busy||note.trim().length<3} onClick={()=>void change()} className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy?'Confirming…':'Confirm dispatch action'}</button><button type="button" disabled={busy} onClick={()=>setReview(null)} className="ml-2 rounded-xl border px-4 py-3 text-sm font-bold">Keep request</button></div>}
+     </>}
+    </>}</section>
+   </div>:null}
+  </div>}
+ </AdminLayout>;
 }

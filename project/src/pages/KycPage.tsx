@@ -1,7 +1,9 @@
 
 
+
 import {adminFetch} from '@/lib/adminFetch';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
 import { ExternalLink, Loader2 } from 'lucide-react';
@@ -114,16 +116,21 @@ const formatDate = (value: string | null) => {
 };
 
 const getCustomerName = (profile: Profile | null) => {
-  if (!profile) return 'Unknown customer';
+  if (!profile) return 'Customer record unavailable';
 
   const fullName =
     profile.full_name?.trim() ||
     `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim();
 
-  return fullName || 'Unnamed customer';
+  return fullName || profile.email || profile.phone || profile.phone_number || profile.id;
 };
 
 export function KycPage() {
+  const access=useAdminAccess(), allowed=canAccess(access,'kyc');
+  const stamp=JSON.stringify([access?.id,allowed,access?.is_active,access?.permissions]);
+  const current=useRef(stamp);current.current=stamp;
+  const mounted=useRef(false),generation=useRef(0),writeLock=useRef(false);
+  const [loadedStamp,setLoadedStamp]=useState(''),[loadError,setLoadError]=useState('');
   const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -135,10 +142,12 @@ export function KycPage() {
   const [decision, setDecision] = useState<KycDecision>('approved');
   const [reason, setReason] = useState('');
 
-  const loadSubmissions = async (silent = false) => {
+  const loadSubmissions = useCallback(async (silent = false) => {
+    if(!allowed)return;
+    const token=++generation.current;
+    const valid=()=>mounted.current&&current.current===stamp&&token===generation.current;
     if (!silent) setLoading(true);
-
-    setError(null);
+    setLoadError('');setLoadedStamp(stamp);
 
     try {
       if (!supabase) {
@@ -149,17 +158,19 @@ export function KycPage() {
       if (queryError) throw queryError;
       if (!Array.isArray(data)) throw new Error('KYC queue response is invalid.');
       const normalized = data as KycSubmission[];
-      setSubmissions(normalized);
+      if(valid())setSubmissions(normalized);
     } catch (err: any) {
-      setError(err?.message || 'Unable to load KYC submissions.');
+      if(valid())setLoadError(err?.message || 'Unable to load KYC submissions.');
     } finally {
-      setLoading(false);
+      if(valid())setLoading(false);
     }
-  };
+  },[stamp,allowed]);
 
   useEffect(() => {
+    mounted.current=true;setSubmissions([]);setSelected(null);setError(null);setActionLoading(false);
     void loadSubmissions();
-  }, []);
+    return()=>{mounted.current=false;generation.current++;};
+  }, [loadSubmissions]);
 
   const filteredSubmissions = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -210,7 +221,7 @@ export function KycPage() {
 
   // Decision, exact reason, review version and audit receipt are committed atomically.
   const submitDecision = async () => {
-    if (!selected || actionLoading) return;
+    if (!selected || actionLoading || writeLock.current || !allowed || current.current!==loadedStamp || !selected.profile) return;
     if (!selected.submission_id) { setError('This customer has not submitted verification.'); return; }
 
     if (
@@ -221,6 +232,8 @@ export function KycPage() {
       return;
     }
 
+    writeLock.current=true;const actionStamp=stamp;
+    const valid=()=>mounted.current&&current.current===actionStamp;
     setActionLoading(true);
     setError(null);
 
@@ -229,6 +242,9 @@ export function KycPage() {
         throw new Error('Supabase is not configured.');
       }
 
+      const {data:session,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError)throw sessionError;
+      if(!valid()||session.session?.user.id!==access?.id)throw new Error('Session changed. Sign in again before reviewing.');
       const {data, error: updateError} = await supabase.rpc('matmove_review_customer_kyc', {
         p_profile: selected.profile_id,
         p_submission: selected.submission_id,
@@ -238,16 +254,19 @@ export function KycPage() {
       });
       if (updateError) throw updateError;
       if (data?.success !== true) throw new Error('KYC review was not confirmed. Refresh before retrying.');
+      if(!valid())return;
       setSelected(null); setReason(''); setDecision('approved');
       await loadSubmissions(true);
     } catch (err: any) {
-      setError(err?.message || 'Unable to complete the KYC review.');
+      if(valid())setError(err?.message || 'Unable to complete the KYC review.');
     } finally {
-      setActionLoading(false);
+      writeLock.current=false;if(valid())setActionLoading(false);
     }
   };
 
   const profile = selected?.profile ?? null;
+
+  if(!allowed)return <AdminLayout title="KYC Review"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
 
   return (
     <AdminLayout
@@ -329,7 +348,7 @@ export function KycPage() {
               </thead>
 
               <tbody className="divide-y divide-slate-100 bg-white">
-                {loading ? (
+                {loading || loadedStamp!==stamp ? (
                   <tr>
                     <td
                       colSpan={5}
@@ -338,6 +357,8 @@ export function KycPage() {
                       Loading KYC submissions...
                     </td>
                   </tr>
+                ) : loadError ? (
+                  <tr><td colSpan={5} className="p-6"><p role="alert">{loadError}</p><button type="button" onClick={()=>void loadSubmissions()} className="mt-3 min-h-11 font-bold underline">Retry KYC submissions</button></td></tr>
                 ) : filteredSubmissions.length === 0 ? (
                   <tr>
                     <td
@@ -388,7 +409,7 @@ export function KycPage() {
                         <td className="whitespace-nowrap px-6 py-4 text-right">
                           <button
                             onClick={() => openReview(submission)}
-                            disabled={!submission.submission_id}
+                            disabled={!submission.submission_id || !submission.profile || actionLoading}
                             title={!submission.submission_id ? 'This user has not submitted verification yet.' : 'Review submitted verification'}
                             className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition"
                           >
@@ -404,7 +425,7 @@ export function KycPage() {
           </div>
         </div>
 
-        {selected && (
+        {selected && loadedStamp===stamp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
               <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5 sticky top-0 bg-white z-10">
@@ -433,7 +454,7 @@ export function KycPage() {
                   </h3>
 
                   <div className="grid grid-cols-1 gap-4 rounded-xl border border-gray-200 p-4 md:grid-cols-3 bg-slate-50">
-                    <Info label="Full name" value={getCustomerName(profile)} />
+                    <Info label="Full name" value={profile?.full_name?.trim() || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || 'Not supplied'} />
                     <Info
                       label="Phone"
                       value={profile?.phone || profile?.phone_number || '—'}
