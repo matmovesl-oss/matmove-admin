@@ -1,4 +1,5 @@
 
+
 import {requireAdmin} from '../server/admin-auth.js';
 import {canAdminAccess} from '../shared/admin-permissions.js';
 
@@ -11,6 +12,7 @@ export function createHandler(
 ) {
   return async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Vary', 'Authorization');
 
     if (req.method !== 'GET') {
       return res.status(405).json({
@@ -67,6 +69,26 @@ export function createHandler(
 
       const {access}=await requireAdmin(req,['financials','games.settings'],{client,env});
       const financial=canAdminAccess(access,'financials');
+      // Classification is authoritative even if the separate referral panel is unavailable.
+      // Retain a campaign's pinned treasury when deployment settings have changed.
+      let savedReferral = null;
+      if (financial) {
+        const campaign = await client.from('matmove_referral_campaign')
+          .select('treasury_account').eq('singleton', true).maybeSingle();
+        if (campaign.error || !campaign.data ||
+            !(campaign.data.treasury_account === null ||
+              typeof campaign.data.treasury_account === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(campaign.data.treasury_account))) {
+          return res.status(503).json({error:'Platform account classification is unavailable. No customer balance totals were returned.'});
+        }
+        savedReferral = campaign.data.treasury_account;
+      }
+      const configured = [env.MONIME_ESCROW_ACCOUNT_ID, env.MONIME_PLATFORM_FEE_ACCOUNT_ID,
+        env.MONIME_SPIN_ACCOUNT_ID, env.MONIME_MAIN_ACCOUNT_ID, env.MONIME_REFERRAL_ACCOUNT_ID, savedReferral].filter(Boolean);
+      if (financial && configured.some(id => typeof id !== 'string' || !/^fac-[A-Za-z0-9_-]+$/.test(id))) {
+        return res.status(503).json({error:'Platform account configuration is invalid. No customer balance totals were returned.'});
+      }
+      const businessAccountIds = [...new Set(configured)];
+      const referralAccountIds = [...new Set([env.MONIME_REFERRAL_ACCOUNT_ID,savedReferral].filter(Boolean))];
       const accounts = new Map();
       const seen = new Set();
       const signal = AbortSignal.timeout(20000);
@@ -124,8 +146,8 @@ export function createHandler(
 
         for (const account of result.result || []) {
           if (
-            typeof account.id !== 'string' ||
-            typeof account.currency !== 'string'
+            typeof account?.id !== 'string' || !/^fac-[A-Za-z0-9_-]+$/.test(account.id) ||
+            typeof account.currency !== 'string' || accounts.has(account.id)
           ) {
             return res.status(502).json({
               error: 'Monime returned an invalid account record.'
@@ -144,7 +166,11 @@ export function createHandler(
         if (!next) {
           return res.status(200).json({
             accounts: [...accounts.values()].filter(a=>financial||a.id===env.MONIME_SPIN_ACCOUNT_ID),
+            businessAccountIds: financial ? businessAccountIds : [],
             platform: {
+              mainAccountId: financial ? (env.MONIME_MAIN_ACCOUNT_ID || null) : null,
+              referralAccountId: financial ? (env.MONIME_REFERRAL_ACCOUNT_ID || savedReferral || null) : null,
+              referralAccountIds: financial ? referralAccountIds : [],
               spinAccountId: env.MONIME_SPIN_ACCOUNT_ID || null,
               escrowAccountId:
                 financial?(env.MONIME_ESCROW_ACCOUNT_ID || null):null,

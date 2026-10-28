@@ -1,4 +1,5 @@
 
+
 -- Run this complete ADMIN migration in the ONE shared Supabase project.
 -- Requires the staff-access and ride-fare-negotiation migrations already supplied.
 -- Assignment remains pending. Existing payment/refund functions are unchanged.
@@ -74,6 +75,35 @@ returns boolean language sql stable security definer set search_path=pg_catalog,
 $fn$;
 revoke all on function public.matmove_dispatch_driver_busy(uuid,uuid) from public,anon,authenticated;
 
+-- One private eligibility calculation is shared by the directory and assignment.
+-- Legacy customers with no role rows use their saved profile role, matching
+-- Customer account resolution. Contradictory or administrative roles stay denied.
+create or replace function public.matmove_dispatch_driver_status(p_driver uuid,p_booking uuid)
+returns jsonb language plpgsql stable security definer set search_path=pg_catalog,public as $fn$
+declare p public.profiles%rowtype;code text:='ready';reason text:='Ready for manual assignment';
+begin
+ select * into p from public.profiles where id=p_driver;
+ if not found then code:='missing_profile';reason:='Driver profile is missing';
+ elsif p.role::text is distinct from 'driver' then code:='wrong_role';reason:='Customer profile is not a driver';
+ elsif exists(select 1 from public.matmove_staff_access where id=p_driver and is_active=true and removed_at is null)
+ or exists(select 1 from public.user_roles where profile_id=p_driver and (role is null or role::text not in ('rider','driver','merchant')))
+ or (exists(select 1 from public.user_roles where profile_id=p_driver) and not exists(select 1 from public.user_roles where profile_id=p_driver and role::text='driver'))
+ then code:='role_conflict';reason:='Driver membership conflicts with this profile or active staff access';
+ elsif p.kyc_status::text is distinct from 'approved' then code:='approval_required';reason:='Driver KYC needs current Admin approval';
+ elsif coalesce((to_jsonb(p)->>'is_wallet_frozen')::boolean,false)
+ or exists(select 1 from public.wallets where user_id=p_driver and is_frozen=true)
+ then code:='wallet_frozen';reason:='Wallet is frozen; contact the authorized reviewer';
+ elsif not exists(select 1 from public.wallets where user_id=p_driver and currency='SLE')
+ then code:='wallet_missing';reason:='Driver needs an SLE wallet before assignment';
+ elsif public.matmove_dispatch_driver_busy(p_driver,p_booking)
+ then code:='busy';reason:='Driver already has an active assignment or unresolved payment';
+ end if;
+ return jsonb_build_object('id',p_driver,'label',coalesce(nullif(to_jsonb(p)->>'full_name',''),nullif(to_jsonb(p)->>'email',''),p_driver::text),
+ 'eligible',code='ready','reasonCode',code,'reason',reason);
+end;
+$fn$;
+revoke all on function public.matmove_dispatch_driver_status(uuid,uuid) from public,anon,authenticated;
+
 create or replace function public.matmove_admin_dispatch_feed()
 returns jsonb language plpgsql stable security definer set search_path=pg_catalog,public as $fn$
 declare actor uuid;requests jsonb;drivers jsonb;
@@ -93,20 +123,22 @@ begin
   from public.bookings b left join public.profiles r on r.id=b.rider_id left join public.profiles d on d.id=b.driver_id
   order by b.created_at desc,b.id limit 100
  ) x;
- select coalesce(jsonb_agg(jsonb_build_object('id',p.id,'label',coalesce(nullif(to_jsonb(p)->>'full_name',''),nullif(to_jsonb(p)->>'email',''),nullif(to_jsonb(p)->>'phone_number',''),p.id::text)) order by p.id),'[]'::jsonb)
- into drivers from public.profiles p where p.role::text='driver' and p.kyc_status::text='approved'
- and not coalesce((to_jsonb(p)->>'is_wallet_frozen')::boolean,false)
- and exists(select 1 from public.user_roles where profile_id=p.id and role::text='driver')
- and exists(select 1 from public.wallets where user_id=p.id and currency='SLE')
- and not exists(select 1 from public.wallets where user_id=p.id and is_frozen=true)
- and not public.matmove_dispatch_driver_busy(p.id,null);
+ -- Keep unavailable drivers visible with the exact reason instead of an empty selector.
+ -- Online is currently a Customer screen preference, not a server presence record;
+ -- manual assignment deliberately does not depend on it.
+ select coalesce(jsonb_agg(x.details order by (x.details->>'eligible')::boolean desc,x.details->>'label',x.id),'[]'::jsonb)
+ into drivers from (
+  select p.id,public.matmove_dispatch_driver_status(p.id,null) details
+  from public.profiles p where p.role::text='driver'
+   or exists(select 1 from public.user_roles where profile_id=p.id and role::text='driver')
+ ) x;
  return jsonb_build_object('actor',actor,'bookings',requests,'drivers',drivers,'generatedAt',clock_timestamp(),'limit',100);
 end;
 $fn$;
 
 create or replace function public.matmove_admin_dispatch_change(p_booking_id uuid,p_expected bigint,p_action text,p_driver uuid,p_request_id uuid,p_note text,p_expected_actor uuid)
 returns jsonb language plpgsql security definer set search_path=pg_catalog,public as $fn$
-declare actor uuid;b public.bookings%rowtype;prior jsonb;receipt public.matmove_dispatch_audit%rowtype;chosen uuid;
+declare actor uuid;b public.bookings%rowtype;prior jsonb;receipt public.matmove_dispatch_audit%rowtype;chosen uuid;driver_status jsonb;
 begin
  actor:=public.matmove_dispatch_actor();
  if actor is distinct from p_expected_actor then raise exception 'FORBIDDEN: Your signed-in account changed.';end if;
@@ -136,14 +168,11 @@ begin
    raise exception 'CONFLICT: Resolve the pending fare offers before manual assignment.';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('matmove-dispatch-driver:'||p_driver::text,0));
-  if not exists(select 1 from public.profiles p where p.id=p_driver and p.role::text='driver' and p.kyc_status::text='approved' and not coalesce((to_jsonb(p)->>'is_wallet_frozen')::boolean,false))
-   or not exists(select 1 from public.user_roles where profile_id=p_driver and role::text='driver')
-   or exists(select 1 from public.user_roles where profile_id=p_driver and role::text not in ('driver','rider','merchant'))
-   or not exists(select 1 from public.wallets where user_id=p_driver and currency='SLE')
-   or exists(select 1 from public.wallets where user_id=p_driver and is_frozen=true)
-  then raise exception 'FORBIDDEN: The driver needs current approval and an unfrozen SLE wallet.';end if;
-  if public.matmove_dispatch_driver_busy(p_driver,b.id) then
-   raise exception 'CONFLICT: This driver already has an assigned active request.';end if;
+  driver_status:=public.matmove_dispatch_driver_status(p_driver,b.id);
+  if driver_status->>'eligible' is distinct from 'true' then
+   if driver_status->>'reasonCode'='busy' then raise exception 'CONFLICT: This driver already has an assigned active request or unresolved payment.';end if;
+   raise exception 'FORBIDDEN: The driver needs current approval, consistent driver membership and an unfrozen SLE wallet. %',driver_status->>'reason';
+  end if;
   update public.bookings set driver_id=p_driver,updated_at=clock_timestamp() where id=b.id returning * into b;
  elsif p_action='unassign' then
   if chosen is not null then raise exception 'CONFLICT: The agreed driver is locked. The customer can cancel and create a new request.';end if;

@@ -1,4 +1,7 @@
 
+export const config = {maxDuration:30};
+import {createReferralAdminHandler} from '../server/admin-referrals.js';
+
 import {createReportHandler} from '../server/admin-reports.js';
 import {requireAdmin, failure} from '../server/admin-auth.js';
 import {validPermissions, SECTION_GROUPS, PERMISSION_KEYS} from '../shared/admin-permissions.js';
@@ -14,11 +17,13 @@ function expectedVersion(body){
 }
 export function createHandler({authorize=requireAdmin,env=process.env}={}){
  const reports=createReportHandler({authorize,env});
+ const referrals=createReferralAdminHandler({authorize,env});
  return async(req,res)=>{
  res.setHeader('Cache-Control','no-store');
  if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Method not allowed.'});
  try{
   const view=req.query?.view??new URL(req.url||'/api/admin-staff','https://admin.invalid').searchParams.get('view');
+  if(['referral-overview','referral-page','referral-settings','referral-recovery','referral-recovery-save'].includes(view))return referrals(req,res);
   if(['report-catalog','report-page','report-overview'].includes(view))return reports(req,res);
   if(view!=null&&view!=='me')throw failure(400,'Invalid staff view.');
   if(view==='me'&&req.method!=='GET')throw failure(405,'Use GET for your staff session.');

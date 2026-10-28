@@ -1,4 +1,5 @@
 
+
 import {useEffect,useRef,useState} from 'react';
 import {Link} from 'react-router-dom';
 import {Activity,ArrowRight,RefreshCw,Wallet} from 'lucide-react';
@@ -27,11 +28,14 @@ function overviewValid(value:any,userId:string):value is Overview{
 function treasuryRows(body:any):Treasury[]{
  if(!Array.isArray(body.accounts)||!body.platform||typeof body.platform!=='object')throw new Error('Live account response was not confirmed.');
  const configured=new Map<string,string[]>();
- for(const [field,label] of [['escrowAccountId','Escrow'],['feeAccountId','Platform fees'],['spinAccountId','Spin Account']]){
+ for(const [field,label] of [['escrowAccountId','Escrow'],['feeAccountId','Platform fees'],['spinAccountId','Spin Account'],['mainAccountId','Main business account'],['referralAccountId','Referral rewards']]){
   const id=body.platform[field];if(id===null||id===undefined||id==='')continue;
-  if(typeof id!=='string')throw new Error('Platform account configuration was not confirmed.');
+  if(typeof id!=='string'||!/^fac-[A-Za-z0-9_-]+$/.test(id))throw new Error('Platform account configuration was not confirmed.');
   configured.set(id,[...(configured.get(id)||[]),label]);
  }
+ const referralIds=body.platform.referralAccountIds??[];
+ if(!Array.isArray(referralIds)||referralIds.some((id:unknown)=>typeof id!=='string'||!/^fac-[A-Za-z0-9_-]+$/.test(id)))throw new Error('Referral account configuration was not confirmed.');
+ for(const id of referralIds){const existing=configured.get(id)||[];if(!existing.includes('Referral rewards'))configured.set(id,[...existing,'Referral rewards']);}
  const seen=new Set<string>();for(const a of body.accounts){if(typeof a?.id!=='string'||seen.has(a.id))throw new Error('Duplicate or invalid live account records.');seen.add(a.id);}
  return [...configured].map(([id,labels])=>{
   const account=body.accounts.find((a:any)=>a.id===id),amount=account?.balance?.available;

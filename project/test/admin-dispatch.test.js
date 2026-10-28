@@ -1,4 +1,5 @@
 
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdtemp,rm} from 'node:fs/promises';
@@ -106,13 +107,13 @@ test('busy or unapproved drivers, self-assignment and a changed signed-in actor 
 });
 const text=n=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):Array.isArray(n)?n.map(text).join(''):text(n.props?.children);
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
-async function page(fn,{grants={id:admin,is_active:true,is_owner:true,permissions:[]},paid=false,failedFeed=false}={}){
+async function page(fn,{grants={id:admin,is_active:true,is_owner:true,permissions:[]},paid=false,failedFeed=false,directory=null}={}){
  const dir=await mkdtemp(join(process.cwd(),'.dispatch-ui-')),out=join(dir,'ui.mjs');const slots=[],effects=[],calls=[];let i=0,dirty=true,tree,mutations=0;
  const oldWindow=globalThis.window;globalThis.window={setInterval:()=>1,clearInterval(){}};
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,j)=>!Object.is(v,b[j]));
  const row={id:booking,version:'1',status:'pending',fare:'20',serviceType:'ride',vehicleType:null,pickup:'Freetown',destination:'Lumley',riderId:rider,riderLabel:'rider@example.com',driverId:null,driverLabel:null,paymentStarted:paid,pendingOffers:'0',agreedDriverId:null};
  globalThis.__dispatchUI={grants,hooks:{useState(initial){const n=i++;if(!(n in slots))slots[n]={value:typeof initial==='function'?initial():initial};return[slots[n].value,v=>{slots[n].value=typeof v==='function'?v(slots[n].value):v;dirty=true;}];},useRef(initial){const n=i++;if(!(n in slots))slots[n]={current:initial};return slots[n];},useEffect(fn,deps){const n=i++,old=slots[n];if(!old||changed(old.deps,deps)){const next={deps,cleanup:old?.cleanup};slots[n]=next;effects.push(()=>{next.cleanup?.();next.cleanup=fn();});}}},db:{auth:{getSession:async()=>({data:{session:{user:{id:admin}}}})},rpc:async(name,args)=>{
-  calls.push({name,args});if(name==='matmove_admin_dispatch_feed')return failedFeed?{error:{message:'Dispatch offline'}}:{data:{actor:admin,bookings:[row],drivers:[{id:driver,label:'Driver'}],generatedAt:'2026-10-25T10:00:00Z',limit:100}};
+  calls.push({name,args});if(name==='matmove_admin_dispatch_feed')return failedFeed?{error:{message:'Dispatch offline'}}:{data:{actor:admin,bookings:[row],drivers:directory||[{id:driver,label:'Driver',eligible:true,reasonCode:'ready',reason:'Ready for manual assignment'}],generatedAt:'2026-10-25T10:00:00Z',limit:100}};
   if(++mutations===1)return {error:{message:'Lost response. Retry this action.'}};
   return {data:{actor:admin,applied:true,requestId:args.p_request_id,bookingId:args.p_booking_id,action:args.p_action,version:'2'}};
  }}};
@@ -123,7 +124,7 @@ async function page(fn,{grants={id:admin,is_active:true,is_owner:true,permission
  }}]});const component=(await import(pathToFileURL(out))).default;
  async function settle(){for(let n=0;n<12;n++){if(dirty){i=0;dirty=false;tree=component();while(effects.length)effects.shift()();}await new Promise(r=>setImmediate(r));}}
  const button=label=>{const b=nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);assert.ok(b,`Missing ${label}: ${text(tree)}`);return b;};
- const h={calls,button,settle,get text(){return text(tree);},async open(){nodes(tree).find(n=>n.type==='button'&&text(n).includes('rider@example.com')).props.onClick();await settle();},async input(kind,value){const n=nodes(tree).find(n=>n.type===kind);n.props.onChange({target:{value}});await settle();},async click(label){const b=button(label);assert.ok(!b.props.disabled);b.props.onClick();await settle();}};
+ const h={calls,button,settle,get tree(){return tree;},get text(){return text(tree);},async open(){nodes(tree).find(n=>n.type==='button'&&text(n).includes('rider@example.com')).props.onClick();await settle();},async input(kind,value){const n=nodes(tree).find(n=>n.type===kind);n.props.onChange({target:{value}});await settle();},async click(label){const b=button(label);assert.ok(!b.props.disabled);b.props.onClick();await settle();}};
  await settle();await fn(h);
  }finally{for(const s of slots)s?.cleanup?.();if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;delete globalThis.__dispatchUI;await rm(dir,{recursive:true,force:true});}
 }
@@ -137,4 +138,60 @@ test('paid pending requests show refund guidance without cancellation controls; 
  await page(async h=>{await h.open();assert.match(h.text,/customer must use the cancellation\/refund flow/);assert.doesNotMatch(h.text,/Review cancellation/);assert.equal(h.calls.length,1);},{paid:true});
  await page(async h=>{assert.match(h.text,/Access denied/);assert.equal(h.calls.length,0);},{grants:{id:admin,is_active:true,is_owner:false,permissions:['dashboard']}});
  await page(async h=>{assert.match(h.text,/Dispatch offline/);assert.doesNotMatch(h.text,/No requests have/);},{failedFeed:true});
+});
+
+test('offline manual assignment remains pending and unavailable drivers are listed with a specific reason',async()=>{
+ const f=await fixture();try{
+ let data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).eligible,true);
+ await f.pg.exec('reset role');await f.pg.query("update profiles set kyc_status='pending' where id=$1",[other]);
+ data=await f.feed();assert.equal(data.drivers.length,2);assert.equal(data.drivers.find(d=>d.id===other).reasonCode,'approval_required');
+ await f.change();await f.pg.exec('reset role');const saved=(await f.pg.query('select * from bookings where id=$1',[booking])).rows[0];assert.equal(saved.driver_id,driver);assert.equal(saved.status,'pending');
+ assert.equal((await f.pg.query('select count(*)::int n from ride_payments')).rows[0].n,0);
+ }finally{await f.pg.close();}
+});
+test('legacy driver with no membership rows can be assigned; contradictory or administrative membership cannot',async()=>{
+ const f=await fixture();try{
+ await f.pg.query('delete from user_roles where profile_id=$1',[driver]);let data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).eligible,true);
+ await f.change();await f.pg.exec('reset role');let current=(await f.feed()).bookings[0];await f.change('unassign',null,current.version);await f.pg.exec('reset role');
+ await f.pg.query("insert into user_roles values($1,'merchant')",[driver]);data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).reasonCode,'role_conflict');await assert.rejects(f.change('assign',driver,data.bookings[0].version),/consistent driver membership/);
+ await f.pg.exec('reset role');await f.pg.query('delete from user_roles where profile_id=$1',[driver]);await f.pg.query("insert into user_roles values($1,'admin')",[driver]);data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).reasonCode,'role_conflict');await assert.rejects(f.change('assign',driver,data.bookings[0].version),/consistent driver membership/);
+ }finally{await f.pg.close();}
+});
+test('frozen, missing-wallet and busy reasons agree with mutation guards and reruns preserve the assignment',async()=>{
+ const f=await fixture();try{
+ await f.pg.query('update wallets set is_frozen=true where user_id=$1',[driver]);let data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).reasonCode,'wallet_frozen');await assert.rejects(f.change(),/unfrozen/);
+ await f.pg.exec('reset role');await f.pg.query('delete from wallets where user_id=$1',[driver]);data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).reasonCode,'wallet_missing');await assert.rejects(f.change(),/SLE wallet/);
+ await f.pg.exec('reset role');await f.pg.query("insert into wallets(user_id,currency) values($1,'SLE')",[driver]);
+ await f.change();data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).reasonCode,'busy');
+ await f.pg.exec('reset role');await f.pg.exec(await readFile(new URL('../docs/ADMIN_DISPATCH_SETUP.sql',import.meta.url),'utf8'));
+ assert.equal((await f.pg.query('select count(*)::int n from matmove_dispatch_audit')).rows[0].n,1);
+ assert.equal((await f.pg.query('select driver_id from bookings where id=$1',[booking])).rows[0].driver_id,driver);
+ assert.equal((await f.pg.query('select count(*)::int n from ride_payments')).rows[0].n,0);
+ await f.session(other);await assert.rejects(f.rpc('matmove_dispatch_driver_status',[driver,null]),/permission denied/);
+ }finally{await f.pg.close();}
+});
+test('active staff with a driver profile cannot be assigned and their membership is preserved',async()=>{
+ const f=await fixture();try{
+ await f.pg.query("insert into matmove_staff_access values($1,true,false,null,'[]')",[driver]);
+ const data=await f.feed();assert.equal(data.drivers.find(d=>d.id===driver).reasonCode,'role_conflict');await assert.rejects(f.change(),/consistent driver membership/);
+ await f.pg.exec('reset role');assert.equal((await f.pg.query('select count(*)::int n from matmove_dispatch_audit')).rows[0].n,0);
+ }finally{await f.pg.close();}
+});
+test('Dispatch explains unavailable drivers, blocks forged selection and does not claim live presence tracking',()=>page(async h=>{
+ await h.open();assert.match(h.text,/online or offline/);assert.match(h.text,/does not yet track live online status/);assert.match(h.text,/Driver KYC needs current Admin approval/);
+ const option=nodes(h.tree).find(n=>n.type==='option'&&n.props.value===driver);assert.equal(option.props.disabled,true);
+ await h.input('select',driver);assert.equal(h.button('Review assignment').props.disabled,true);
+ assert.equal(h.calls.filter(c=>c.name==='matmove_admin_dispatch_change').length,0);
+},{directory:[{id:driver,label:'Pending test driver',eligible:false,reasonCode:'approval_required',reason:'Driver KYC needs current Admin approval'}]}));
+test('old or malformed directory data requests the SQL update rather than showing an empty driver list',()=>page(async h=>{
+ assert.match(h.text,/updated ADMIN_DISPATCH_SETUP.sql/);assert.doesNotMatch(h.text,/No driver profiles/);
+},{directory:[{id:driver,label:'Old feed'}]}));
+
+test('read-only readiness checks run against the installed schema and explain drivers without mutations',async()=>{
+ const f=await fixture();try{
+ const query=await readFile(new URL('../docs/DISPATCH_READINESS.sql',import.meta.url),'utf8');
+ const result=await f.pg.exec(query);assert.equal(result.length,2);assert.ok(Object.values(result[0].rows[0]).every(v=>v===true));assert.equal(result[1].rows.length,2);assert.ok(result[1].rows.every(r=>r.can_assign_now===true));
+ assert.equal((await f.pg.query('select count(*)::int n from matmove_dispatch_audit')).rows[0].n,0);
+ assert.equal((await f.pg.query('select count(*)::int n from ride_payments')).rows[0].n,0);
+ }finally{await f.pg.close();}
 });

@@ -1,97 +1,31 @@
 
-import { useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { Loader2, Mail, Lock } from 'lucide-react';
-
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(), password,
-      });
-      if (authError) throw authError;
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unable to sign in. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl border border-slate-200">
-        <div className="bg-slate-900 px-8 py-10 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-lg mb-4">
-            <img src="/logo.png" alt="MatMove logo" className="h-16 w-16 rounded-2xl object-contain" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">MatMove Admin</h1>
-          <p className="mt-2 text-sm text-slate-400">Enter your credentials to access the console</p>
-        </div>
-
-        <div className="p-8">
-          {error && (
-            <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-600 border border-red-100 flex items-center justify-between">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="font-bold hover:underline">Dismiss</button>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Email Address</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                  <Mail size={18} />
-                </div>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                  placeholder="Your authorized work email"
-                  autoComplete="username"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Password</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                  <Lock size={18} />
-                </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-70"
-            >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : 'Secure Login'}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
+import {useEffect,useRef,useState} from 'react';
+import {supabase} from '../lib/supabase';
+import {Loader2,Mail,Lock} from 'lucide-react';
+export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
+ const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[mode,setMode]=useState<'login'|'reset'>(recoveryError?'reset':'login'),[busy,setBusy]=useState(false),[error,setError]=useState(recoveryError),[notice,setNotice]=useState('');
+ const mounted=useRef(true),mutex=useRef(false),epoch=useRef(0);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;epoch.current++;};},[]);
+ function changeMode(next:'login'|'reset'){if(mutex.current)return;epoch.current++;setMode(next);setPassword('');setError('');setNotice('');if(next==='login'&&window.location.pathname==='/reset-password')window.location.assign('/');}
+ async function submit(e:React.FormEvent){
+  e.preventDefault();if(mutex.current)return;const address=email.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)){setError('Enter your email address.');return;}
+  mutex.current=true;setBusy(true);setError('');setNotice('');const token=epoch.current;
+  try{
+   if(mode==='reset'){
+    // Same-origin fixed path. Supabase verifies the email link; no staff lookup leaks account membership.
+    const r=await supabase.auth.resetPasswordForEmail(address,{redirectTo:new URL('/reset-password',window.location.origin).href});
+    if(r.error)throw r.error;
+    if(mounted.current&&epoch.current===token)setNotice('If this email has an account, a password reset link has been requested. Check your inbox and spam folder. Open the newest link to continue.');
+   }else{
+    const r=await supabase.auth.signInWithPassword({email:address,password});if(r.error)throw r.error;
+   }
+  }catch{if(mounted.current&&epoch.current===token)setError(mode==='reset'?'The reset request could not be confirmed. Please wait before trying again.':'Unable to sign in. Check your email and password and try again.');}
+  finally{mutex.current=false;if(mounted.current&&epoch.current===token)setBusy(false);}
+ }
+ return <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4"><section className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"><header className="bg-slate-900 px-6 py-7 text-center"><img src="/logo.png" alt="MatMove logo" width="144" height="144" className="mx-auto mb-4 h-36 w-36 rounded-2xl bg-white object-contain"/><h1 className="text-2xl font-bold text-white">{mode==='reset'?'Reset your Admin password':'MatMove Admin'}</h1><p className="mt-2 text-sm text-slate-300">{mode==='reset'?'We will email you a link to choose a new password.':'Sign in to your assigned Admin workspace.'}</p></header><div className="p-6 sm:p-8">
+ {error&&<p role="alert" className="mb-4 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">{error}</p>}{notice&&<p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">{notice}</p>}
+ <form onSubmit={submit} className="space-y-5"><label className="block text-sm font-semibold text-slate-700">Email address<div className="relative mt-2"><Mail size={18} className="pointer-events-none absolute left-3 top-3.5 text-slate-400"/><input type="email" autoComplete="username" required disabled={busy} value={email} onChange={e=>{setEmail(e.target.value);setNotice('');}} className="min-h-11 w-full rounded-lg border py-3 pl-10 pr-3 text-base"/></div></label>
+ {mode==='login'&&<label className="block text-sm font-semibold text-slate-700">Password<div className="relative mt-2"><Lock size={18} className="pointer-events-none absolute left-3 top-3.5 text-slate-400"/><input type="password" autoComplete="current-password" required disabled={busy} value={password} onChange={e=>setPassword(e.target.value)} className="min-h-11 w-full rounded-lg border py-3 pl-10 pr-3 text-base"/></div></label>}
+ <button type="submit" disabled={busy||!!notice} className="flex min-h-11 w-full items-center justify-center rounded-lg bg-indigo-700 p-3 font-bold text-white disabled:opacity-60">{busy?<><Loader2 size={18} className="mr-2 animate-spin"/>Please wait…</>:mode==='reset'?'Send reset link':'Secure Login'}</button></form>
+ <button type="button" disabled={busy} onClick={()=>changeMode(mode==='reset'?'login':'reset')} className="mt-4 min-h-11 w-full text-sm font-bold text-indigo-700">{mode==='reset'?'Back to sign in':'Forgot password?'}</button><p className="mt-3 text-xs leading-relaxed text-slate-500">Only active staff can access Admin. Resetting a password does not change permissions or restore removed staff access.</p></div></section></main>;
 }

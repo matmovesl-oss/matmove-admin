@@ -1,4 +1,6 @@
 
+import AdminAssistance from './AdminAssistance';
+
 
 
 import { useState, type ReactNode } from 'react';
@@ -16,7 +18,7 @@ import {
   Menu,
   Package,
   Settings,
-  ShieldAlert,
+  Send,
   ShieldCheck,
   Users,
   Wallet,
@@ -37,6 +39,7 @@ interface AdminLayoutProps {
 }
 
 const navItems = [
+  {key:'notifications',name:'Customer Messages',path:'/notifications',icon:Send},
   {key: 'reports', name: 'Reports & CSV', path: '/reports', icon: FileText},
   { key: 'games', name: 'Games — Spin & Win', path: '/games', icon: Activity },
   {
@@ -172,10 +175,7 @@ export default function AdminLayout({
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
           <div className="flex items-center">
-            <ShieldAlert
-              size={24}
-              className="mr-2 text-indigo-500"
-            />
+            <img src="/logo.png" alt="MatMove logo" width="48" height="48" className="mr-3 h-12 w-12 rounded-lg bg-white object-contain" />
 
             <span className="text-lg font-bold tracking-wide text-white">
               MatMove
@@ -301,7 +301,7 @@ export default function AdminLayout({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col lg:pl-[260px]">
-        <header className="z-10 flex shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6 py-5 sm:px-8 sm:py-6">
+        <header className="z-10 flex shrink-0 flex-wrap items-center gap-4 border-b border-slate-200 bg-white px-6 py-5 sm:px-8 sm:py-6">
           <button
             type="button"
             aria-label="Open sidebar"
@@ -322,6 +322,7 @@ export default function AdminLayout({
               </p>
             )}
           </div>
+          <AdminAssistance key={access?.id || 'signed-out'}/>
         </header>
 
         <main className="flex-1 overflow-auto p-4 sm:p-8">

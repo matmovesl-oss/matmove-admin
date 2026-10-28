@@ -1,4 +1,5 @@
 
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
@@ -10,7 +11,7 @@ const access={id:uid,is_active:true,is_owner:true,permissions:[]};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 function nodes(n){if(!n||typeof n!=='object')return[];if(Array.isArray(n))return n.flatMap(nodes);return[n,...nodes(n.props?.children)];}
 function text(n){if(n==null||typeof n==='boolean')return'';if(typeof n!=='object')return String(n);if(Array.isArray(n))return n.map(text).join('');return text(n.props?.children);}
-const apiEmpty=()=>({ok:true,body:{accounts:[],payouts:[],transactions:[]}});
+const apiEmpty=()=>({ok:true,body:{accounts:[],businessAccountIds:[],payouts:[],transactions:[]}});
 const dbEmpty=()=>({data:[],count:0,error:null});
 async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
  const dir=await mkdtemp(join(process.cwd(),'.admin-loading-')),out=join(dir,'ui.mjs');
@@ -154,7 +155,7 @@ test('Revoking an assignment hides retained records and rejects a late response 
 });
 test('Financial customer total excludes a Spin treasury even when it is accidentally linked as a customer wallet',()=>withPage('FinancialsPage',async h=>{
  assert.match(h.text,/SLE 2.00/);assert.doesNotMatch(h.text,/SLE 102.00/);
-},{db:()=>({data:[{id:'w1',user_id:uid,currency:'SLE',balance:0,is_frozen:false,monime_account_id:'customer'},{id:'w2',user_id:uid,currency:'SLE',balance:0,is_frozen:false,monime_account_id:'spin'}],error:null}),api:()=>({ok:true,body:{platform:{spinAccountId:'spin'},accounts:[{id:'customer',currency:'SLE',balance:{available:{currency:'SLE',value:200}}},{id:'spin',currency:'SLE',balance:{available:{currency:'SLE',value:10000}}}]}})}));
+},{db:()=>({data:[{id:'w1',user_id:uid,currency:'SLE',balance:0,is_frozen:false,monime_account_id:'customer'},{id:'w2',user_id:uid,currency:'SLE',balance:0,is_frozen:false,monime_account_id:'spin'}],error:null}),api:()=>({ok:true,body:{businessAccountIds:[],platform:{spinAccountId:'spin'},accounts:[{id:'customer',currency:'SLE',balance:{available:{currency:'SLE',value:200}}},{id:'spin',currency:'SLE',balance:{available:{currency:'SLE',value:10000}}}]}})}));
 
 test('Wallet freeze retains the exact wallet and reason, requires its matching receipt, and prevents duplicate clicks',()=>withPage('FinancialsPage',async h=>{
  await h.click('Freeze Wallet');
