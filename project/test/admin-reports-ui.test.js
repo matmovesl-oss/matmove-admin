@@ -1,5 +1,4 @@
 
-
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
@@ -131,14 +130,16 @@ const retained={key:mid,actor:uid,audience:'driver',target:null,title:'Driver up
 function nodes(n){if(!n||typeof n!=='object')return[];if(Array.isArray(n))return n.flatMap(nodes);return[n,...nodes(n.props?.children)];}
 function text(n){if(n==null||typeof n==='boolean')return'';if(typeof n!=='object')return String(n);if(Array.isArray(n))return n.map(text).join('');return text(n.props?.children);}
 async function page(fn,{access=owner,saved=null,blocked=false}={}){
- const dir=await mkdtemp(join(process.cwd(),'.admin-assistance-')),out=join(dir,'ui.mjs'),old={window:globalThis.window,sessionStorage:globalThis.sessionStorage};const slots=[],effects=[],calls=[],navigation=[],storage=new Map();let cursor=0,dirty=true,tree,unmounted=false,identity=uid,latest=access,authoritative=access,handler=null,timer=0;
+ const dir=await mkdtemp(join(process.cwd(),'.admin-assistance-')),out=join(dir,'ui.mjs'),old={window:globalThis.window,sessionStorage:globalThis.sessionStorage,fetch:globalThis.fetch};const slots=[],effects=[],calls=[],navigation=[],storage=new Map();let cursor=0,dirty=true,tree,unmounted=false,identity=uid,latest=access,authoritative=access,handler=null,timer=0;
  const key=`matmove-notification-send:v1:${uid}`;if(saved!==null)storage.set(key,typeof saved==='string'?saved:JSON.stringify(saved));
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,i)=>!Object.is(v,b[i]));
  globalThis.__adminAssistHooks={useState(initial){const i=cursor++;if(!(i in slots))slots[i]={value:typeof initial==='function'?initial():initial};return[slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v;dirty=true;}];},useRef(initial){const i=cursor++;if(!(i in slots))slots[i]={current:initial};return slots[i];},useEffect(fn,deps){const i=cursor++,old=slots[i];if(!old||changed(old.deps,deps)){const s={deps,cleanup:old?.cleanup};slots[i]=s;effects.push(()=>{s.cleanup?.();s.cleanup=fn();});}}};
  globalThis.__adminAssistAccess=()=>latest;globalThis.__adminAssistNavigate=d=>navigation.push(d);globalThis.window={setTimeout:()=>++timer,clearTimeout(){}};
  globalThis.sessionStorage={getItem:k=>{if(blocked)throw Error('Storage blocked');return storage.get(k)||null;},setItem:(k,v)=>{if(blocked)throw Error('Storage blocked');storage.set(k,v);},removeItem:k=>storage.delete(k)};
- globalThis.__adminAssistDb={auth:{getSession:async()=>({data:{session:{user:{id:identity}}},error:null})},rpc:async(name,args)=>{calls.push({name,args});if(handler){const value=await handler(name,args);if(value!==undefined)return value;}
-  if(name==='matmove_admin_access')return{data:authoritative,error:null};
+ globalThis.fetch=async(url,options)=>{assert.equal(url,'/api/admin-staff?view=me');assert.equal(options.method,'GET');assert.equal(options.headers.Authorization,`Bearer token-${uid}`);calls.push({name:'staff-self-session'});if(handler){const value=await handler('staff-self-session',{});if(value!==undefined)return value;}return{ok:true,json:async()=>({access:authoritative})};};
+ globalThis.__adminAssistDb={auth:{getSession:async()=>({data:{session:{user:{id:identity},access_token:`token-${identity}`}},error:null})},rpc:async(name,args)=>{calls.push({name,args});if(handler){const value=await handler(name,args);if(value!==undefined)return value;}
+  if(name==='matmove_admin_access')throw Error('Private staff RPC must never be called by the browser');
+  if(name==='matmove_admin_me')return{data:null,error:{code:'42501',message:'Browser RPC denied'}};
   if(name==='matmove_admin_notification_history')return{data:{actor_id:uid,items:[]},error:null};
   if(name==='matmove_admin_send_notification'){assert.ok(storage.has(key),'Original key must be saved BEFORE POST');return{data:{id:mid,sender_id:uid,request_key:args.p_request_key,recipient_count:args.p_audience==='user'?1:3,created_at:'2026-10-27T14:00:00Z'},error:null};}
   throw Error('Unexpected RPC '+name);
@@ -158,6 +159,9 @@ test('inactive and unassigned staff cannot load or send messages and customer go
 test('Admin Help uses local assigned knowledge and makes no API request or staff mutation',()=>page(async h=>{
  await h.click('Help');await h.field('Ask Admin Help','kyc');h.nodes.find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await h.settle();await h.click('Open KYC');assert.deepEqual(h.navigation,['/kyc']);assert.equal(h.calls.length,0);
 },{access:{...owner,is_owner:false,permissions:['kyc']}}));
+test('denied browser staff RPC recovers through verified server permissions without exposing the private RPC',()=>page(async h=>{await h.click('Messages');assert.ok(h.calls.some(c=>c.name==='staff-self-session'));assert.ok(!h.calls.some(c=>c.name==='matmove_admin_access'));assert.ok(!h.text.includes('Access denied'));}));
+test('unavailable server permission checks cannot send or invent empty message history',()=>page(async h=>{h.setHandler(name=>name==='staff-self-session'?{ok:false,json:async()=>({error:'Permission service unavailable'})}:undefined);await h.click('Messages');assert.match(h.text,/Permission service unavailable/);await h.review();await h.click('Send message');assert.ok(!h.calls.some(c=>c.name==='matmove_admin_send_notification'));}));
+test('mismatched server staff identity never reaches message history or sending',()=>page(async h=>{h.setAuthority({...owner,id:other});await h.click('Messages');assert.ok(!h.calls.some(c=>c.name==='matmove_admin_notification_history'));await h.review();await h.click('Send message');assert.ok(!h.calls.some(c=>c.name==='matmove_admin_send_notification'));}));
 test('broadcast requires review and explicit confirmation; duplicate clicks create one original saved send',()=>page(async h=>{
  await h.click('Messages');await h.field('Message title','Announcement');await h.field('Message body','Please review the latest app guide.');await h.click('Review message');assert.equal(h.button('Send message').props.disabled,true);assert.equal(h.calls.some(c=>c.name==='matmove_admin_send_notification'),false);await h.field('Confirm message audience and contents',true);
  const b=h.button('Send message');b.props.onClick();b.props.onClick();await h.settle();const sent=h.calls.filter(c=>c.name==='matmove_admin_send_notification');assert.equal(sent.length,1);assert.equal(sent[0].args.p_audience,'all');assert.equal(sent[0].args.p_title,'Announcement');assert.match(h.text,/Sent to 3 customers/);assert.equal(h.storage.has(h.key),false);

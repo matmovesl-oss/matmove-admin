@@ -1,8 +1,8 @@
-
 import {useEffect,useRef,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {CircleHelp,Send,X} from 'lucide-react';
 import {supabase} from '@/lib/supabase';
+import {loadAdminSession} from '@/lib/adminSession';
 import {useAdminAccess,type AdminAccess} from '@/lib/adminAccess';
 import {HELP_ARTICLES,HELP_VERSION,helpTopics,searchMatMoveHelp,type HelpContext,type HelpArticle} from '../../shared/matmove-help.js';
 type Draft={key:string;actor:string;audience:string;target:string|null;title:string;body:string;destination:string|null};
@@ -35,8 +35,9 @@ export default function AdminAssistance(){
  useEffect(()=>{const el=dialog.current;if(panel&&el&&!el.open)el.showModal();if(!panel&&el?.open)el.close();return()=>{if(el?.open)el.close();};},[panel]);
  async function verify(){
   if(!live()||!canSendMessages(latest.current))throw new Error('Access denied. Notifications assignment required.');
-  const s=await deadline(supabase.auth.getSession());if(s.error||s.data.session?.user.id!==actor)throw new Error('Your sign-in changed. Reopen Admin.');
-  const a=await deadline(supabase.rpc('matmove_admin_access',{p_id:actor}));if(a.error||a.data?.id!==actor||!canSendMessages(a.data)||!live())throw new Error('Access denied. Your current assignment could not be verified.');
+  const s=await deadline(supabase.auth.getSession());if(s.error||s.data.session?.user.id!==actor||!s.data.session.access_token)throw new Error('Your sign-in changed. Reopen Admin.');
+  const a=await deadline(loadAdminSession(supabase,s.data.session));
+  const after=await deadline(supabase.auth.getSession());if(after.error||after.data.session?.user.id!==actor||!a||a.id!==actor||!canSendMessages(a)||!live())throw new Error('Access denied. Your current assignment could not be verified.');
  }
  async function loadHistory(){
   if(historyMutex.current||!canSendMessages(latest.current))return;historyMutex.current=true;setHistoryBusy(true);setHistoryError('');const token=epoch.current;
