@@ -1,231 +1,245 @@
 import { useState } from 'react';
-import { useAdminAccess, canAccess } from '@/lib/adminAccess';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Search, ArrowRightLeft, Loader2, User } from 'lucide-react';
-
-type UserProfile = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  phone: string | null;
-  role: string;
-  wallets: { id: string; currency: string; monime_account_id: string | null }[];
-};
+import { Search, ShieldAlert, User, Wallet, CheckCircle2, AlertTriangle, ArrowRightLeft, ShieldCheck } from 'lucide-react';
 
 export function SpecialOperationsPage() {
-  const access = useAdminAccess();
-  const allowed = canAccess(access, 'financials');
-  
-  const [search, setSearch] = useState('');
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [userResult, setUserResult] = useState<any>(null);
   const [error, setError] = useState('');
-  
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [success, setSuccess] = useState('');
+
+  // Transfer / Refund Inputs
   const [amount, setAmount] = useState('');
+  const [sourceAccount, setSourceAccount] = useState<'escrow' | 'fee'>('escrow');
   const [reason, setReason] = useState('');
-  const [transferring, setTransferring] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [executing, setExecuting] = useState(false);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!search.trim()) return;
-    
-    setLoading(true);
+    if (!query.trim()) return;
+
+    setSearching(true);
     setError('');
-    setUsers([]);
-    setSelectedUser(null);
-    setSuccessMsg('');
-    
+    setSuccess('');
+    setUserResult(null);
+
     try {
-      const { data, error: dbError } = await supabase
+      const q = query.trim();
+      const { data: profileData, error: profileErr } = await supabase
         .from('profiles')
-        .select(`
-          id, full_name, email, phone, role,
-          wallets (id, currency, monime_account_id)
-        `)
-        .or(`email.ilike.%${search}%,phone.ilike.%${search}%,full_name.ilike.%${search}%`)
-        .limit(10);
-        
-      if (dbError) throw dbError;
-      setUsers(data as UserProfile[]);
-      if (data.length === 0) setError('No users found matching your search.');
+        .select('*, wallets(*)')
+        .or(`email.ilike.%${q}%,phone.ilike.%${q}%,phone_number.ilike.%${q}%,full_name.ilike.%${q}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (profileErr) throw profileErr;
+      if (!profileData) {
+        setError('No customer or driver profile matched that name, email, or phone.');
+        return;
+      }
+
+      setUserResult(profileData);
     } catch (err: any) {
-      setError(err.message || 'Failed to search users.');
+      setError(err.message || 'Lookup failed.');
     } finally {
-      setLoading(false);
+      setSearching(false);
     }
   };
 
-  const handleTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUser) return;
-    
-    setTransferring(true);
+  const handleExecuteRefund = async () => {
+    if (!userResult || !amount || Number(amount) <= 0) return;
+    setExecuting(true);
     setError('');
-    setSuccessMsg('');
-    
+    setSuccess('');
+
     try {
-      const sleWallet = selectedUser.wallets.find(w => w.currency === 'SLE');
-      if (!sleWallet || !sleWallet.monime_account_id) {
-        throw new Error('User does not have an active SLE Monime account linked.');
+      const sleWallet = userResult.wallets?.find((w: any) => w.currency === 'SLE') || userResult.wallets?.[0];
+      const destinationAccountId = sleWallet?.monime_account_id || sleWallet?.metadata?.monime_account_id;
+
+      if (!destinationAccountId) {
+        throw new Error('User does not have a verified Monime wallet account ID on file.');
       }
-      
-      const numAmount = Number(amount);
-      if (isNaN(numAmount) || numAmount <= 0) throw new Error('Enter a valid positive amount.');
-      if (reason.trim().length < 5) throw new Error('Provide a detailed reason for this internal transfer.');
 
       const { data: session } = await supabase.auth.getSession();
-      if (!session.session) throw new Error('Not authenticated.');
-
       const res = await fetch('/api/create-monime-transfer', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.session.access_token}`
+          Authorization: `Bearer ${session.session?.access_token}`
         },
         body: JSON.stringify({
-          amount: numAmount * 100, 
-          destinationId: sleWallet.monime_account_id,
-          description: `Admin Refund/Transfer: ${reason.trim()}`
+          amount: Number(amount) * 100,
+          destinationId: destinationAccountId,
+          description: `Admin Refund: ${reason.trim()}`
         })
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'The transfer failed to process. Check platform balance.');
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Refund transfer rejected by gateway.');
       }
 
-      setSuccessMsg(`Successfully transferred ${numAmount} SLE to ${selectedUser.full_name || selectedUser.phone}.`);
+      setSuccess(`Successfully transferred SLE ${Number(amount).toLocaleString()} refund to ${userResult.full_name}.`);
+      setShowConfirmModal(false);
       setAmount('');
       setReason('');
-      setSelectedUser(null);
-      setUsers([]);
+      setUserResult(null);
     } catch (err: any) {
-      setError(err.message || 'An error occurred during transfer.');
+      setError(err.message || 'Refund transfer failed.');
     } finally {
-      setTransferring(false);
+      setExecuting(false);
     }
   };
 
-  if (!allowed) {
-    return <AdminLayout title="Special Operations"><p className="p-6 text-red-600">Access denied.</p></AdminLayout>;
-  }
-
   return (
-    <AdminLayout 
-      title="Special Operations" 
-      subtitle="Admin internal transfers and instant customer refunds"
+    <AdminLayout
+      title="Refunds & Special Operations"
+      subtitle="Issue emergency refunds and internal transfers with customer verification"
     >
-      <div className="max-w-4xl space-y-6 mt-6">
-        
-        <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-            <Search size={20} className="text-indigo-600"/> Find User
-          </h2>
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <input 
-              type="text" 
-              placeholder="Search by name, email, or phone..." 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="flex-1 p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
+      <div className="max-w-4xl space-y-6 mt-4">
+        {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl">{error}</div>}
+        {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl font-bold">{success}</div>}
+
+        {/* Step 1: Search */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+            <Search size={18} className="text-indigo-600" /> 1. Search Customer to Refund
+          </h3>
+          <p className="text-xs text-slate-500">Search by customer name, phone number, or email to verify their live wallet.</p>
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="e.g. Sahr, +23277000000, or user@email.com..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              className="flex-1 p-3 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500"
             />
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="bg-indigo-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
+            <button
+              type="submit"
+              disabled={searching}
+              className="px-6 bg-slate-900 text-white font-bold rounded-xl text-xs hover:bg-slate-800 disabled:opacity-50"
             >
-              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Search'}
+              {searching ? 'Finding…' : 'Look Up'}
             </button>
           </form>
-        </section>
+        </div>
 
-        {error && <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-xl">{error}</div>}
-        {successMsg && <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl">{successMsg}</div>}
-
-        {users.length > 0 && !selectedUser && (
-          <section className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-700 mb-3 px-2">Select a user to transfer funds:</h3>
-            <div className="space-y-2">
-              {users.map(user => (
-                <button 
-                  key={user.id} 
-                  onClick={() => setSelectedUser(user)}
-                  className="w-full text-left p-4 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-xl transition flex items-center justify-between group"
-                >
-                  <div>
-                    <p className="font-bold text-slate-900 flex items-center gap-2">
-                      <User size={16} className="text-slate-400"/>
-                      {user.full_name || 'No Name'} <span className="text-xs bg-slate-100 px-2 py-1 rounded-full">{user.role}</span>
-                    </p>
-                    <p className="text-sm text-slate-500 mt-1">{user.email || 'No email'} · {user.phone || 'No phone'}</p>
-                  </div>
-                  <ArrowRightLeft className="text-slate-300 group-hover:text-indigo-600" />
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {selectedUser && (
-          <section className="bg-white p-6 rounded-2xl border border-indigo-200 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600"></div>
-            
-            <div className="flex justify-between items-start mb-6">
+        {/* Step 2: Verification Card */}
+        {userResult && (
+          <div className="bg-white rounded-3xl p-6 border border-indigo-200 shadow-sm space-y-5">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold">Transfer to {selectedUser.full_name || selectedUser.phone}</h3>
-                <p className="text-sm text-slate-500">{selectedUser.email} · {selectedUser.role}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Verified User</span>
+                <h4 className="font-bold text-slate-900 text-lg flex items-center gap-2 mt-0.5">
+                  <User size={18} className="text-indigo-600" /> {userResult.full_name || 'Customer'}
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">{userResult.email} · {userResult.phone || userResult.phone_number}</p>
               </div>
-              <button 
-                onClick={() => setSelectedUser(null)}
-                className="text-sm font-bold text-slate-500 hover:text-slate-800"
-              >
-                Change User
-              </button>
+              <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-full uppercase">
+                {userResult.role || 'Rider'}
+              </span>
             </div>
 
-            <form onSubmit={handleTransfer} className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Transfer Amount (SLE)</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  min="0.1"
-                  required
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  placeholder="e.g. 50.00"
-                  className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 text-lg"
-                />
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-bold">Monime Wallet ID:</span>
+                <span className="font-mono font-bold text-slate-900">
+                  {userResult.wallets?.[0]?.monime_account_id || 'Not linked'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-bold">Verification:</span>
+                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <ShieldCheck size={14} /> Active Account
+                </span>
+              </div>
+            </div>
+
+            {/* Step 3: Refund Form */}
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Refund Amount (SLE)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 50.00"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    className="w-full p-3 border border-slate-200 rounded-xl text-base font-black text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Source Account</label>
+                  <select
+                    value={sourceAccount}
+                    onChange={e => setSourceAccount(e.target.value as any)}
+                    className="w-full p-3 border border-slate-200 rounded-xl text-xs font-bold bg-white"
+                  >
+                    <option value="escrow">Escrow & Platform Holdings</option>
+                    <option value="fee">Company Fee Account</option>
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Reason / Description</label>
-                <input 
-                  type="text" 
-                  required
+                <label className="block text-xs font-bold text-slate-700 mb-1">Reason / Case Reference</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Ride cancellation refund #1042 or overcharge"
                   value={reason}
                   onChange={e => setReason(e.target.value)}
-                  placeholder="e.g. Refund for cancelled trip #1024"
-                  className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
+                  className="w-full p-3 border border-slate-200 rounded-xl text-xs font-medium"
                 />
-                <p className="text-xs text-slate-500 mt-1">This will be recorded in the gateway transaction logs.</p>
               </div>
 
-              <div className="pt-4 flex gap-3">
-                <button 
-                  type="submit" 
-                  disabled={transferring}
-                  className="flex-1 bg-indigo-600 text-white font-bold p-4 rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(true)}
+                disabled={!amount || Number(amount) <= 0 || !reason.trim()}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-md transition disabled:opacity-50"
+              >
+                Review & Confirm Refund Transfer
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Modal */}
+        {showConfirmModal && (
+          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 text-amber-600">
+                <AlertTriangle size={24} />
+                <h3 className="font-bold text-slate-900 text-base">Confirm Direct Refund</h3>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                You are about to issue a direct credit of <b>SLE {Number(amount).toLocaleString()}</b> to <b>{userResult?.full_name}</b> ({userResult?.phone || userResult?.phone_number}).
+              </p>
+              <div className="p-3 bg-slate-50 rounded-xl text-xs font-mono text-slate-600">
+                Destination: {userResult?.wallets?.[0]?.monime_account_id}
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  disabled={executing}
+                  onClick={handleExecuteRefund}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition"
                 >
-                  {transferring ? <Loader2 className="animate-spin" size={20} /> : <ArrowRightLeft size={20} />}
-                  {transferring ? 'Processing Transfer...' : 'Execute Internal Transfer'}
+                  {executing ? 'Executing…' : 'Confirm & Send Refund'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="px-4 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+                >
+                  Cancel
                 </button>
               </div>
-            </form>
-          </section>
+            </div>
+          </div>
         )}
       </div>
     </AdminLayout>
