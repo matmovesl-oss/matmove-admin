@@ -94,13 +94,14 @@ function treasuryRows(body: any): Treasury[] {
   const configured = new Map<string, string[]>();
 
   for (const [field, label] of [
-    ['escrowAccountId', 'Escrow'],
-    ['feeAccountId', 'Platform fees'],
+    ['escrowAccountId', 'Escrow & Platform fees'],
+    ['feeAccountId', 'Company Fee account'],
     ['spinAccountId', 'Spin Account'],
     ['mainAccountId', 'Main business account'],
     ['referralAccountId', 'Referral rewards'],
     ['travelAccountId', 'Travel bus account'],
     ['eventAccountId', 'Events account'],
+    ['refundAccountId', 'Refund account']
   ]) {
     const id = body.platform[field];
     if (id === null || id === undefined || id === '') continue;
