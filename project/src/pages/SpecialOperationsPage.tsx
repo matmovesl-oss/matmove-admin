@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Search, ShieldAlert, User, Wallet, CheckCircle2, AlertTriangle, ArrowRightLeft, ShieldCheck } from 'lucide-react';
+import { Search, ShieldAlert, User, ShieldCheck, AlertTriangle } from 'lucide-react';
 
 export function SpecialOperationsPage() {
   const [query, setQuery] = useState('');
@@ -10,12 +10,30 @@ export function SpecialOperationsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Transfer / Refund Inputs
   const [amount, setAmount] = useState('');
-  const [sourceAccount, setSourceAccount] = useState<'escrow' | 'fee'>('escrow');
   const [reason, setReason] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [refundBalance, setRefundBalance] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadRefundAccount() {
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const res = await fetch('/api/admin-wallet-balances', {
+          headers: { Authorization: `Bearer ${session.session?.access_token}` }
+        });
+        const d = await res.json();
+        const refAcc = d.accounts?.find((a: any) => a.id === d.platform?.refundAccountId);
+        if (refAcc?.balance?.available) {
+          setRefundBalance(`SLE ${(refAcc.balance.available.value / 100).toFixed(2)}`);
+        }
+      } catch {
+        // Silently handled
+      }
+    }
+    loadRefundAccount();
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,10 +55,9 @@ export function SpecialOperationsPage() {
 
       if (profileErr) throw profileErr;
       if (!profileData) {
-        setError('No customer or driver profile matched that name, email, or phone.');
+        setError('No profile matched that name, email, or phone number.');
         return;
       }
-
       setUserResult(profileData);
     } catch (err: any) {
       setError(err.message || 'Lookup failed.');
@@ -60,27 +77,25 @@ export function SpecialOperationsPage() {
       const destinationAccountId = sleWallet?.monime_account_id || sleWallet?.metadata?.monime_account_id;
 
       if (!destinationAccountId) {
-        throw new Error('User does not have a verified Monime wallet account ID on file.');
+        throw new Error('User does not have an active Monime wallet ID on file.');
       }
 
       const { data: session } = await supabase.auth.getSession();
-      const res = await fetch('/api/create-monime-transfer', {
+      const res = await fetch('/api/admin-refund', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.session?.access_token}`
         },
         body: JSON.stringify({
-          amount: Number(amount) * 100,
-          destinationId: destinationAccountId,
-          description: `Admin Refund: ${reason.trim()}`
+          amount: Number(amount),
+          recipientAccountId: destinationAccountId,
+          reason: reason.trim()
         })
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Refund transfer rejected by gateway.');
-      }
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Refund transfer rejected by gateway.');
 
       setSuccess(`Successfully transferred SLE ${Number(amount).toLocaleString()} refund to ${userResult.full_name}.`);
       setShowConfirmModal(false);
@@ -97,13 +112,19 @@ export function SpecialOperationsPage() {
   return (
     <AdminLayout
       title="Refunds & Special Operations"
-      subtitle="Issue emergency refunds and internal transfers with customer verification"
+      subtitle="Issue emergency refunds directly from your dedicated Monime Refund Account"
     >
       <div className="max-w-4xl space-y-6 mt-4">
+        {refundBalance && (
+          <div className="p-4 bg-slate-900 text-white rounded-2xl flex justify-between items-center text-xs font-bold shadow-sm">
+            <span>Live Refund Account Balance:</span>
+            <span className="text-emerald-400 text-sm font-black">{refundBalance}</span>
+          </div>
+        )}
+
         {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl">{error}</div>}
         {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl font-bold">{success}</div>}
 
-        {/* Step 1: Search */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
             <Search size={18} className="text-indigo-600" /> 1. Search Customer to Refund
@@ -127,7 +148,6 @@ export function SpecialOperationsPage() {
           </form>
         </div>
 
-        {/* Step 2: Verification Card */}
         {userResult && (
           <div className="bg-white rounded-3xl p-6 border border-indigo-200 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -158,38 +178,24 @@ export function SpecialOperationsPage() {
               </div>
             </div>
 
-            {/* Step 3: Refund Form */}
             <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Refund Amount (SLE)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="e.g. 50.00"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    className="w-full p-3 border border-slate-200 rounded-xl text-base font-black text-slate-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Source Account</label>
-                  <select
-                    value={sourceAccount}
-                    onChange={e => setSourceAccount(e.target.value as any)}
-                    className="w-full p-3 border border-slate-200 rounded-xl text-xs font-bold bg-white"
-                  >
-                    <option value="escrow">Escrow & Platform Holdings</option>
-                    <option value="fee">Company Fee Account</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Refund Amount (SLE)</label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 50.00"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  className="w-full p-3 border border-slate-200 rounded-xl text-base font-black text-slate-900"
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Reason / Case Reference</label>
                 <input
                   type="text"
-                  placeholder="e.g. Ride cancellation refund #1042 or overcharge"
+                  placeholder="e.g. Trip reversal #1042 or duplicate debit"
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   className="w-full p-3 border border-slate-200 rounded-xl text-xs font-medium"
@@ -208,7 +214,6 @@ export function SpecialOperationsPage() {
           </div>
         )}
 
-        {/* Confirmation Modal */}
         {showConfirmModal && (
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -217,18 +222,15 @@ export function SpecialOperationsPage() {
                 <h3 className="font-bold text-slate-900 text-base">Confirm Direct Refund</h3>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                You are about to issue a direct credit of <b>SLE {Number(amount).toLocaleString()}</b> to <b>{userResult?.full_name}</b> ({userResult?.phone || userResult?.phone_number}).
+                You are about to issue a direct reversal of <b>SLE {Number(amount).toLocaleString()}</b> from your Monime Refund Account to <b>{userResult?.full_name}</b>.
               </p>
-              <div className="p-3 bg-slate-50 rounded-xl text-xs font-mono text-slate-600">
-                Destination: {userResult?.wallets?.[0]?.monime_account_id}
-              </div>
               <div className="flex gap-2 pt-2">
                 <button
                   disabled={executing}
                   onClick={handleExecuteRefund}
-                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition"
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition disabled:opacity-50"
                 >
-                  {executing ? 'Executing…' : 'Confirm & Send Refund'}
+                  {executing ? 'Executing Reversal…' : 'Confirm & Send Refund'}
                 </button>
                 <button
                   type="button"

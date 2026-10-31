@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Ticket, Plus, Calendar, MapPin, Users, Search, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
+import { Ticket, Plus, Calendar, MapPin, Search, CheckCircle2, ShieldCheck, Upload } from 'lucide-react';
 
 export function AdminEventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,7 +18,7 @@ export function AdminEventsPage() {
 
   // Form states
   const [title, setTitle] = useState('');
-  const [flyerUrl, setFlyerUrl] = useState('');
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
   const [date, setDate] = useState('');
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState('100');
@@ -44,23 +44,38 @@ export function AdminEventsPage() {
     e.preventDefault();
     setBusy(true);
     try {
+      let uploadedUrl = '/logo.png';
+
+      if (flyerFile) {
+        const fileExt = flyerFile.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('event-flyers').upload(fileName, flyerFile);
+        if (uploadError) throw uploadError;
+
+        const { data: pubData } = supabase.storage.from('event-flyers').getPublicUrl(fileName);
+        if (pubData?.publicUrl) uploadedUrl = pubData.publicUrl;
+      }
+
       await supabase.from('platform_events').insert({
         title,
-        flyer_url: flyerUrl || '/logo.png',
+        flyer_url: uploadedUrl,
         event_date: new Date(date).toISOString(),
         venue,
         ticket_price: Number(price),
         description,
         is_active: true
       });
+
       setShowAddModal(false);
       setTitle('');
-      setFlyerUrl('');
+      setFlyerFile(null);
       setDate('');
       setVenue('');
       setPrice('100');
       setDescription('');
       fetchEventsAndTickets();
+    } catch (err: any) {
+      alert(err.message || 'Failed to create event.');
     } finally {
       setBusy(false);
     }
@@ -84,17 +99,13 @@ export function AdminEventsPage() {
   const filteredTickets = tickets.filter(t => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    return (
-      t.ticket_code?.toLowerCase().includes(q) ||
-      t.user_phone?.includes(q) ||
-      t.event?.title?.toLowerCase().includes(q)
-    );
+    return t.ticket_code?.toLowerCase().includes(q) || t.user_phone?.includes(q) || t.event?.title?.toLowerCase().includes(q);
   });
 
   return (
     <AdminLayout
       title="Events Hub & Ticket Gate"
-      subtitle="Publish customer events, manage flyers, and verify door admissions"
+      subtitle="Publish customer events with flyer uploads and manage gate check-ins"
     >
       <div className="max-w-6xl space-y-6 mt-4">
         {notice && (
@@ -103,7 +114,6 @@ export function AdminEventsPage() {
           </div>
         )}
 
-        {/* Tab Controls */}
         <div className="flex gap-2 border-b border-slate-200 pb-3">
           {[
             ['overview', 'Events & Flyers'],
@@ -124,16 +134,15 @@ export function AdminEventsPage() {
           ))}
         </div>
 
-        {/* Tab 1: Overview & Events Creation */}
         {currentTab === 'overview' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-slate-900 text-base">Active Customer Events</h3>
+              <h3 className="font-bold text-slate-900 text-base">Active Events</h3>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 transition shadow-sm"
               >
-                <Plus size={16} /> Post New Event
+                <Plus size={16} /> Upload & Post Event
               </button>
             </div>
 
@@ -161,19 +170,16 @@ export function AdminEventsPage() {
           </div>
         )}
 
-        {/* Tab 2: Ticket Sales & Audit */}
         {currentTab === 'sales' && (
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
-            <h3 className="font-bold text-base text-slate-900">Direct Customer Purchases</h3>
-            <p className="text-xs text-slate-500">Payments routed to <code>MONIME_EVENT_ACCOUNT_ID</code></p>
-
+            <h3 className="font-bold text-base text-slate-900">Direct Ticket Sales</h3>
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 uppercase font-bold">
                   <th className="pb-3">Ticket Code</th>
                   <th className="pb-3">Event Title</th>
                   <th className="pb-3">Customer Phone</th>
-                  <th className="pb-3">Seats/Tickets</th>
+                  <th className="pb-3">Passes</th>
                   <th className="pb-3">Amount</th>
                   <th className="pb-3">Date</th>
                   <th className="pb-3">Status</th>
@@ -200,7 +206,6 @@ export function AdminEventsPage() {
           </div>
         )}
 
-        {/* Tab 3: Gate Check-In & Activation */}
         {currentTab === 'checkin' && (
           <div className="space-y-4">
             <div className="relative">
@@ -222,11 +227,10 @@ export function AdminEventsPage() {
                     <h4 className="font-bold text-slate-900 text-sm mt-0.5">{t.event?.title}</h4>
                     <p className="text-xs text-slate-500">{t.user_phone} · {t.tickets_count || 1} Admission(s)</p>
                   </div>
-
                   <div>
                     {t.status === 'used' ? (
                       <span className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs flex items-center gap-1.5">
-                        <CheckCircle2 size={15} /> Admitted ({new Date(t.admitted_at || t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                        <CheckCircle2 size={15} /> Admitted
                       </span>
                     ) : (
                       <button
@@ -244,19 +248,24 @@ export function AdminEventsPage() {
           </div>
         )}
 
-        {/* Create Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
-              <h2 className="text-lg font-bold mb-4">Post New Event</h2>
+              <h2 className="text-lg font-bold mb-4">Post New Event with Flyer</h2>
               <form onSubmit={handleCreateEvent} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Event Title</label>
                   <input type="text" required value={title} onChange={e => setTitle(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Flyer Image URL</label>
-                  <input type="url" placeholder="https://..." value={flyerUrl} onChange={e => setFlyerUrl(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs" />
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Upload Flyer (Image File)</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    required
+                    onChange={e => setFlyerFile(e.target.files?.[0] || null)}
+                    className="w-full p-2 border border-dashed rounded-xl text-xs bg-slate-50 cursor-pointer"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -278,7 +287,7 @@ export function AdminEventsPage() {
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button type="submit" disabled={busy} className="flex-1 bg-sky-600 text-white font-bold py-3 rounded-xl text-xs">
-                    {busy ? 'Publishing…' : 'Publish Event'}
+                    {busy ? 'Uploading & Publishing…' : 'Publish Event'}
                   </button>
                   <button type="button" onClick={() => setShowAddModal(false)} className="px-4 bg-slate-200 text-slate-700 font-bold rounded-xl text-xs">
                     Cancel
