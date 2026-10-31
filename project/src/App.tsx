@@ -1,9 +1,4 @@
-
-
 import ReportsPage from './pages/ReportsPage';
-
-
-
 import {loadAdminSession} from './lib/adminSession';
 import { GamesPage } from './pages/GamesPage';
 import { useState, useEffect } from 'react';
@@ -23,6 +18,7 @@ import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage'; 
 import { TransactionsPage } from './pages/TransactionsPage'; 
+import { CivitasAdministrativePage } from './pages/CivitasAdministrativePage';
 
 import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
@@ -57,6 +53,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage/></Gate>}/>
  <Route path="/games" element={<GameGate access={access}/>}/>
  <Route path="/kyc" element={<Gate access={access} section="kyc"><KycPage/></Gate>}/>
+ <Route path="/civitas" element={<Gate access={access} section="financials"><CivitasAdministrativePage/></Gate>}/>
  <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage/></Gate>}/>
  <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage/></Gate>}/>
  <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>

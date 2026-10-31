@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Car, CreditCard, FileText, LayoutDashboard, Settings, ShieldAlert, ShieldCheck, Users, Wallet, LogOut, ArrowRightLeft, X } from 'lucide-react';
+import { Activity, Building, Car, CreditCard, FileText, LayoutDashboard, Settings, ShieldAlert, ShieldCheck, Users, Wallet, LogOut, ArrowRightLeft, X } from 'lucide-react';
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
@@ -9,6 +9,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
     { name: 'Vehicle Pricing', path: '/pricing', icon: Car },
     { name: 'KYC & Onboarding', path: '/kyc', icon: ShieldCheck },
+    { name: 'Civitas Administrative', path: '/civitas', icon: Building },
     { name: 'Financial & Wallets', path: '/financials', icon: Wallet },
     { name: 'Gateway Transactions', path: '/transactions', icon: ArrowRightLeft },
     { name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },

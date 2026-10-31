@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useAdminAccess, canAccess } from '@/lib/adminAccess';
 import { supabase } from '@/lib/supabase';
@@ -80,8 +79,6 @@ export function SpecialOperationsPage() {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session) throw new Error('Not authenticated.');
 
-      // Call internal transfer endpoint logic. (Assumes MatMove admin backend logic or Monime direct call)
-      // Since this is an admin override, we route funds from the Platform Escrow to the user's wallet
       const res = await fetch('/api/create-monime-transfer', {
         method: 'POST',
         headers: {
@@ -89,7 +86,7 @@ export function SpecialOperationsPage() {
           Authorization: `Bearer ${session.session.access_token}`
         },
         body: JSON.stringify({
-          amount: numAmount * 100, // Assuming minor units
+          amount: numAmount * 100, 
           destinationId: sleWallet.monime_account_id,
           description: `Admin Refund/Transfer: ${reason.trim()}`
         })
@@ -123,7 +120,6 @@ export function SpecialOperationsPage() {
     >
       <div className="max-w-4xl space-y-6 mt-6">
         
-        {/* Search Section */}
         <section className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
             <Search size={20} className="text-indigo-600"/> Find User
@@ -149,7 +145,6 @@ export function SpecialOperationsPage() {
         {error && <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-xl">{error}</div>}
         {successMsg && <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl">{successMsg}</div>}
 
-        {/* Results Section */}
         {users.length > 0 && !selectedUser && (
           <section className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-700 mb-3 px-2">Select a user to transfer funds:</h3>
@@ -174,7 +169,6 @@ export function SpecialOperationsPage() {
           </section>
         )}
 
-        {/* Transfer Form Section */}
         {selectedUser && (
           <section className="bg-white p-6 rounded-2xl border border-indigo-200 shadow-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-indigo-600"></div>
