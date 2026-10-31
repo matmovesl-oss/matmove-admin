@@ -14,6 +14,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },
     { name: 'Customer Governance', path: '/customers', icon: Users },
     { name: 'Staff Governance', path: '/staff', icon: Settings },
+    { name: 'Special Operations', path: '/special', icon: ShieldAlert },
     { name: 'System & Audit Logs', path: '/logs', icon: FileText },
   ];
 

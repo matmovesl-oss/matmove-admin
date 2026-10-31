@@ -1,3 +1,4 @@
+import AdminTripReview from '@/components/AdminTripReview';
 
 
 import {useEffect,useRef,useState} from 'react';
@@ -14,6 +15,7 @@ export default function DispatchRadarPage(){
  const stamp=JSON.stringify([access?.id,access?.is_active,access?.is_owner,[...(access?.permissions||[])].sort()]);
  const current=useRef(stamp);current.current=stamp;
  const mounted=useRef(false),epoch=useRef(0),locked=useRef(false);
+ const [tripReference,setTripReference]=useState(''),[searchedTrip,setSearchedTrip]=useState('');
  const [reload,setReload]=useState(0),[feed,setFeed]=useState<Feed|null>(null),[loadedStamp,setLoadedStamp]=useState('');
  const [loading,setLoading]=useState(true),[error,setError]=useState(''),[actionError,setActionError]=useState(''),[notice,setNotice]=useState('');
  const [selected,setSelected]=useState(''),[driver,setDriver]=useState(''),[note,setNote]=useState(''),[review,setReview]=useState<Action|null>(null),[busy,setBusy]=useState(false);
@@ -42,7 +44,7 @@ export default function DispatchRadarPage(){
  const selectedDriver=ready?feed?.drivers.find(d=>d.id===driver):undefined;
  const eligibleDriver=!!selectedDriver?.eligible&&!!booking&&selectedDriver.id!==booking.riderId&&(!booking.agreedDriverId||booking.agreedDriverId===selectedDriver.id);
  const mutable=!!booking&&['pending','pending_admin'].includes(booking.status)&&!booking.paymentStarted;
- function pick(id:string){if(locked.current)return;setSelected(id);setDriver('');setNote('');setReview(null);setError('');setActionError('');setNotice('');draft.current=null;}
+ function pick(id:string){if(locked.current)return;setSearchedTrip('');setSelected(id);setDriver('');setNote('');setReview(null);setError('');setActionError('');setNotice('');draft.current=null;}
  async function change(){
   if(locked.current||loading||!!error||!booking||!review||!access||!mutable||note.trim().length<3||note.trim().length>300||(review==='assign'&&!eligibleDriver))return;
   const wanted={booking:booking.id,version:booking.version,action:review,driver:review==='assign'?driver:null,note:note.trim()};
@@ -63,13 +65,15 @@ export default function DispatchRadarPage(){
  return <AdminLayout title="Dispatch Radar" subtitle="Assign pending requests at their existing fare. Driver acceptance uses the verified escrow flow.">
   {!allowed?<p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>:<div className="space-y-4">
    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-slate-500">Latest 100 requests. Full booking history is available in Reports & CSV. Last synced: {ready&&feed?new Date(feed.generatedAt).toLocaleString():'Not yet synced'}.</p><button type="button" disabled={loading||busy} onClick={()=>setReload(n=>n+1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50"><RefreshCw size={16}/>Refresh Radar</button></div>
+   <form onSubmit={e=>{e.preventDefault();if(!busy&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(tripReference.trim())){setSelected('');setSearchedTrip(tripReference.trim());}}} className="flex flex-wrap items-end gap-3 rounded-xl border bg-white p-3"><label className="min-w-0 flex-1 text-sm font-bold">Find any request by reference<input aria-label="Trip reference" value={tripReference} onChange={e=>setTripReference(e.target.value)} placeholder="Booking UUID from Trips or Reports & CSV" className="mt-1 w-full rounded-lg border p-3 font-mono text-xs"/></label><button type="submit" disabled={busy||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(tripReference.trim())} className="min-h-11 rounded-lg border px-3 font-bold disabled:opacity-50">Review trip reference</button></form>
+   {searchedTrip&&<div className="rounded-xl border bg-white p-4"><button type="button" onClick={()=>setSearchedTrip('')} className="mb-3 min-h-11 underline">Close reference review</button><AdminTripReview key={`${access!.id}:${searchedTrip}`} userId={access!.id} bookingId={searchedTrip}/></div>}
    {notice&&<p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
    {error&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}<button type="button" disabled={busy} onClick={()=>setReload(n=>n+1)} className="ml-2 font-bold underline">Retry Dispatch</button></p>}
    {actionError&&<p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{actionError}</p>}
    {!ready||(!feed&&loading)?<p role="status" className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading dispatch requests…</p>:!error&&feed&&!feed.bookings.length?<p className="rounded-xl border bg-white p-5 text-sm text-slate-600">No requests have been recorded yet.</p>:!error&&feed?<div className="grid gap-4 lg:grid-cols-2">
     <section className="space-y-3">{feed.bookings.map(b=><button type="button" key={b.id} disabled={busy} onClick={()=>pick(b.id)} className={`w-full space-y-2 rounded-2xl border bg-white p-4 text-left disabled:opacity-50 ${selected===b.id?'border-indigo-500':'border-slate-200'}`}><div className="flex flex-wrap justify-between gap-2"><span className="font-bold">{b.riderLabel||b.riderId}</span><span className="text-sm font-semibold">{b.fare==null?'Fare unavailable':`SLE ${b.fare}`}</span></div><p className="text-xs capitalize text-slate-500">{b.serviceType} · {b.status.replace(/_/g,' ')}</p><p className="flex gap-2 text-xs text-slate-600"><MapPin size={14} className="shrink-0"/>{b.pickup}</p><p className="flex gap-2 text-xs text-slate-600"><Navigation size={14} className="shrink-0"/>{b.destination}</p><p className="text-xs text-slate-500">Driver: {b.driverLabel||'Awaiting assignment'}</p></button>)}</section>
     <section className="min-w-0 space-y-4 self-start rounded-2xl border bg-white p-4">{!booking?<p className="text-sm text-slate-500">Select a request to review its dispatch controls.</p>:<>
-     <h2 className="font-bold">Dispatch review</h2><p className="break-all text-xs text-slate-500">{booking.id}</p><p className="text-sm">{booking.riderLabel} · {booking.fare==null?'Fare unavailable':`SLE ${booking.fare}`} · {booking.status.replace(/_/g,' ')}</p>
+     <AdminTripReview key={`${access!.id}:${booking.id}`} userId={access!.id} bookingId={booking.id}/><h2 className="font-bold">Dispatch controls</h2><p className="break-all text-xs text-slate-500">{booking.id}</p><p className="text-sm">{booking.riderLabel} · {booking.fare==null?'Fare unavailable':`SLE ${booking.fare}`} · {booking.status.replace(/_/g,' ')}</p>
      {booking.scheduledTime&&<p className="text-sm">Scheduled: {new Date(booking.scheduledTime).toLocaleString()}</p>}
      {!mutable?<p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{booking.paymentStarted?'Payment processing has started. Reassignment is locked. The customer must use the cancellation/refund flow.':'This request is no longer pending. Dispatch changes are closed.'}</p>:<>
       <p className="text-xs text-slate-600">Assignment does not accept the trip, change the fare or debit a wallet. Only the selected driver can accept it.</p>

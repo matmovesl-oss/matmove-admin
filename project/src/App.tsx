@@ -18,6 +18,7 @@ import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage'; 
 import { StaffGovernancePage } from './pages/StaffGovernancePage';
 import { LogsPage } from './pages/LogsPage';
+import { SpecialOperationsPage } from './pages/SpecialOperationsPage';
 import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage'; 
@@ -61,6 +62,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
  <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage/></Gate>}/>
  <Route path="/staff" element={<Gate access={access} section="staff"><StaffGovernancePage/></Gate>}/>
+ <Route path="/special" element={<Gate access={access} section="financials"><SpecialOperationsPage/></Gate>}/>
  <Route path="/logs" element={<Gate access={access} section="logs"><LogsPage/></Gate>}/>
  <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage/></Gate>}/>
  <Route path="/wallets" element={<Navigate to="/financials" replace/>}/><Route path="/withdrawals" element={<Navigate to="/payouts" replace/>}/><Route path="/users" element={<Navigate to="/customers" replace/>}/>

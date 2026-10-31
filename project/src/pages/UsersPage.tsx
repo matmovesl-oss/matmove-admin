@@ -70,7 +70,7 @@ export default function UsersPage() {
 
   const filteredUsers = users.filter(user => {
     const term = search.trim().toLowerCase();
-    const matchesSearch = !term || [user.full_name,user.first_name,user.last_name,user.email,user.phone,user.phone_number]
+    const matchesSearch = !term || [user.full_name,user.first_name,user.last_name,user.email,user.phone,user.phone_number, user.oname_id]
       .some(value=>String(value||'').toLowerCase().includes(term));
 
     const matchesRole =
@@ -298,7 +298,8 @@ export default function UsersPage() {
                     label="Phone"
                     value={selectedUser.phone || selectedUser.phone_number || '—'}
                   />
-                  <Info label="Email" value={selectedUser.email || '—'} />
+                  <Info label="Oname ID" value={selectedUser.oname_id || '—'} />
+              <Info label="Email" value={selectedUser.email || '—'} />
                   <Info label="Date of birth" value={selectedUser.date_of_birth || '—'} />
                   <Info label="Nationality" value={selectedUser.nationality || '—'} />
                   <Info label="Country" value={selectedUser.country || '—'} />
