@@ -2,24 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { AdminPageSkeleton } from '@/components/Skeleton';
-
-
-function nextMatMoveDepartureDate(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Freetown', year: 'numeric', month: '2-digit', day: '2-digit'
-  }).formatToParts(now);
-  const get = (key: string) => parts.find(part => part.type === key)?.value || '';
-  const year = Number(get('year'));
-  const month = Number(get('month'));
-  const day = Number(get('day'));
-  if (day < 15) return `${year}-${String(month).padStart(2, '0')}-15`;
-  const nextMonth = new Date(Date.UTC(year, month, 1));
-  return `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, '0')}-01`;
-}
 import { 
   Bus, CheckCircle2, Search, Phone, MapPin, 
-  User, ShieldCheck, AlertTriangle, Users, Settings, DollarSign 
+  User, ShieldCheck, AlertTriangle, Users, Settings, DollarSign, XCircle 
 } from 'lucide-react';
 
 export function AdminTravelPage() {
@@ -63,7 +48,7 @@ export function AdminTravelPage() {
       setBookings(bookingsResult.data || []);
       hasLoaded.current = true;
     } catch (error: any) {
-      if (version === requestVersion.current) setLoadError(error?.message || 'Travel records could not be loaded. Check the connection and retry.');
+      if (version === requestVersion.current) setLoadError(error?.message || 'Travel records could not be loaded.');
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
@@ -83,73 +68,67 @@ export function AdminTravelPage() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!Number.isInteger(totalSeatsInput) || totalSeatsInput < 1 || !Number.isFinite(priceUsdInput) || priceUsdInput < 0 || !Number.isFinite(priceSleInput) || priceSleInput < 0) {
-      setNotice('Enter a whole number of seats and valid non-negative fares.');
-      return;
-    }
     setBusy(true);
     setNotice('');
     setActionError('');
     try {
-      const { data, error } = await supabase.from('travel_settings').upsert({
+      const { error } = await supabase.from('travel_settings').upsert({
         id: 'bus_ghana',
-        total_seats: totalSeatsInput,
+        total_seats: Number(totalSeatsInput),
         price_usd: Number(priceUsdInput),
         price_sle: Number(priceSleInput),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' }).select('*').single();
+        updated_at: new Date().toISOString()
+      });
       if (error) throw error;
-      setBusSettings(data);
-      setNotice('Bus capacity and prices are saved. Customer screens will refresh from Supabase.');
-      await fetchTravelData();
+      setNotice('Bus capacity and pricing updated successfully.');
+      void fetchTravelData();
     } catch (err: any) {
-      setActionError(err.message || 'Failed to save bus settings.');
+      setActionError(err.message || 'Failed to update settings.');
     } finally {
       setBusy(false);
     }
   };
 
   const handleApproveSeat = async (booking: any) => {
-    const dateBookings = bookings.filter(b => b.departure_date === booking.departure_date);
-    const dateReserved = dateBookings
-      .filter(b => b.is_paid || ['approved', 'boarded'].includes(b.status))
-      .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-    const datePending = dateBookings
-      .filter(b => b.status === 'pending_approval' && !b.is_paid)
-      .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-    if (dateReserved + datePending > totalCapacity) {
-      alert(`The reservation queue for ${booking.departure_date || 'this departure'} exceeds capacity. Reject excess pending requests first.`);
-      return;
-    }
-    if (dateReserved + Number(booking.passengers_count || 1) > totalCapacity) {
-      alert(`Cannot approve: Bus capacity of ${totalCapacity} seats will be exceeded for ${booking.departure_date || 'this departure'}.`);
-      return;
-    }
-
     setBusy(true);
     setNotice('');
     try {
       const { error } = await supabase.from('travel_bookings').update({ status: 'approved' }).eq('id', booking.id);
       if (error) throw error;
       setNotice(`Approved seat allocation for ${booking.passenger_name}. Passenger can now pay.`);
-      fetchTravelData();
-    } catch (error: any) {
-      setActionError(error.message || 'Seat approval failed.');
+      void fetchTravelData();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleApproveCancellation = async (booking: any) => {
+    const confirmed = window.confirm(`Approve cancellation request for ${booking.passenger_name}? Their seats will be released back to the bus capacity.`);
+    if (!confirmed) return;
+
+    setBusy(true);
+    setNotice('');
+    try {
+      const { error } = await supabase.from('travel_bookings').update({
+        status: 'cancelled',
+        admin_notes: `Cancellation approved. Reason: ${booking.cancel_reason || 'Customer request'}`
+      }).eq('id', booking.id);
+      if (error) throw error;
+      setNotice(`Cancellation approved for ${booking.passenger_name}. ${booking.is_paid ? 'Note: Issue refund reversal via Refunds & Special Operations if needed.' : ''}`);
+      void fetchTravelData();
     } finally {
       setBusy(false);
     }
   };
 
   const handleRejectSeat = async (id: string) => {
-    const reason = window.prompt('Reason for rejecting seat request (e.g. Bus at maximum capacity. Please join the next session):');
+    const reason = window.prompt('Reason for rejecting seat:');
     if (!reason) return;
     setBusy(true);
     try {
       const { error } = await supabase.from('travel_bookings').update({ status: 'rejected', admin_notes: reason }).eq('id', id);
       if (error) throw error;
-      await fetchTravelData();
-    } catch (error: any) {
-      setActionError(error.message || 'Seat rejection failed.');
+      void fetchTravelData();
     } finally {
       setBusy(false);
     }
@@ -167,28 +146,21 @@ export function AdminTravelPage() {
       }).eq('id', id);
       if (error) throw error;
       setNotice('Passenger successfully activated and admitted onto bus.');
-      fetchTravelData();
-    } catch (error: any) {
-      setActionError(error.message || 'Boarding activation failed.');
+      void fetchTravelData();
     } finally {
       setBusy(false);
     }
   };
 
   const totalCapacity = busSettings.total_seats || 50;
-  const nextDepartureDate = nextMatMoveDepartureDate();
-  const nextDepartureBookings = bookings.filter(b => b.departure_date === nextDepartureDate);
-  const confirmedPaidSeats = nextDepartureBookings
+  const confirmedPaidSeats = bookings
     .filter(b => b.is_paid || b.status === 'boarded')
-    .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-  const reservedSeats = nextDepartureBookings
-    .filter(b => b.is_paid || ['approved', 'boarded'].includes(b.status))
-    .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-  const pendingRequests = nextDepartureBookings
-    .filter(b => b.status === 'pending_approval' && !b.is_paid)
-    .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-  // Pending requests hold capacity for the next published departure only.
-  const availableSeats = Math.max(0, totalCapacity - reservedSeats - pendingRequests);
+    .reduce((acc, curr) => acc + (curr.passengers_count || 1), 0);
+  const pendingRequests = bookings
+    .filter(b => b.status === 'pending_approval')
+    .reduce((acc, curr) => acc + (curr.passengers_count || 1), 0);
+  const cancelRequests = bookings.filter(b => b.status === 'cancel_requested').length;
+  const availableSeats = Math.max(0, totalCapacity - confirmedPaidSeats);
 
   const filtered = bookings.filter(b => {
     if (!searchQuery.trim()) return true;
@@ -202,23 +174,14 @@ export function AdminTravelPage() {
       subtitle="SLRSA Compliance, Passenger Manifests, Capacity Control & Terminal Activation"
     >
       <div className="max-w-6xl space-y-6 mt-4">
-        <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-900">
-          Next scheduled departure: {new Date(`${nextDepartureDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Capacity and approval checks are calculated separately for each departure date.
-        </div>
-        {notice && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2">
-            <CheckCircle2 size={16} /> {notice}
-          </div>
-        )}
-        {actionError && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">{actionError}</div>}
+        {notice && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2"><CheckCircle2 size={16} /> {notice}</div>}
+        {actionError && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl font-bold">{actionError}</div>}
+        {loadError && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl font-bold">{loadError}</div>}
 
-        {/* Capacity Alert */}
-        {reservedSeats + pendingRequests > totalCapacity && (
+        {cancelRequests > 0 && (
           <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl flex items-center gap-2">
             <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-            <span>
-              <b>Capacity Alert:</b> Total reserved and pending seats ({reservedSeats + pendingRequests}) exceed the {totalCapacity} seat bus capacity. Remaining requests should be rejected so customers are queued for the next session.
-            </span>
+            <span><b>Action Required:</b> There are {cancelRequests} pending travel cancellation request(s) waiting for review under Manifest & Approvals.</span>
           </div>
         )}
 
@@ -226,7 +189,7 @@ export function AdminTravelPage() {
         <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
           {[
             ['overview', 'Bus Capacity & Overview'],
-            ['manifest', 'Manifest & Approvals'],
+            ['manifest', `Manifest & Approvals ${cancelRequests > 0 ? `(${cancelRequests} Cancels)` : ''}`],
             ['boarding', 'Passenger Boarding & Activation'],
             ['payments', 'Fare Payments Audit'],
             ['settings', 'Bus Pricing & Seat Settings'],
@@ -245,12 +208,6 @@ export function AdminTravelPage() {
           ))}
         </div>
 
-        {loading ? <AdminPageSkeleton /> : loadError ? (
-          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">
-            <p className="font-bold">Travel data unavailable</p><p className="mt-1">{loadError}</p>
-            <button type="button" onClick={() => void fetchTravelData()} className="mt-3 rounded-lg border border-rose-200 bg-white px-3 py-2 font-bold">Retry travel data</button>
-          </div>
-        ) : <>
         {/* Tab 1: Overview */}
         {currentTab === 'overview' && (
           <div className="space-y-6">
@@ -261,7 +218,7 @@ export function AdminTravelPage() {
                 <span className="text-[11px] text-slate-500">Configured in Settings</span>
               </div>
               <div className="bg-white p-5 rounded-2xl border border-slate-200">
-                <span className="text-xs font-bold text-emerald-600 uppercase">Confirmed / Paid</span>
+                <span className="text-xs font-bold text-emerald-600 uppercase">Confirmed & Paid</span>
                 <p className="text-2xl font-black text-emerald-600 mt-1">{confirmedPaidSeats} Seats</p>
                 <span className="text-[11px] text-slate-500">Revenue: SLE {(confirmedPaidSeats * (busSettings.price_sle || 2400)).toLocaleString()}</span>
               </div>
@@ -279,9 +236,9 @@ export function AdminTravelPage() {
 
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-3">
               <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
-                <Bus className="text-indigo-600" size={20} /> Next Scheduled Direct Bus
+                <Bus className="text-indigo-600" size={20} /> Scheduled Departures
               </h3>
-              <p className="text-xs text-slate-500">Departures 7:00 AM sharp from PZ Terminal, Freetown to Accra Circle Terminal, Ghana.</p>
+              <p className="text-xs text-slate-500">Direct Bus between Freetown PZ Terminal and Accra Circle Terminal.</p>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-wrap gap-6 text-xs text-slate-700">
                 <div><span className="text-slate-400 font-bold block">Fare Price:</span> <b>${busSettings.price_usd || 100} / SLE {Number(busSettings.price_sle || 2400).toLocaleString()}</b></div>
                 <div><span className="text-slate-400 font-bold block">Max per Customer:</span> <b>3 Passengers</b></div>
@@ -291,7 +248,7 @@ export function AdminTravelPage() {
           </div>
         )}
 
-        {/* Tab 2: Manifest */}
+        {/* Tab 2: Manifest & Approvals */}
         {currentTab === 'manifest' && (
           <div className="space-y-4">
             <div className="relative">
@@ -313,43 +270,62 @@ export function AdminTravelPage() {
                       <User size={15} className="text-indigo-600" /> {b.passenger_name}
                     </h4>
                     <p className="text-xs text-slate-500 mt-1">{b.passenger_phone} · {b.passenger_address}</p>
-                    <p className="text-xs text-indigo-600 mt-1">Departure: {b.departure_date ? new Date(`${b.departure_date}T12:00:00`).toLocaleDateString('en-GB') : 'Not set'}</p>
                   </div>
                   <div className="text-right">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
                       b.status === 'approved' ? 'bg-indigo-100 text-indigo-800' :
                       b.status === 'boarded' ? 'bg-emerald-100 text-emerald-800' :
+                      b.status === 'cancel_requested' ? 'bg-rose-100 text-rose-800 animate-pulse' :
+                      b.status === 'cancelled' ? 'bg-slate-100 text-slate-600' :
                       b.status === 'rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
                     }`}>
-                      {b.status}
+                      {b.status === 'cancel_requested' ? 'Cancel Requested' : b.status}
                     </span>
                     <p className="text-xs font-black text-slate-900 mt-1">{b.passengers_count} Seat(s) · SLE {Number(b.fare_amount).toLocaleString()}</p>
                   </div>
                 </div>
+
+                {b.cancel_reason && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium">
+                    <b>Cancellation Reason:</b> {b.cancel_reason}
+                  </div>
+                )}
 
                 <div className="bg-slate-50 p-3 rounded-xl border text-xs flex justify-between">
                   <span>Emergency: <b>{b.emergency_name}</b> ({b.emergency_phone})</span>
                   <span className="text-slate-400">{new Date(b.created_at).toLocaleDateString()}</span>
                 </div>
 
-                {b.status === 'pending_approval' && (
-                  <div className="flex gap-2 pt-2 border-t">
+                <div className="flex gap-2 pt-2 border-t">
+                  {b.status === 'pending_approval' && (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => handleApproveSeat(b)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5"
+                      >
+                        <CheckCircle2 size={14} /> Approve Seat
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => handleRejectSeat(b.id)}
+                        className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold rounded-xl text-xs border border-rose-200"
+                      >
+                        Reject Seat
+                      </button>
+                    </>
+                  )}
+
+                  {b.status === 'cancel_requested' && (
                     <button
                       disabled={busy}
-                      onClick={() => handleApproveSeat(b)}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5"
+                      onClick={() => handleApproveCancellation(b)}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
                     >
-                      <CheckCircle2 size={14} /> Approve Seat
+                      <XCircle size={14} /> Approve Cancellation & Release Seats
                     </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => handleRejectSeat(b.id)}
-                      className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold rounded-xl text-xs border border-rose-200"
-                    >
-                      Reject (Bus Full)
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -421,52 +397,63 @@ export function AdminTravelPage() {
           </div>
         )}
 
-        {/* Tab 5: Bus Settings & Pricing */}
+        {/* Tab 5: Settings */}
         {currentTab === 'settings' && (
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5 max-w-4xl">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5 max-w-xl">
             <div className="flex items-center gap-2">
               <Settings className="text-indigo-600" size={20} />
-              <div>
-                <h3 className="font-bold text-base text-slate-900">Bus Capacity & Pricing Settings</h3>
-                <p className="text-xs text-slate-500">Current values are read from Supabase. Saving updates the shared customer fare and seat availability.</p>
-              </div>
+              <h3 className="font-bold text-base text-slate-900">Bus Capacity & Pricing Settings</h3>
             </div>
+            <p className="text-xs text-slate-500">Adjust the bus fare and maximum passenger seats. The customer portal updates automatically in real-time.</p>
 
-            {busSettings.updated_at && <p className="text-[11px] text-slate-500">Last synced: {new Date(busSettings.updated_at).toLocaleString()}</p>}
             <form onSubmit={handleSaveSettings} className="space-y-4">
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[620px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <tr><th className="p-3">Setting</th><th className="p-3">Current Supabase value</th><th className="p-3">Update value</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <th scope="row" className="p-3 font-semibold text-slate-800">Total bus seats</th>
-                      <td className="p-3 font-bold tabular-nums">{Number(busSettings.total_seats || 0).toLocaleString()} seats</td>
-                      <td className="p-3"><input aria-label="New total bus seats" type="number" min="1" step="1" required value={totalSeatsInput} onChange={e => setTotalSeatsInput(Number(e.target.value))} className="w-full max-w-44 rounded-lg border p-2 font-bold" /></td>
-                    </tr>
-                    <tr>
-                      <th scope="row" className="p-3 font-semibold text-slate-800">Fare per seat (USD)</th>
-                      <td className="p-3 font-bold tabular-nums">${Number(busSettings.price_usd || 0).toLocaleString()}</td>
-                      <td className="p-3"><input aria-label="New fare per seat in USD" type="number" min="0" step="0.01" required value={priceUsdInput} onChange={e => setPriceUsdInput(Number(e.target.value))} className="w-full max-w-44 rounded-lg border p-2 font-bold" /></td>
-                    </tr>
-                    <tr>
-                      <th scope="row" className="p-3 font-semibold text-slate-800">Fare per seat (SLE)</th>
-                      <td className="p-3 font-bold tabular-nums">SLE {Number(busSettings.price_sle || 0).toLocaleString()}</td>
-                      <td className="p-3"><input aria-label="New fare per seat in SLE" type="number" min="0" step="0.01" required value={priceSleInput} onChange={e => setPriceSleInput(Number(e.target.value))} className="w-full max-w-44 rounded-lg border p-2 font-bold" /></td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Total Bus Seat Capacity</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={totalSeatsInput}
+                  onChange={e => setTotalSeatsInput(Number(e.target.value))}
+                  className="w-full p-2.5 border rounded-xl text-sm font-bold"
+                />
               </div>
-              <p className="text-xs text-slate-500">New fares apply to new reservations. Existing reservations keep the fare recorded when they were submitted. Seat capacity cannot be reduced below currently held seats.</p>
-              <button type="submit" disabled={busy} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-md disabled:opacity-60">
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Fare Price (USD)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={priceUsdInput}
+                    onChange={e => setPriceUsdInput(Number(e.target.value))}
+                    className="w-full p-2.5 border rounded-xl text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Fare Price (SLE)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={priceSleInput}
+                    onChange={e => setPriceSleInput(Number(e.target.value))}
+                    className="w-full p-2.5 border rounded-xl text-sm font-bold"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-md"
+              >
                 {busy ? 'Saving Settings…' : 'Save Bus Capacity & Pricing'}
               </button>
             </form>
           </div>
         )}
-
-        </>}
       </div>
     </AdminLayout>
   );
