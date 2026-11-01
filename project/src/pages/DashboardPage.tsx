@@ -435,7 +435,7 @@ export default function DashboardPage() {
             </>
           )}
 
-          {/* Live Platform Accounts Section (Including Escrow, Spin, Referral, Travel & Events) */}
+          {/* Live Platform Accounts Section (Including Escrow, Spin, Referral, Travel, Events & Refund) */}
           {financial && (
             <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
@@ -449,7 +449,7 @@ export default function DashboardPage() {
               {!ready || (!balanceAt && balanceLoading) ? (
                 /* Skeleton Loading for Live Treasury Cards */
                 <div role="status" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 animate-pulse">
-                  {[1, 2, 3, 4, 5].map(i => (
+                  {[1, 2, 3, 4, 5, 6].map(i => (
                     <div key={i} className="h-28 rounded-xl bg-slate-50 p-4 space-y-2 border border-slate-100">
                       <div className="h-4 w-1/3 bg-slate-200 rounded"></div>
                       <div className="h-6 w-1/2 bg-slate-200 rounded"></div>
