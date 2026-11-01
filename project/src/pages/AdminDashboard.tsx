@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useWallets, useWithdrawals } from '../lib/hooks';
 import AdminLayout from '../components/AdminLayout'; 
+import { AdminRowsSkeleton, SkeletonBlock } from '../components/Skeleton';
 import { CheckCircle2, XCircle, Search, RefreshCw, FileText, Truck, Store, User, ShieldCheck, Download, X, Clock3, Users, AlertTriangle, Activity, MapPin, Phone, Mail, CalendarDays, BadgeCheck, Ban, Wallet, LockKeyhole, UnlockKeyhole, ArrowDownToLine, ArrowUpFromLine, CircleDollarSign, Loader2 } from 'lucide-react';
 
 type CustomerRole = 'rider' | 'driver' | 'merchant';
@@ -326,7 +327,7 @@ export default function AdminDashboard() {
           </div>
           <div className="divide-y divide-slate-100 overflow-y-auto flex-1">
             {loading ? (
-              <div className="p-8 text-center text-slate-400 text-sm"><RefreshCw size={20} className="animate-spin mx-auto mb-3" /> Loading...</div>
+              <div className="p-4"><AdminRowsSkeleton rows={6} columns={1} /></div>
             ) : filteredProfiles.length === 0 ? (
               <div className="p-8 text-center"><ShieldCheck size={38} className="mx-auto mb-3 text-slate-200" /><p className="font-semibold text-slate-600 text-sm">No applications found</p></div>
             ) : (
@@ -467,7 +468,7 @@ function FinancialCard({ label, value, secondary, icon, tone = 'indigo', loading
   return (
     <div className={`bg-white border rounded-2xl p-5 shadow-sm ${tone === 'amber' ? 'border-amber-200' : 'border-slate-200'}`}>
       <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span><div className={`w-9 h-9 rounded-xl flex items-center justify-center ${tone === 'amber' ? 'bg-amber-50 text-amber-600' : 'bg-indigo-50 text-indigo-600'}`}>{icon}</div></div>
-      {loading ? <div className="mt-4"><Loader2 size={21} className="animate-spin text-slate-300" /></div> : <><div className="text-xl font-bold text-slate-900 mt-4 break-words">{value}</div><div className="text-[11px] text-slate-400 mt-1">{secondary}</div></>}
+      {loading ? <SkeletonBlock className="mt-4 h-7 w-24" rounded="rounded-md" /> : <><div className="text-xl font-bold text-slate-900 mt-4 break-words">{value}</div><div className="text-[11px] text-slate-400 mt-1">{secondary}</div></>}
     </div>
   );
 }
@@ -477,7 +478,7 @@ function MiniFinancialCard({ label, value, icon, tone = 'indigo', loading }: { l
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span><div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${toneClasses[tone]}`}>{icon}</div></div>
-      {loading ? <Loader2 size={15} className="animate-spin text-slate-300 mt-3" /> : <div className="text-sm font-bold text-slate-900 mt-3 break-words">{value}</div>}
+      {loading ? <SkeletonBlock className="mt-3 h-4 w-20" rounded="rounded-md" /> : <div className="text-sm font-bold text-slate-900 mt-3 break-words">{value}</div>}
     </div>
   );
 }

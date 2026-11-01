@@ -202,8 +202,24 @@ export function FinancialsPage() {
   useEffect(() => {
     mounted.current=true;setTarget(null);setReason('');setNotice('');setBusy(false);
     void load();
-    return()=>{mounted.current=false;generation.current++;};
-  }, [load]);
+
+    // Refresh wallet records as soon as Supabase reports a wallet change.
+    // A 60-second foreground refresh remains as a fallback when Realtime is off.
+    const channel = supabase.channel(`admin-financials-wallets:${access?.id || 'admin'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, () => {
+        if (document.visibilityState === 'visible') void load();
+      })
+      .subscribe();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 60000);
+
+    return()=>{
+      mounted.current=false;generation.current++;
+      window.clearInterval(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [load, access?.id]);
 
   const accountMap = new Map(
     accounts.map(account => [account.id, account])

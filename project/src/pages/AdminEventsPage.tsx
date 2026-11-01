@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
+import { AdminPageSkeleton, SkeletonGrid } from '@/components/Skeleton';
 import { Ticket, Plus, Calendar, MapPin, Search, CheckCircle2, ShieldCheck, Upload } from 'lucide-react';
 
 export function AdminEventsPage() {
@@ -11,10 +12,14 @@ export function AdminEventsPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const requestVersion = useRef(0);
+  const hasLoaded = useRef(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [actionError, setActionError] = useState('');
 
   // Form states
   const [title, setTitle] = useState('');
@@ -24,58 +29,85 @@ export function AdminEventsPage() {
   const [price, setPrice] = useState('100');
   const [description, setDescription] = useState('');
 
-  const fetchEventsAndTickets = async () => {
+  const fetchEventsAndTickets = useCallback(async () => {
+    const version = ++requestVersion.current;
+    if (!hasLoaded.current) setLoading(true);
+    setLoadError('');
     try {
-      const { data: evts } = await supabase.from('platform_events').select('*').order('created_at', { ascending: false });
-      if (evts) setEvents(evts);
-
-      const { data: tkts } = await supabase.from('event_tickets').select('*, event:platform_events(title)').order('created_at', { ascending: false });
-      if (tkts) setTickets(tkts);
+      const [eventsResult, ticketsResult] = await Promise.all([
+        supabase.from('platform_events').select('*').order('created_at', { ascending: false }),
+        supabase.from('event_tickets').select('*, event:platform_events(title)').order('created_at', { ascending: false }),
+      ]);
+      if (eventsResult.error) throw eventsResult.error;
+      if (ticketsResult.error) throw ticketsResult.error;
+      if (version !== requestVersion.current) return;
+      setEvents(eventsResult.data || []);
+      setTickets(ticketsResult.data || []);
+      hasLoaded.current = true;
+    } catch (error: any) {
+      if (version === requestVersion.current) setLoadError(error?.message || 'Event and ticket records could not be loaded.');
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchEventsAndTickets();
-  }, []);
+    void fetchEventsAndTickets();
+    const channel = supabase.channel('admin-events-live-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'platform_events' }, () => { void fetchEventsAndTickets(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_tickets' }, () => { void fetchEventsAndTickets(); })
+      .subscribe();
+    return () => {
+      requestVersion.current += 1;
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchEventsAndTickets]);
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!flyerFile) { setActionError('Choose an event flyer image before publishing.'); return; }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(flyerFile.type)) { setActionError('Flyers must be JPG, PNG, or WebP images.'); return; }
+    if (flyerFile.size > 5 * 1024 * 1024) { setActionError('The flyer image must be 5 MB or smaller.'); return; }
+    if (!title.trim() || !venue.trim() || !date || !Number.isFinite(Number(price)) || Number(price) < 0) { setActionError('Complete the event details with a valid ticket price.'); return; }
+
     setBusy(true);
+    setActionError('');
+    setNotice('');
+    let uploadedPath: string | null = null;
     try {
-      let uploadedUrl = '/logo.png';
-
-      if (flyerFile) {
-        const fileExt = flyerFile.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('event-flyers').upload(fileName, flyerFile);
-        if (uploadError) throw uploadError;
-
-        const { data: pubData } = supabase.storage.from('event-flyers').getPublicUrl(fileName);
-        if (pubData?.publicUrl) uploadedUrl = pubData.publicUrl;
-      }
-
-      await supabase.from('platform_events').insert({
-        title,
-        flyer_url: uploadedUrl,
-        event_date: new Date(date).toISOString(),
-        venue,
-        ticket_price: Number(price),
-        description,
-        is_active: true
+      const extension = flyerFile.type === 'image/jpeg' ? 'jpg' : flyerFile.type === 'image/png' ? 'png' : 'webp';
+      const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      uploadedPath = `${randomId}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('event-flyers').upload(uploadedPath, flyerFile, {
+        contentType: flyerFile.type,
+        cacheControl: '3600',
+        upsert: false,
       });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabase.storage.from('event-flyers').getPublicUrl(uploadedPath);
+      if (!publicData?.publicUrl) throw new Error('The flyer URL could not be confirmed after upload.');
+
+      const { error: insertError } = await supabase.from('platform_events').insert({
+        title: title.trim(),
+        flyer_url: publicData.publicUrl,
+        event_date: new Date(date).toISOString(),
+        venue: venue.trim(),
+        ticket_price: Number(price),
+        description: description.trim(),
+        is_active: true,
+      });
+      if (insertError) throw insertError;
 
       setShowAddModal(false);
-      setTitle('');
-      setFlyerFile(null);
-      setDate('');
-      setVenue('');
-      setPrice('100');
-      setDescription('');
-      fetchEventsAndTickets();
+      setTitle(''); setFlyerFile(null); setDate(''); setVenue(''); setPrice('100'); setDescription('');
+      setNotice('Event published. The customer Events Hub will update from Supabase.');
+      await fetchEventsAndTickets();
     } catch (err: any) {
-      alert(err.message || 'Failed to create event.');
+      if (uploadedPath) {
+        // Best-effort cleanup prevents unused public flyers after a failed event insert.
+        await supabase.storage.from('event-flyers').remove([uploadedPath]).catch(() => undefined);
+      }
+      setActionError(err.message || 'Failed to publish event.');
     } finally {
       setBusy(false);
     }
@@ -85,12 +117,15 @@ export function AdminEventsPage() {
     setBusy(true);
     setNotice('');
     try {
-      await supabase.from('event_tickets').update({
+      const { error } = await supabase.from('event_tickets').update({
         status: 'used',
         admitted_at: new Date().toISOString()
       }).eq('id', ticketId);
+      if (error) throw error;
       setNotice('Ticket verified and activated. Attendee admitted.');
-      fetchEventsAndTickets();
+      await fetchEventsAndTickets();
+    } catch (error: any) {
+      setActionError(error.message || 'Ticket activation failed.');
     } finally {
       setBusy(false);
     }
@@ -113,6 +148,7 @@ export function AdminEventsPage() {
             <CheckCircle2 size={16} /> {notice}
           </div>
         )}
+        {actionError && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">{actionError}</div>}
 
         <div className="flex gap-2 border-b border-slate-200 pb-3">
           {[
@@ -134,6 +170,12 @@ export function AdminEventsPage() {
           ))}
         </div>
 
+        {loading ? <><AdminPageSkeleton /><SkeletonGrid count={3} /></> : loadError ? (
+          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">
+            <p className="font-bold">Events data unavailable</p><p className="mt-1">{loadError}</p>
+            <button type="button" onClick={() => void fetchEventsAndTickets()} className="mt-3 rounded-lg border border-rose-200 bg-white px-3 py-2 font-bold">Retry events data</button>
+          </div>
+        ) : <>
         {currentTab === 'overview' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -261,7 +303,7 @@ export function AdminEventsPage() {
                   <label className="block text-xs font-bold text-slate-700 mb-1">Upload Flyer (Image File)</label>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     required
                     onChange={e => setFlyerFile(e.target.files?.[0] || null)}
                     className="w-full p-2 border border-dashed rounded-xl text-xs bg-slate-50 cursor-pointer"
@@ -297,6 +339,7 @@ export function AdminEventsPage() {
             </div>
           </div>
         )}
+        </>}
       </div>
     </AdminLayout>
   );
