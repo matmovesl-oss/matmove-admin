@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { AdminPageSkeleton, SkeletonGrid } from '@/components/Skeleton';
 import { Ticket, Plus, Calendar, MapPin, Search, CheckCircle2, ShieldCheck, Upload } from 'lucide-react';
 
 export function AdminEventsPage() {
@@ -100,11 +99,10 @@ export function AdminEventsPage() {
 
       setShowAddModal(false);
       setTitle(''); setFlyerFile(null); setDate(''); setVenue(''); setPrice('100'); setDescription('');
-      setNotice('Event published. The customer Events Hub will update from Supabase.');
-      await fetchEventsAndTickets();
+      setNotice('Event published successfully.');
+      void fetchEventsAndTickets();
     } catch (err: any) {
       if (uploadedPath) {
-        // Best-effort cleanup prevents unused public flyers after a failed event insert.
         await supabase.storage.from('event-flyers').remove([uploadedPath]).catch(() => undefined);
       }
       setActionError(err.message || 'Failed to publish event.');
@@ -123,9 +121,9 @@ export function AdminEventsPage() {
       }).eq('id', ticketId);
       if (error) throw error;
       setNotice('Ticket verified and activated. Attendee admitted.');
-      await fetchEventsAndTickets();
-    } catch (error: any) {
-      setActionError(error.message || 'Ticket activation failed.');
+      void fetchEventsAndTickets();
+    } catch (err: any) {
+      setActionError(err.message || 'Ticket check-in failed.');
     } finally {
       setBusy(false);
     }
@@ -134,7 +132,10 @@ export function AdminEventsPage() {
   const filteredTickets = tickets.filter(t => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    return t.ticket_code?.toLowerCase().includes(q) || t.user_phone?.includes(q) || t.event?.title?.toLowerCase().includes(q);
+    return t.ticket_code?.toLowerCase().includes(q) 
+      || t.payment_id?.toLowerCase().includes(q) 
+      || t.user_phone?.includes(q) 
+      || t.event?.title?.toLowerCase().includes(q);
   });
 
   return (
@@ -148,7 +149,8 @@ export function AdminEventsPage() {
             <CheckCircle2 size={16} /> {notice}
           </div>
         )}
-        {actionError && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-800">{actionError}</div>}
+        {actionError && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl font-bold">{actionError}</div>}
+        {loadError && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl font-bold">{loadError}</div>}
 
         <div className="flex gap-2 border-b border-slate-200 pb-3">
           {[
@@ -170,12 +172,6 @@ export function AdminEventsPage() {
           ))}
         </div>
 
-        {loading ? <><AdminPageSkeleton /><SkeletonGrid count={3} /></> : loadError ? (
-          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">
-            <p className="font-bold">Events data unavailable</p><p className="mt-1">{loadError}</p>
-            <button type="button" onClick={() => void fetchEventsAndTickets()} className="mt-3 rounded-lg border border-rose-200 bg-white px-3 py-2 font-bold">Retry events data</button>
-          </div>
-        ) : <>
         {currentTab === 'overview' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -219,6 +215,7 @@ export function AdminEventsPage() {
               <thead>
                 <tr className="border-b border-slate-200 text-slate-400 uppercase font-bold">
                   <th className="pb-3">Ticket Code</th>
+                  <th className="pb-3">Payment ID</th>
                   <th className="pb-3">Event Title</th>
                   <th className="pb-3">Customer Phone</th>
                   <th className="pb-3">Passes</th>
@@ -231,6 +228,7 @@ export function AdminEventsPage() {
                 {tickets.map(t => (
                   <tr key={t.id} className="hover:bg-slate-50">
                     <td className="py-3 font-mono font-bold text-sky-600">{t.ticket_code}</td>
+                    <td className="py-3 font-mono text-[11px] text-slate-500">{t.payment_id ? t.payment_id.slice(0, 8) + '…' : '—'}</td>
                     <td className="py-3 font-bold text-slate-900">{t.event?.title || 'Event'}</td>
                     <td className="py-3 text-slate-600">{t.user_phone}</td>
                     <td className="py-3">{t.tickets_count || 1}</td>
@@ -254,7 +252,7 @@ export function AdminEventsPage() {
               <Search className="absolute left-3.5 top-3 text-slate-400" size={16} />
               <input
                 type="text"
-                placeholder="Scan or enter ticket code (e.g. TKT-ABC123) or phone number..."
+                placeholder="Scan or enter ticket code (e.g. TKT-ABC123), Payment ID, or phone number..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium"
@@ -266,6 +264,7 @@ export function AdminEventsPage() {
                 <div key={t.id} className="bg-white p-5 rounded-2xl border border-slate-200 flex items-center justify-between shadow-sm">
                   <div>
                     <span className="font-mono font-black text-sm text-sky-600 block">{t.ticket_code}</span>
+                    <span className="font-mono text-[11px] text-slate-400 block mt-0.5">Payment ID: {t.payment_id || 'Direct'}</span>
                     <h4 className="font-bold text-slate-900 text-sm mt-0.5">{t.event?.title}</h4>
                     <p className="text-xs text-slate-500">{t.user_phone} · {t.tickets_count || 1} Admission(s)</p>
                   </div>
@@ -303,7 +302,7 @@ export function AdminEventsPage() {
                   <label className="block text-xs font-bold text-slate-700 mb-1">Upload Flyer (Image File)</label>
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/*"
                     required
                     onChange={e => setFlyerFile(e.target.files?.[0] || null)}
                     className="w-full p-2 border border-dashed rounded-xl text-xs bg-slate-50 cursor-pointer"
@@ -339,7 +338,6 @@ export function AdminEventsPage() {
             </div>
           </div>
         )}
-        </>}
       </div>
     </AdminLayout>
   );

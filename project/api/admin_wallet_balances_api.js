@@ -35,7 +35,7 @@ export function createHandler(
         return res.status(401).json({ error: 'Session expired. Please sign in again.' });
       }
 
-      const { access } = await requireAdmin(req, ['financials', 'games.settings', 'special'], { client, env });
+      const { access } = await requireAdmin(req, ['financials', 'games.settings'], { client, env });
       const financial = canAdminAccess(access, 'financials');
 
       let savedReferral = null;
@@ -63,10 +63,13 @@ export function createHandler(
         savedReferral
       ].filter(Boolean);
 
+      if (financial && configured.some(id => typeof id !== 'string' || !/^fac-[A-Za-z0-9_-]+$/.test(id))) {
+        return res.status(503).json({ error: 'Platform account configuration is invalid.' });
+      }
+
       const businessAccountIds = [...new Set(configured)];
       const referralAccountIds = [...new Set([env.MONIME_REFERRAL_ACCOUNT_ID, savedReferral].filter(Boolean))];
       const accounts = new Map();
-      const seen = new Set();
       let cursor = null;
 
       for (let page = 0; page < 100; page++) {
@@ -86,7 +89,9 @@ export function createHandler(
         });
 
         if (!response.ok) {
-          return res.status(502).json({ error: 'Monime could not return financial accounts.' });
+          return res.status(502).json({
+            error: 'Monime could not return financial accounts. Check the token and Space permissions.'
+          });
         }
 
         const result = await response.json();
@@ -101,27 +106,27 @@ export function createHandler(
         const next = result.pagination?.next;
         if (!next) {
           return res.status(200).json({
-            accounts: [...accounts.values()],
-            businessAccountIds,
+            accounts: [...accounts.values()].filter(a => financial || a.id === env.MONIME_SPIN_ACCOUNT_ID),
+            businessAccountIds: financial ? businessAccountIds : [],
             platform: {
-              mainAccountId: env.MONIME_MAIN_ACCOUNT_ID || null,
-              referralAccountId: env.MONIME_REFERRAL_ACCOUNT_ID || savedReferral || null,
-              referralAccountIds,
+              mainAccountId: financial ? (env.MONIME_MAIN_ACCOUNT_ID || null) : null,
+              referralAccountId: financial ? (env.MONIME_REFERRAL_ACCOUNT_ID || savedReferral || null) : null,
+              referralAccountIds: financial ? referralAccountIds : [],
               spinAccountId: env.MONIME_SPIN_ACCOUNT_ID || null,
-              escrowAccountId: env.MONIME_ESCROW_ACCOUNT_ID || null,
-              feeAccountId: env.MONIME_PLATFORM_FEE_ACCOUNT_ID || null,
-              travelAccountId: travelId || null,
-              eventAccountId: eventId || null,
-              refundAccountId: refundId || null,
+              escrowAccountId: financial ? (env.MONIME_ESCROW_ACCOUNT_ID || null) : null,
+              feeAccountId: financial ? (env.MONIME_PLATFORM_FEE_ACCOUNT_ID || null) : null,
+              travelAccountId: financial ? (travelId || null) : null,
+              eventAccountId: financial ? (eventId || null) : null,
+              refundAccountId: financial ? (refundId || null) : null,
             }
           });
         }
-
-        seen.add(next);
         cursor = next;
       }
     } catch (error) {
-      return res.status(502).json({ error: error.message || 'Gateway balances unavailable.' });
+      return res.status(502).json({
+        error: error.message || 'Gateway balances are temporarily unavailable.'
+      });
     }
   };
 }
