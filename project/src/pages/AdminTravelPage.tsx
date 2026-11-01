@@ -3,6 +3,20 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
 import { AdminPageSkeleton } from '@/components/Skeleton';
+
+
+function nextMatMoveDepartureDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Freetown', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(now);
+  const get = (key: string) => parts.find(part => part.type === key)?.value || '';
+  const year = Number(get('year'));
+  const month = Number(get('month'));
+  const day = Number(get('day'));
+  if (day < 15) return `${year}-${String(month).padStart(2, '0')}-15`;
+  const nextMonth = new Date(Date.UTC(year, month, 1));
+  return `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, '0')}-01`;
+}
 import { 
   Bus, CheckCircle2, Search, Phone, MapPin, 
   User, ShieldCheck, AlertTriangle, Users, Settings, DollarSign 
@@ -96,12 +110,19 @@ export function AdminTravelPage() {
   };
 
   const handleApproveSeat = async (booking: any) => {
-    if (reservedSeats + pendingRequests > totalCapacity) {
-      alert('The current reservation queue exceeds the configured capacity. Reject the excess pending requests before approving another booking.');
+    const dateBookings = bookings.filter(b => b.departure_date === booking.departure_date);
+    const dateReserved = dateBookings
+      .filter(b => b.is_paid || ['approved', 'boarded'].includes(b.status))
+      .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
+    const datePending = dateBookings
+      .filter(b => b.status === 'pending_approval' && !b.is_paid)
+      .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
+    if (dateReserved + datePending > totalCapacity) {
+      alert(`The reservation queue for ${booking.departure_date || 'this departure'} exceeds capacity. Reject excess pending requests first.`);
       return;
     }
-    if (reservedSeats + Number(booking.passengers_count || 1) > totalCapacity) {
-      alert(`Cannot approve: Bus capacity of ${busSettings.total_seats} seats will be exceeded.`);
+    if (dateReserved + Number(booking.passengers_count || 1) > totalCapacity) {
+      alert(`Cannot approve: Bus capacity of ${totalCapacity} seats will be exceeded for ${booking.departure_date || 'this departure'}.`);
       return;
     }
 
@@ -155,16 +176,18 @@ export function AdminTravelPage() {
   };
 
   const totalCapacity = busSettings.total_seats || 50;
-  const confirmedPaidSeats = bookings
+  const nextDepartureDate = nextMatMoveDepartureDate();
+  const nextDepartureBookings = bookings.filter(b => b.departure_date === nextDepartureDate);
+  const confirmedPaidSeats = nextDepartureBookings
     .filter(b => b.is_paid || b.status === 'boarded')
     .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-  const reservedSeats = bookings
+  const reservedSeats = nextDepartureBookings
     .filter(b => b.is_paid || ['approved', 'boarded'].includes(b.status))
     .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-  const pendingRequests = bookings
+  const pendingRequests = nextDepartureBookings
     .filter(b => b.status === 'pending_approval' && !b.is_paid)
     .reduce((acc, curr) => acc + Math.max(1, Number(curr.passengers_count) || 1), 0);
-  // Pending requests are temporary capacity holds until an administrator approves or rejects them.
+  // Pending requests hold capacity for the next published departure only.
   const availableSeats = Math.max(0, totalCapacity - reservedSeats - pendingRequests);
 
   const filtered = bookings.filter(b => {
@@ -179,6 +202,9 @@ export function AdminTravelPage() {
       subtitle="SLRSA Compliance, Passenger Manifests, Capacity Control & Terminal Activation"
     >
       <div className="max-w-6xl space-y-6 mt-4">
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-900">
+          Next scheduled departure: {new Date(`${nextDepartureDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. Capacity and approval checks are calculated separately for each departure date.
+        </div>
         {notice && (
           <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2">
             <CheckCircle2 size={16} /> {notice}
@@ -287,6 +313,7 @@ export function AdminTravelPage() {
                       <User size={15} className="text-indigo-600" /> {b.passenger_name}
                     </h4>
                     <p className="text-xs text-slate-500 mt-1">{b.passenger_phone} · {b.passenger_address}</p>
+                    <p className="text-xs text-indigo-600 mt-1">Departure: {b.departure_date ? new Date(`${b.departure_date}T12:00:00`).toLocaleDateString('en-GB') : 'Not set'}</p>
                   </div>
                   <div className="text-right">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${
