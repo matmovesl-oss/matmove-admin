@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Ticket, Plus, Calendar, MapPin, Search, CheckCircle2, ShieldCheck, Upload, Trash2, Edit3, Filter } from 'lucide-react';
+import { Ticket, Plus, Calendar, MapPin, Search, CheckCircle2, ShieldCheck, Trash2, Edit3, Filter } from 'lucide-react';
 
 export function AdminEventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -75,6 +75,7 @@ export function AdminEventsPage() {
     setDescription(evt.description || '');
     setIsActive(evt.is_active);
     setFlyerFile(null);
+    setShowAddModal(true);
   };
 
   const handleCreateOrUpdateEvent = async (e: React.FormEvent) => {
@@ -94,7 +95,11 @@ export function AdminEventsPage() {
         }
         const extension = flyerFile.type === 'image/jpeg' ? 'jpg' : flyerFile.type === 'image/png' ? 'png' : 'webp';
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
-        const { error: uploadError } = await supabase.storage.from('event-flyers').upload(fileName, flyerFile);
+        const { error: uploadError } = await supabase.storage.from('event-flyers').upload(fileName, flyerFile, {
+          contentType: flyerFile.type,
+          cacheControl: '3600',
+          upsert: false,
+        });
         if (uploadError) throw uploadError;
         const { data: publicData } = supabase.storage.from('event-flyers').getPublicUrl(fileName);
         if (publicData?.publicUrl) uploadedUrl = publicData.publicUrl;
@@ -155,7 +160,7 @@ export function AdminEventsPage() {
       setNotice('Event and flyer deleted.');
       void fetchEventsAndTickets();
     } catch (err: any) {
-      setActionError(err.message || 'Failed to delete event.');
+      setActionError(err.message || 'Failed to delete event. Make sure no tickets exist for it.');
     } finally {
       setBusy(false);
     }

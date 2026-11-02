@@ -2,10 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { 
-  Bus, CheckCircle2, Search, Phone, MapPin, 
-  User, ShieldCheck, AlertTriangle, Users, Settings, DollarSign, XCircle 
-} from 'lucide-react';
+import { Bus, CheckCircle2, Search, User, ShieldCheck, AlertTriangle, Settings, XCircle } from 'lucide-react';
 
 export function AdminTravelPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -22,7 +19,6 @@ export function AdminTravelPage() {
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
 
-  // Settings form states
   const [totalSeatsInput, setTotalSeatsInput] = useState(50);
   const [priceUsdInput, setPriceUsdInput] = useState(100);
   const [priceSleInput, setPriceSleInput] = useState(2400);
