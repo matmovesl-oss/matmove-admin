@@ -24,6 +24,12 @@ import { loadAdminSession } from './lib/adminSession';
 import AdminLayout from './components/AdminLayout';
 import StaffPasswordPage from './pages/StaffPasswordPage';
 
+// ABSOLUTE SUPER ADMIN CHECK - No exceptions
+const isSuperAdmin = (session: any) => {
+  const email = session?.user?.email || '';
+  return email.toLowerCase().trim() === 'matmove.sl@gmail.com';
+};
+
 function Denied({ message = 'Access denied. This section is not assigned to your staff account.' }: { message?: string }) {
   return (
     <AdminLayout title="Access Denied">
@@ -32,11 +38,10 @@ function Denied({ message = 'Access denied. This section is not assigned to your
   );
 }
 
+// Bypasses all standard roles if user is Super Admin
 function Gate({ access, session, section, children }: { access: AdminAccess | null; session: any; section: string; children: React.ReactNode }) {
-  // SUPER ADMIN OVERRIDE
-  const isSuperAdmin = session?.user?.email === 'matmove.sl@gmail.com';
-  
-  return (isSuperAdmin || canAccess(access, section)) ? <>{children}</> : <Denied />;
+  if (isSuperAdmin(session)) return <>{children}</>;
+  return canAccess(access, section) ? <>{children}</> : <Denied />;
 }
 
 function Console({ session, recovery, onRecoveryDone }: any) {
@@ -66,16 +71,19 @@ function Console({ session, recovery, onRecoveryDone }: any) {
     );
   }
 
+  const superAdmin = isSuperAdmin(session);
+  // We craft a fake "god mode" access object so nested child components that use `useAdminAccess()` don't trigger their own internal deny logic.
+  const providedAccess = superAdmin ? { id: session.user.id, full_name: 'Super Admin', email: session.user.email, department: 'Executive', permissions: ['*'], is_active: true } as AdminAccess : access;
+
   return (
-    <AdminAccessContext.Provider value={access}>
-      {/* Bypass active check for Super Admin so they always get in */}
-      {!access?.is_active && session?.user?.email !== 'matmove.sl@gmail.com' ? (
+    <AdminAccessContext.Provider value={providedAccess}>
+      {!access?.is_active && !superAdmin ? (
         <Denied message="Access denied. An active Admin staff assignment is required." />
       ) : recovery || access?.requires_password_setup || location.pathname === '/accept-invite' ? (
         <StaffPasswordPage userId={session.user.id} mode={recovery ? 'recovery' : 'invite'} onComplete={onRecoveryDone} />
       ) : (
         <Routes>
-          <Route path="/" element={<Navigate to={session?.user?.email === 'matmove.sl@gmail.com' ? '/dashboard' : homeFor(access)} replace />} />
+          <Route path="/" element={<Navigate to={superAdmin ? '/dashboard' : homeFor(access)} replace />} />
           <Route path="/dashboard" element={<Gate access={access} session={session} section="dashboard"><DashboardPage /></Gate>} />
           <Route path="/dispatch" element={<Gate access={access} session={session} section="dispatch"><DispatchRadarPage /></Gate>} />
           <Route path="/travel" element={<Gate access={access} session={session} section="travel"><AdminTravelPage /></Gate>} />
