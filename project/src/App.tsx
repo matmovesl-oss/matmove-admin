@@ -1,4 +1,3 @@
-
 import { useState, useEffect, type ReactNode } from 'react';
 import {
   BrowserRouter,
@@ -19,6 +18,7 @@ import UsersPage from './pages/UsersPage';
 import { StaffGovernancePage } from './pages/StaffGovernancePage';
 import { LogsPage } from './pages/LogsPage';
 import { SpecialOperationsPage } from './pages/SpecialOperationsPage';
+import { AdministrativePayrollPage } from './pages/AdministrativePayrollPage';
 import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage';
@@ -178,7 +178,6 @@ function Console({
         />
       ) : (
         <Routes>
-          {/* MAIN OVERVIEW */}
           <Route
             path="/"
             element={
@@ -198,7 +197,6 @@ function Console({
             }
           />
 
-          {/* OPERATIONS */}
           <Route
             path="/dispatch"
             element={
@@ -244,7 +242,6 @@ function Console({
             }
           />
 
-          {/* COMPLIANCE */}
           <Route
             path="/kyc"
             element={
@@ -263,7 +260,6 @@ function Console({
             }
           />
 
-          {/* FINANCE */}
           <Route
             path="/civitas"
             element={
@@ -300,7 +296,6 @@ function Console({
             }
           />
 
-          {/* CUSTOMER MESSAGES */}
           <Route
             path="/notifications"
             element={
@@ -310,7 +305,6 @@ function Console({
             }
           />
 
-          {/* STAFF GOVERNANCE */}
           <Route
             path="/staff"
             element={
@@ -329,7 +323,15 @@ function Console({
             }
           />
 
-          {/* REPORTS: OWNER ONLY UNTIL STAFF PERMISSION IS CONFIGURED */}
+          <Route
+            path="/payroll"
+            element={
+              <Gate access={access} session={session} section="special">
+                <AdministrativePayrollPage />
+              </Gate>
+            }
+          />
+
           <Route
             path="/reports"
             element={superAdmin ? <ReportsPage /> : <Denied />}
@@ -353,7 +355,6 @@ function Console({
             }
           />
 
-          {/* UNKNOWN ROUTES */}
           <Route path="*" element={<Denied />} />
         </Routes>
       )}
