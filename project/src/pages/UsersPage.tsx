@@ -35,7 +35,7 @@ function Info({
 
 export default function UsersPage() {
   const access=useAdminAccess();
-  const allowed=canAccess(access,'customers');
+  const allowed=canAccess(access,'customers') || access?.permissions?.includes('*'); // Safely supports super admin
   const stamp=JSON.stringify([access?.id,allowed,access?.is_active,access?.permissions]);
   const current=useRef(stamp);current.current=stamp;
   const [loadedStamp,setLoadedStamp]=useState('');
@@ -105,8 +105,11 @@ export default function UsersPage() {
     if (!confirmed) return;
 
     try {
-      const { error: updateErr } = await supabase.from('profiles').update({ role: 'staff' }).eq('id', selectedUser.id);
+      // Uses the secure RPC to bypass RLS restrictions
+      const { error: updateErr } = await supabase.rpc('matmove_admin_set_staff_role', { p_user_id: selectedUser.id });
+      
       if (updateErr) throw updateErr;
+      
       alert('User successfully converted to Staff Account.');
       setSelectedUser(null);
       void fetchUsers();

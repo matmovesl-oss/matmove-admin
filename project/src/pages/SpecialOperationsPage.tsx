@@ -145,33 +145,32 @@ export function SpecialOperationsPage() {
           throw new Error(body.error || `Refund status: ${body.status || 'not confirmed'}. Check ledger.`);
         }
       } 
-      // MODE 2: PAY STAFF (BULK LOOP)
+      // MODE 2: PAY STAFF (BULK INTERNAL TRANSFER)
       else {
         if (staffSelected.length === 0) throw new Error("No staff selected.");
         let successes = 0;
         let failures = 0;
 
         for (const staff of staffSelected) {
-          setBulkProgress(`Processing payment for ${staff.full_name || staff.phone}...`);
+          setBulkProgress(`Processing internal transfer for ${staff.full_name || staff.phone}...`);
           
           try {
             const sleWallet = staff.wallets?.find((w: any) => w.currency === 'SLE');
             const destId = sleWallet?.monime_account_id || sleWallet?.metadata?.monime_account_id;
             if (!destId) throw new Error('No Monime wallet ID.');
 
-            const res = await fetch('/api/admin-refund', { 
+            const res = await fetch('/api/admin-pay-staff', { 
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.session.access_token}` },
               body: JSON.stringify({
                 amount: Number(amount),
                 recipientAccountId: destId,
-                recipientUserId: staff.id,
-                reason: `Staff Payment: ${reason.trim()}`,
-                requestKey: crypto.randomUUID(), 
+                reason: `Staff Payment: ${reason.trim()}`
               })
             });
 
-            if (res.ok || res.status === 202) successes++;
+            const body = await res.json();
+            if (res.ok && body.success) successes++;
             else failures++;
           } catch (e) {
             failures++;
