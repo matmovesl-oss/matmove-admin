@@ -77,6 +77,52 @@ const availableBalance = (
     : null;
 };
 
+type ReferralOverview = {
+  actor: string;
+  owner: boolean;
+  activationReady: boolean;
+  campaign: {
+    revision: string;
+    accepting: boolean;
+    payments: boolean;
+    budgetMinor: string;
+    source: string | null;
+  };
+  totals: {
+    referrals: string;
+    pendingMinor: string;
+    creditedMinor: string;
+    reviewMinor: string;
+    budgetUsedMinor: string;
+    reservedMinor: string;
+  };
+  treasury: {
+    accountId: string;
+    availableMinor: string;
+    currency: 'SLE';
+    observedAt: string;
+  } | null;
+  treasuryError: string | null;
+};
+
+const referralFields = [
+  'id',
+  'new_user_email',
+  'inviter_email',
+  'beneficiary_email',
+  'code',
+  'kind',
+  'amount_minor',
+  'currency',
+  'state',
+  'provider_id',
+  'created_at',
+  'updated_at'
+];
+
+const unsigned = (v: unknown): v is string =>
+  typeof v === 'string' && /^\d{1,19}$/.test(v);
+
 export function referralDisplayMoney(v:string){if(!unsigned(v))throw new Error('Invalid referral amount.');const n=BigInt(v),fraction=n%100n;return `SLE ${(n/100n).toLocaleString('en-US')}${fraction?'.'+fraction.toString().padStart(2,'0'):''}`;}
 export function referralBudget(v:string){if(!/^\d+(\.\d{1,2})?$/.test(v.trim()))throw new Error('Enter a budget with up to two decimal places.');const [a,b='']=v.trim().split('.'),n=BigInt(a)*100n+BigInt(b.padEnd(2,'0'));if(n>9000000000000000n)throw new Error('Budget is too large.');return n.toString();}
 export function validateReferralOverview(v:any,actor:string):ReferralOverview{

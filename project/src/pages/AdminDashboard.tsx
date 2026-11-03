@@ -31,7 +31,6 @@ function humanizeDocumentType(value: string) { const normalized = value.replace(
 function formatSleAmount(value: number) { return `SLE ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`; }
 function formatUsdAmount(value: number) { return `USD ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`; }
 
-// SECURE DEVICE DOWNLOAD LOGIC
 const downloadSecureFile = async (url: string, filename: string) => {
   try {
     const response = await fetch(url);
@@ -57,6 +56,11 @@ export default function AdminDashboard() {
   const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
   const [documents, setDocuments] = useState<KycDocument[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  
+  // Transaction stats state (Revenue vs Refunds)
+  const [transactionStats, setTransactionStats] = useState({ revenueSle: 0, refundsSle: 0 });
+  const [transactionLoading, setTransactionLoading] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>('pending');
@@ -66,6 +70,30 @@ export default function AdminDashboard() {
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
   const [financialRefreshing, setFinancialRefreshing] = useState(false);
+
+  const fetchTransactionStats = useCallback(async () => {
+    setTransactionLoading(true);
+    try {
+      const { data, error } = await supabase.from('transactions').select('amount, type, status, currency');
+      if (error) throw error;
+      
+      let rev = 0; let ref = 0;
+      data?.forEach((tx) => {
+        const amt = Number(tx.amount || 0);
+        // Ensure accurate filtering based on your schema identifiers for refunds vs completed revenue
+        if (tx.status === 'refunded' || tx.type === 'refund') {
+          ref += amt;
+        } else if (tx.status === 'completed' || tx.status === 'success') {
+          rev += amt;
+        }
+      });
+      setTransactionStats({ revenueSle: rev, refundsSle: ref });
+    } catch (err) {
+      console.error('Failed to load transaction stats:', err);
+    } finally {
+      setTransactionLoading(false);
+    }
+  }, []);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true); setErrorMessage('');
@@ -100,7 +128,10 @@ export default function AdminDashboard() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchProfiles(); }, [fetchProfiles]);
+  useEffect(() => { 
+    fetchProfiles(); 
+    fetchTransactionStats();
+  }, [fetchProfiles, fetchTransactionStats]);
 
   useEffect(() => {
     const channel = supabase.channel('admin-kyc-live-data')
@@ -113,7 +144,7 @@ export default function AdminDashboard() {
 
   const handleFinancialRefresh = async () => {
     setFinancialRefreshing(true);
-    try { await Promise.all([refetchWallets(), refetchWithdrawals()]); } 
+    try { await Promise.all([refetchWallets(), refetchWithdrawals(), fetchTransactionStats()]); } 
     finally { setFinancialRefreshing(false); }
   };
 
@@ -252,7 +283,7 @@ export default function AdminDashboard() {
                 <Activity size={11} /> Live
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">Customer wallet positions and payout obligations. MatMove treasury balances are accounted for separately.</p>
+            <p className="text-xs text-slate-400 mt-1">Customer wallet positions, total platform revenue, and processed refunds.</p>
           </div>
           <button type="button" onClick={() => void handleFinancialRefresh()} disabled={financialRefreshing} className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50">
             {financialRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Refresh financials
@@ -269,11 +300,10 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+          <FinancialCard label="Total Revenue (SLE)" value={formatSleAmount(transactionStats.revenueSle)} secondary="Total successful inbound payments" icon={<ArrowUpFromLine size={19} />} tone="indigo" loading={transactionLoading || financialRefreshing} />
+          <FinancialCard label="Total Refunds (SLE)" value={formatSleAmount(transactionStats.refundsSle)} secondary="Total processed customer refunds" icon={<ArrowDownToLine size={19} />} tone="amber" loading={transactionLoading || financialRefreshing} />
           <FinancialCard label="SLE Wallet Balance" value={formatSleAmount(financialSummary.sleBalance)} secondary={`Available ${formatSleAmount(financialSummary.sleAvailable)}`} icon={<CircleDollarSign size={19} />} loading={walletsLoading} />
-          <FinancialCard label="USD Wallet Balance" value={formatUsdAmount(financialSummary.usdBalance)} secondary={`Available ${formatUsdAmount(financialSummary.usdAvailable)}`} icon={<CircleDollarSign size={19} />} loading={walletsLoading} />
-          <FinancialCard label="Reserved SLE" value={formatSleAmount(financialSummary.sleReserved)} secondary="Held against outstanding obligations" icon={<LockKeyhole size={19} />} tone="amber" loading={walletsLoading} />
-          <FinancialCard label="Reserved USD" value={formatUsdAmount(financialSummary.usdReserved)} secondary="Held against outstanding obligations" icon={<LockKeyhole size={19} />} tone="amber" loading={walletsLoading} />
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-4">

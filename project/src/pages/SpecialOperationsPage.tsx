@@ -15,25 +15,39 @@ export function SpecialOperationsPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [refundBalance, setRefundBalance] = useState<string | null>(null);
+  const [refundBalanceLoading, setRefundBalanceLoading] = useState(true);
+  const [refundBalanceError, setRefundBalanceError] = useState('');
+  const [refundRequestKey, setRefundRequestKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadRefundAccount() {
-      try {
-        const { data: session } = await supabase.auth.getSession();
-        const res = await fetch('/api/admin-wallet-balances', {
-          headers: { Authorization: `Bearer ${session.session?.access_token}` }
-        });
-        const d = await res.json();
-        const refAcc = d.accounts?.find((a: any) => a.id === d.platform?.refundAccountId);
-        if (refAcc?.balance?.available) {
-          setRefundBalance(`SLE ${(refAcc.balance.available.value / 100).toFixed(2)}`);
-        }
-      } catch {
-        // Silently handled
+  const refreshRefundBalance = async () => {
+    setRefundBalanceLoading(true);
+    setRefundBalanceError('');
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) throw new Error('Sign in again to view the Refund Account.');
+      const res = await fetch('/api/admin-wallet-balances', {
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+        cache: 'no-store',
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Refund Account balance is unavailable.');
+      const refundId = d.platform?.refundAccountId;
+      if (!refundId) throw new Error('MONIME_REFUND_ACCOUNT_ID is not configured for the Admin production environment.');
+      const refAcc = d.accounts?.find((a: any) => a.id === refundId);
+      const balance = refAcc?.balance?.available;
+      if (!refAcc || balance?.currency !== 'SLE' || !Number.isSafeInteger(balance.value) || balance.value < 0) {
+        throw new Error('Monime did not return a verified SLE Refund Account balance.');
       }
+      setRefundBalance(`SLE ${(balance.value / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    } catch (err: any) {
+      setRefundBalance(null);
+      setRefundBalanceError(err.message || 'Refund Account balance could not be loaded.');
+    } finally {
+      setRefundBalanceLoading(false);
     }
-    loadRefundAccount();
-  }, []);
+  };
+
+  useEffect(() => { void refreshRefundBalance(); }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +56,7 @@ export function SpecialOperationsPage() {
     setSearching(true);
     setError('');
     setSuccess('');
+    setRefundRequestKey(null);
     setUserResult(null);
 
     try {
@@ -73,7 +88,7 @@ export function SpecialOperationsPage() {
     setSuccess('');
 
     try {
-      const sleWallet = userResult.wallets?.find((w: any) => w.currency === 'SLE') || userResult.wallets?.[0];
+      const sleWallet = userResult.wallets?.find((w: any) => w.currency === 'SLE');
       const destinationAccountId = sleWallet?.monime_account_id || sleWallet?.metadata?.monime_account_id;
 
       if (!destinationAccountId) {
@@ -81,27 +96,41 @@ export function SpecialOperationsPage() {
       }
 
       const { data: session } = await supabase.auth.getSession();
+      if (!session.session?.access_token) throw new Error('Your Admin session expired. Sign in again.');
+      const requestKey = refundRequestKey || crypto.randomUUID();
+      setRefundRequestKey(requestKey);
       const res = await fetch('/api/admin-refund', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.session?.access_token}`
+          Authorization: `Bearer ${session.session.access_token}`
         },
         body: JSON.stringify({
           amount: Number(amount),
           recipientAccountId: destinationAccountId,
-          reason: reason.trim()
+          recipientUserId: userResult.id,
+          reason: reason.trim(),
+          requestKey,
         })
       });
 
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'Refund transfer rejected by gateway.');
-
-      setSuccess(`Successfully transferred SLE ${Number(amount).toLocaleString()} refund to ${userResult.full_name}.`);
-      setShowConfirmModal(false);
-      setAmount('');
-      setReason('');
-      setUserResult(null);
+      if (!res.ok && res.status !== 202) throw new Error(body.error || 'Refund transfer rejected by gateway.');
+      if (body.status === 'completed') {
+        setSuccess(`Refund completed: SLE ${Number(amount).toLocaleString()} sent to ${userResult.full_name}.`);
+        setShowConfirmModal(false);
+        setAmount('');
+        setReason('');
+        setUserResult(null);
+        setRefundRequestKey(null);
+        await refreshRefundBalance();
+      } else if (body.pending || ['pending', 'processing'].includes(body.status)) {
+        setSuccess(`Refund is ${body.status}. Its request has been saved. Use the same refund details and confirmation to check this transfer again; do not start a second refund.`);
+        setShowConfirmModal(false);
+        await refreshRefundBalance();
+      } else {
+        throw new Error(body.error || `Refund status: ${body.status || 'not confirmed'}. Check the refund ledger before retrying.`);
+      }
     } catch (err: any) {
       setError(err.message || 'Refund transfer failed.');
     } finally {
@@ -115,12 +144,12 @@ export function SpecialOperationsPage() {
       subtitle="Issue emergency refunds directly from your dedicated Monime Refund Account"
     >
       <div className="max-w-4xl space-y-6 mt-4">
-        {refundBalance && (
-          <div className="p-4 bg-slate-900 text-white rounded-2xl flex justify-between items-center text-xs font-bold shadow-sm">
-            <span>Live Refund Account Balance:</span>
-            <span className="text-emerald-400 text-sm font-black">{refundBalance}</span>
-          </div>
-        )}
+        <div className="p-4 bg-slate-900 text-white rounded-2xl flex justify-between items-center gap-3 text-xs font-bold shadow-sm">
+          <span>Live Refund Account Balance</span>
+          <span className="text-emerald-400 text-sm font-black">{refundBalanceLoading ? 'Checking Monime…' : refundBalance || 'Unavailable'}</span>
+          <button type="button" onClick={() => void refreshRefundBalance()} disabled={refundBalanceLoading} className="rounded-lg border border-white/20 px-3 py-2 text-[10px] disabled:opacity-50">Refresh</button>
+        </div>
+        {refundBalanceError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{refundBalanceError}</div>}
 
         {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl">{error}</div>}
         {success && <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl font-bold">{success}</div>}
@@ -186,7 +215,7 @@ export function SpecialOperationsPage() {
                   min="1"
                   placeholder="e.g. 50.00"
                   value={amount}
-                  onChange={e => setAmount(e.target.value)}
+                  onChange={e => { setAmount(e.target.value); setRefundRequestKey(null); }}
                   className="w-full p-3 border border-slate-200 rounded-xl text-base font-black text-slate-900"
                 />
               </div>
@@ -197,7 +226,7 @@ export function SpecialOperationsPage() {
                   type="text"
                   placeholder="e.g. Trip reversal #1042 or duplicate debit"
                   value={reason}
-                  onChange={e => setReason(e.target.value)}
+                  onChange={e => { setReason(e.target.value); setRefundRequestKey(null); }}
                   className="w-full p-3 border border-slate-200 rounded-xl text-xs font-medium"
                 />
               </div>
@@ -205,7 +234,7 @@ export function SpecialOperationsPage() {
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(true)}
-                disabled={!amount || Number(amount) <= 0 || !reason.trim()}
+                disabled={!amount || Number(amount) <= 0 || !reason.trim() || refundBalanceLoading || !refundBalance || !!refundBalanceError}
                 className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-md transition disabled:opacity-50"
               >
                 Review & Confirm Refund Transfer
@@ -230,7 +259,7 @@ export function SpecialOperationsPage() {
                   onClick={handleExecuteRefund}
                   className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition disabled:opacity-50"
                 >
-                  {executing ? 'Executing Reversal…' : 'Confirm & Send Refund'}
+                  {executing ? 'Checking / Sending Refund…' : refundRequestKey ? 'Check Same Refund Again' : 'Confirm & Send Refund'}
                 </button>
                 <button
                   type="button"

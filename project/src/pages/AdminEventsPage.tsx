@@ -149,6 +149,9 @@ export function AdminEventsPage() {
     setBusy(true);
     setActionError('');
     try {
+      // Optmistic UI Update (Immediate visual removal)
+      setEvents(prev => prev.filter(event => event.id !== evt.id));
+
       if (evt.flyer_url && evt.flyer_url.includes('event-flyers/')) {
         const fileName = evt.flyer_url.split('event-flyers/').pop();
         if (fileName) {
@@ -157,9 +160,11 @@ export function AdminEventsPage() {
       }
       const { error: deleteError } = await supabase.from('platform_events').delete().eq('id', evt.id);
       if (deleteError) throw deleteError;
+      
       setNotice('Event and flyer deleted.');
-      void fetchEventsAndTickets();
     } catch (err: any) {
+      // Revert Optimistic UI if deletion failed
+      void fetchEventsAndTickets();
       setActionError(err.message || 'Failed to delete event. Make sure no tickets exist for it.');
     } finally {
       setBusy(false);

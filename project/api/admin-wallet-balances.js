@@ -50,8 +50,9 @@ export function createHandler(
         });
       }
 
-      const {access} = await requireAdmin(req, ['financials', 'games.settings'], {client, env});
+      const {access} = await requireAdmin(req, ['financials', 'games.settings', 'special'], {client, env});
       const financial = canAdminAccess(access, 'financials');
+      const special = canAdminAccess(access, 'special');
 
       let savedReferral = null;
       if (financial) {
@@ -64,6 +65,8 @@ export function createHandler(
 
       const travelId = env.MONIME_TRAVEL_ACCOUNT_ID || env.VITE_MONIME_TRAVEL_ACCOUNT_ID;
       const eventId = env.MONIME_EVENT_ACCOUNT_ID || env.VITE_MONIME_EVENT_ACCOUNT_ID;
+      // Return only the account identifier and live balance; never expose credentials.
+      const refundId = env.MONIME_REFUND_ACCOUNT_ID;
 
       const configured = [
         env.MONIME_ESCROW_ACCOUNT_ID,
@@ -73,6 +76,7 @@ export function createHandler(
         env.MONIME_REFERRAL_ACCOUNT_ID,
         travelId,
         eventId,
+        refundId,
         savedReferral
       ].filter(Boolean);
 
@@ -80,10 +84,13 @@ export function createHandler(
         return res.status(503).json({error: 'Platform account configuration is invalid.'});
       }
 
+      if (special && refundId && (typeof refundId !== 'string' || !/^fac-[A-Za-z0-9_-]+$/.test(refundId))) {
+        return res.status(503).json({error: 'Refund account configuration is invalid.'});
+      }
+
       const businessAccountIds = [...new Set(configured)];
       const referralAccountIds = [...new Set([env.MONIME_REFERRAL_ACCOUNT_ID, savedReferral].filter(Boolean))];
       const accounts = new Map();
-      const seen = new Set();
       let cursor = null;
 
       for (let page = 0; page < 100; page++) {
@@ -120,7 +127,7 @@ export function createHandler(
         const next = result.pagination?.next;
         if (!next) {
           return res.status(200).json({
-            accounts: [...accounts.values()].filter(a => financial || a.id === env.MONIME_SPIN_ACCOUNT_ID),
+            accounts: [...accounts.values()].filter(a => financial || (special && a.id === refundId) || a.id === env.MONIME_SPIN_ACCOUNT_ID),
             businessAccountIds: financial ? businessAccountIds : [],
             platform: {
               mainAccountId: financial ? (env.MONIME_MAIN_ACCOUNT_ID || null) : null,
@@ -131,11 +138,14 @@ export function createHandler(
               feeAccountId: financial ? (env.MONIME_PLATFORM_FEE_ACCOUNT_ID || null) : null,
               travelAccountId: financial ? (travelId || null) : null,
               eventAccountId: financial ? (eventId || null) : null,
+              refundAccountId: (financial || special) ? (refundId || null) : null,
             }
           });
         }
 
-        seen.add(next);
+        if (cursor === next) {
+          return res.status(502).json({ error: 'Monime account pagination repeated a cursor. Retry the balance refresh.' });
+        }
         cursor = next;
       }
     } catch (error) {
