@@ -1,5 +1,5 @@
 import AdminAssistance from './AdminAssistance';
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Activity, ChevronDown, ArrowRightLeft, Car, CreditCard,
@@ -7,7 +7,7 @@ import {
   Send, ShieldCheck, Users, Wallet, X, Bus, Ticket, ShieldAlert
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { canAccess, useAdminAccess, sections } from '@/lib/adminAccess';
+import { canAccess, useAdminAccess } from '@/lib/adminAccess';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -42,6 +42,15 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
   const [signingOut, setSigningOut] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email === 'matmove.sl@gmail.com') {
+        setIsSuperAdmin(true);
+      }
+    });
+  }, []);
 
   async function handleSignOut() {
     if (signingOut) return;
@@ -53,11 +62,18 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
     }
   }
 
-  const visibleItems = navItems.filter(item =>
-    item.key === 'special'
+  // Bypass access checks for Super Admin
+  const visibleItems = navItems.filter(item => {
+    if (isSuperAdmin) return true;
+    return item.key === 'special'
       ? canAccess(access, 'special') || canAccess(access, 'financials')
-      : canAccess(access, item.key)
-  );
+      : canAccess(access, item.key);
+  });
+
+  const canSeeTab = (tab: string, module: string) => {
+    if (isSuperAdmin) return true;
+    return canAccess(access, `${module}.${tab}`) || canAccess(access, module);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
@@ -87,7 +103,6 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
             const Icon = item.icon;
             const isActive = location.pathname === item.path || (item.path === '/dashboard' && location.pathname === '/');
 
-            // 1. Travel Dropdown
             if (item.key === 'travel') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
@@ -108,7 +123,7 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
                         ['manifest', 'Manifest & Approvals'],
                         ['boarding', 'Boarding & Activation'],
                         ['payments', 'Fare Payments Audit'],
-                      ].filter(([tab]) => canAccess(access, `travel.${tab}`) || canAccess(access, 'travel')).map(([tab, label]) => (
+                      ].filter(([tab]) => canSeeTab(tab, 'travel')).map(([tab, label]) => (
                         <Link
                           key={tab}
                           to={`/travel?tab=${tab}`}
@@ -124,7 +139,6 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
               );
             }
 
-            // 2. Events Dropdown
             if (item.key === 'events') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
@@ -144,7 +158,7 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
                         ['overview', 'Events & Flyers'],
                         ['sales', 'Ticket Sales Audit'],
                         ['checkin', 'Gate Check-In & Activation'],
-                      ].filter(([tab]) => canAccess(access, `events.${tab}`) || canAccess(access, 'events')).map(([tab, label]) => (
+                      ].filter(([tab]) => canSeeTab(tab, 'events')).map(([tab, label]) => (
                         <Link
                           key={tab}
                           to={`/events?tab=${tab}`}
@@ -160,7 +174,6 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
               );
             }
 
-            // 3. Games Dropdown
             if (item.key === 'games') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
@@ -183,7 +196,7 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
                         ['winnings', 'Winnings'],
                         ['settings', 'Settings & access'],
                         ['recovery', 'Receipt recovery'],
-                      ].filter(([tab]) => canAccess(access, `games.${tab}`) || canAccess(access, 'games')).map(([tab, label]) => (
+                      ].filter(([tab]) => canSeeTab(tab, 'games')).map(([tab, label]) => (
                         <Link
                           key={tab}
                           to={`/games?tab=${tab}`}
@@ -216,10 +229,16 @@ export default function AdminLayout({ children, title, subtitle }: AdminLayoutPr
         </nav>
 
         <div className="shrink-0 border-t border-slate-800 p-4">
-          {access && (
+          {access && !isSuperAdmin && (
             <div className="mb-3 px-2 text-xs text-slate-400">
               <p className="font-semibold text-slate-200 truncate">{access.full_name || access.email}</p>
               {access.department && <p className="mt-0.5 text-slate-500">{access.department}</p>}
+            </div>
+          )}
+          {isSuperAdmin && (
+            <div className="mb-3 px-2 text-xs text-slate-400">
+              <p className="font-semibold text-amber-400 truncate">Super Admin</p>
+              <p className="mt-0.5 text-slate-500">matmove.sl@gmail.com</p>
             </div>
           )}
 

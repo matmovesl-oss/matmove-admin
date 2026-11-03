@@ -32,8 +32,11 @@ function Denied({ message = 'Access denied. This section is not assigned to your
   );
 }
 
-function Gate({ access, section, children }: { access: AdminAccess; section: string; children: React.ReactNode }) {
-  return canAccess(access, section) ? <>{children}</> : <Denied />;
+function Gate({ access, session, section, children }: { access: AdminAccess | null; session: any; section: string; children: React.ReactNode }) {
+  // SUPER ADMIN OVERRIDE
+  const isSuperAdmin = session?.user?.email === 'matmove.sl@gmail.com';
+  
+  return (isSuperAdmin || canAccess(access, section)) ? <>{children}</> : <Denied />;
 }
 
 function Console({ session, recovery, onRecoveryDone }: any) {
@@ -65,30 +68,31 @@ function Console({ session, recovery, onRecoveryDone }: any) {
 
   return (
     <AdminAccessContext.Provider value={access}>
-      {!access?.is_active ? (
+      {/* Bypass active check for Super Admin so they always get in */}
+      {!access?.is_active && session?.user?.email !== 'matmove.sl@gmail.com' ? (
         <Denied message="Access denied. An active Admin staff assignment is required." />
-      ) : recovery || access.requires_password_setup || location.pathname === '/accept-invite' ? (
+      ) : recovery || access?.requires_password_setup || location.pathname === '/accept-invite' ? (
         <StaffPasswordPage userId={session.user.id} mode={recovery ? 'recovery' : 'invite'} onComplete={onRecoveryDone} />
       ) : (
         <Routes>
-          <Route path="/" element={<Navigate to={homeFor(access)} replace />} />
-          <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage /></Gate>} />
-          <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage /></Gate>} />
-          <Route path="/travel" element={<Gate access={access} section="travel"><AdminTravelPage /></Gate>} />
-          <Route path="/events" element={<Gate access={access} section="events"><AdminEventsPage /></Gate>} />
-          <Route path="/games" element={<Gate access={access} section="games"><GamesPage /></Gate>} />
-          <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage /></Gate>} />
-          <Route path="/kyc" element={<Gate access={access} section="kyc"><KycPage /></Gate>} />
-          <Route path="/civitas" element={<Gate access={access} section="financials"><CivitasAdministrativePage /></Gate>} />
-          <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage /></Gate>} />
-          <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage /></Gate>} />
-          <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage /></Gate>} />
-          <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage /></Gate>} />
-          <Route path="/staff" element={<Gate access={access} section="staff"><StaffGovernancePage /></Gate>} />
-          <Route path="/special" element={<Gate access={access} section="special"><SpecialOperationsPage /></Gate>} />
+          <Route path="/" element={<Navigate to={session?.user?.email === 'matmove.sl@gmail.com' ? '/dashboard' : homeFor(access)} replace />} />
+          <Route path="/dashboard" element={<Gate access={access} session={session} section="dashboard"><DashboardPage /></Gate>} />
+          <Route path="/dispatch" element={<Gate access={access} session={session} section="dispatch"><DispatchRadarPage /></Gate>} />
+          <Route path="/travel" element={<Gate access={access} session={session} section="travel"><AdminTravelPage /></Gate>} />
+          <Route path="/events" element={<Gate access={access} session={session} section="events"><AdminEventsPage /></Gate>} />
+          <Route path="/games" element={<Gate access={access} session={session} section="games"><GamesPage /></Gate>} />
+          <Route path="/pricing" element={<Gate access={access} session={session} section="pricing"><PricingPage /></Gate>} />
+          <Route path="/kyc" element={<Gate access={access} session={session} section="kyc"><KycPage /></Gate>} />
+          <Route path="/civitas" element={<Gate access={access} session={session} section="financials"><CivitasAdministrativePage /></Gate>} />
+          <Route path="/financials" element={<Gate access={access} session={session} section="financials"><FinancialsPage /></Gate>} />
+          <Route path="/transactions" element={<Gate access={access} session={session} section="transactions"><TransactionsPage /></Gate>} />
+          <Route path="/payouts" element={<Gate access={access} session={session} section="payouts"><PayoutsPage /></Gate>} />
+          <Route path="/customers" element={<Gate access={access} session={session} section="customers"><UsersPage /></Gate>} />
+          <Route path="/staff" element={<Gate access={access} session={session} section="staff"><StaffGovernancePage /></Gate>} />
+          <Route path="/special" element={<Gate access={access} session={session} section="special"><SpecialOperationsPage /></Gate>} />
           <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/logs" element={<Gate access={access} section="logs"><LogsPage /></Gate>} />
-          <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage /></Gate>} />
+          <Route path="/logs" element={<Gate access={access} session={session} section="logs"><LogsPage /></Gate>} />
+          <Route path="/audit" element={<Gate access={access} session={session} section="logs"><AuditPage /></Gate>} />
           <Route path="*" element={<Denied />} />
         </Routes>
       )}

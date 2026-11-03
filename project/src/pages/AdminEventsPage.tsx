@@ -30,7 +30,9 @@ export function AdminEventsPage() {
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState('100');
   const [description, setDescription] = useState('');
-  const [isActive, setIsActive] = useState(true);
+  
+  // Status dropdown: 'active', 'postponed', 'past'
+  const [eventStatus, setEventStatus] = useState('active');
 
   const fetchEventsAndTickets = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -73,7 +75,7 @@ export function AdminEventsPage() {
     setVenue(evt.venue);
     setPrice(String(evt.ticket_price));
     setDescription(evt.description || '');
-    setIsActive(evt.is_active);
+    setEventStatus(evt.is_active ? 'active' : 'postponed'); // Map existing boolean to dropdown
     setFlyerFile(null);
     setShowAddModal(true);
   };
@@ -83,6 +85,29 @@ export function AdminEventsPage() {
     setBusy(true);
     setActionError('');
     setNotice('');
+
+    // If marked as PAST, auto-delete it entirely
+    if (editingEvent && eventStatus === 'past') {
+      try {
+        if (editingEvent.flyer_url && editingEvent.flyer_url.includes('event-flyers/')) {
+          const fileName = editingEvent.flyer_url.split('event-flyers/').pop();
+          if (fileName) {
+            await supabase.storage.from('event-flyers').remove([fileName]).catch(() => undefined);
+          }
+        }
+        await supabase.from('platform_events').delete().eq('id', editingEvent.id);
+        setNotice('Event was marked as Past and has been deleted automatically.');
+        setShowAddModal(false);
+        setEditingEvent(null);
+        void fetchEventsAndTickets();
+      } catch (err: any) {
+        setActionError(err.message || 'Failed to delete past event.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     let uploadedUrl = editingEvent?.flyer_url || '/logo.png';
 
     try {
@@ -113,7 +138,7 @@ export function AdminEventsPage() {
           venue: venue.trim(),
           ticket_price: Number(price),
           description: description.trim(),
-          is_active: isActive
+          is_active: eventStatus === 'active'
         }).eq('id', editingEvent.id);
         if (updateError) throw updateError;
         setNotice('Event updated successfully.');
@@ -125,7 +150,7 @@ export function AdminEventsPage() {
           venue: venue.trim(),
           ticket_price: Number(price),
           description: description.trim(),
-          is_active: true
+          is_active: eventStatus === 'active'
         });
         if (insertError) throw insertError;
         setNotice('New event published successfully.');
@@ -149,7 +174,6 @@ export function AdminEventsPage() {
     setBusy(true);
     setActionError('');
     try {
-      // Optmistic UI Update (Immediate visual removal)
       setEvents(prev => prev.filter(event => event.id !== evt.id));
 
       if (evt.flyer_url && evt.flyer_url.includes('event-flyers/')) {
@@ -163,7 +187,6 @@ export function AdminEventsPage() {
       
       setNotice('Event and flyer deleted.');
     } catch (err: any) {
-      // Revert Optimistic UI if deletion failed
       void fetchEventsAndTickets();
       setActionError(err.message || 'Failed to delete event. Make sure no tickets exist for it.');
     } finally {
@@ -235,7 +258,7 @@ export function AdminEventsPage() {
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-900 text-base">Active & Scheduled Events</h3>
               <button
-                onClick={() => { setEditingEvent(null); setTitle(''); setDate(''); setVenue(''); setPrice('100'); setDescription(''); setFlyerFile(null); setShowAddModal(true); }}
+                onClick={() => { setEditingEvent(null); setTitle(''); setDate(''); setVenue(''); setPrice('100'); setDescription(''); setEventStatus('active'); setFlyerFile(null); setShowAddModal(true); }}
                 className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 transition shadow-sm"
               >
                 <Plus size={16} /> Upload & Post Event
@@ -255,7 +278,7 @@ export function AdminEventsPage() {
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                             !evt.is_active ? 'bg-slate-100 text-slate-600' : isPast ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
                           }`}>
-                            {!evt.is_active ? 'Inactive' : isPast ? 'Past Event' : 'Active'}
+                            {!evt.is_active ? 'Postponed' : isPast ? 'Past Event' : 'Active'}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 line-clamp-2">{evt.description}</p>
@@ -441,9 +464,14 @@ export function AdminEventsPage() {
                   <textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs" />
                 </div>
                 {editingEvent && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <input type="checkbox" id="isActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded" />
-                    <label htmlFor="isActive" className="text-xs font-bold text-slate-700">Event is Active (Visible in Customer Portal)</label>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Event Status</label>
+                    <select value={eventStatus} onChange={e => setEventStatus(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs bg-white text-slate-700 font-bold outline-none">
+                      <option value="active">Active (Visible to users)</option>
+                      <option value="postponed">Postponed / Inactive</option>
+                      <option value="past">Past Event (Auto-Delete)</option>
+                    </select>
+                    {eventStatus === 'past' && <p className="text-[10px] text-rose-600 mt-1 font-bold">Warning: Saving will permanently delete this event.</p>}
                   </div>
                 )}
                 <div className="flex gap-2 pt-2">
