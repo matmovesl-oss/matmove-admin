@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import { Search, ShieldAlert, User, ShieldCheck, AlertTriangle, Plus, X, Users, CreditCard } from 'lucide-react';
+import { Search, ShieldAlert, User, ShieldCheck, AlertTriangle, X, Users, CreditCard } from 'lucide-react';
 
 export function SpecialOperationsPage() {
   const [mode, setMode] = useState<'refund' | 'pay_staff'>('refund');
@@ -159,7 +159,7 @@ export function SpecialOperationsPage() {
             const destId = sleWallet?.monime_account_id || sleWallet?.metadata?.monime_account_id;
             if (!destId) throw new Error('No Monime wallet ID.');
 
-            const res = await fetch('/api/admin-refund', { // Using same refund endpoint because it draws from refund account
+            const res = await fetch('/api/admin-refund', { 
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.session.access_token}` },
               body: JSON.stringify({
@@ -167,11 +167,10 @@ export function SpecialOperationsPage() {
                 recipientAccountId: destId,
                 recipientUserId: staff.id,
                 reason: `Staff Payment: ${reason.trim()}`,
-                requestKey: crypto.randomUUID(), // New key for every staff
+                requestKey: crypto.randomUUID(), 
               })
             });
 
-            const body = await res.json();
             if (res.ok || res.status === 202) successes++;
             else failures++;
           } catch (e) {

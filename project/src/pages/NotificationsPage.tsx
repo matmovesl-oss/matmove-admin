@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { canAccess, useAdminAccess } from '@/lib/adminAccess';
@@ -12,6 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Search,
+  Trash2,
 } from 'lucide-react';
 
 type Audience = 'all' | 'rider' | 'driver' | 'merchant' | 'user';
@@ -74,7 +74,7 @@ function formatDate(value: string) {
 
 export default function NotificationsPage() {
   const access = useAdminAccess();
-  const allowed = canAccess(access, 'notifications');
+  const allowed = canAccess(access, 'notifications') || access?.permissions?.includes('*'); // Safely supports super admin
 
   const [audience, setAudience] = useState<Audience>('all');
   const [title, setTitle] = useState('');
@@ -264,6 +264,27 @@ export default function NotificationsPage() {
       setSendError(error?.message || 'Notification could not be sent. Please retry.');
     } finally {
       setSending(false);
+    }
+  }
+
+  // --- NEW: Delete Notification ---
+  async function handleDelete(id: string) {
+    const confirmed = window.confirm("Are you sure you want to delete this notification? It will be permanently removed.");
+    if (!confirmed) return;
+
+    // Optimistically remove from UI
+    setHistory(prev => prev.filter(item => item.id !== id));
+    setSendError('');
+    setSendNotice('');
+
+    try {
+      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      if (error) throw error;
+      setSendNotice('Notification deleted successfully.');
+    } catch (err: any) {
+      // Revert UI on failure
+      void loadHistory();
+      setSendError(err.message || 'Failed to delete notification.');
     }
   }
 
@@ -501,11 +522,12 @@ export default function NotificationsPage() {
                     <th className="px-5 py-3">Audience</th>
                     <th className="px-5 py-3">Recipients</th>
                     <th className="px-5 py-3">Date sent</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {history.map((item, index) => (
-                    <tr key={item.id || `${item.created_at}-${index}`} className="align-top">
+                    <tr key={item.id || `${item.created_at}-${index}`} className="align-top hover:bg-slate-50">
                       <td className="max-w-sm px-5 py-4">
                         <p className="font-bold text-slate-900">{item.title}</p>
                         <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">
@@ -527,6 +549,15 @@ export default function NotificationsPage() {
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">
                         {formatDate(item.created_at)}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
+                          title="Delete Notification"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}

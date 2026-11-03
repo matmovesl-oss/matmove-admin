@@ -1,4 +1,3 @@
-
 import {exportCsv, providerAmount} from '@/lib/csvExport';
 import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -12,6 +11,7 @@ import {
   ShieldAlert,
   CheckCircle2,
   X,
+  Briefcase
 } from 'lucide-react';
 
 function Info({
@@ -49,7 +49,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [roleFilter, setRoleFilter] = useState<
-    'all' | 'rider' | 'driver' | 'merchant'
+    'all' | 'rider' | 'driver' | 'merchant' | 'staff'
   >('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
 
@@ -59,7 +59,8 @@ export default function UsersPage() {
     const generation=++readGeneration.current;setLoading(true);setError('');
     setLoadedStamp(stamp);
     try{
-      const {data,error:queryError}=await supabase.from('profiles').select('*').in('role',['rider','driver','merchant']).order('created_at',{ascending:false});
+      // Added 'staff' so we can see users converted to staff
+      const {data,error:queryError}=await supabase.from('profiles').select('*').in('role',['rider','driver','merchant','staff']).order('created_at',{ascending:false});
       if(queryError)throw queryError;
       if(!Array.isArray(data))throw new Error('The customer response could not be verified.');
       if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setUsers(data);
@@ -97,12 +98,29 @@ export default function UsersPage() {
     finally{exportBusy.current=false;setExporting(false);}
   }
 
+  // --- NEW: Convert to Staff ---
+  const handleMakeStaff = async () => {
+    if (!selectedUser) return;
+    const confirmed = window.confirm(`Are you sure you want to change ${selectedUser.full_name || 'this user'} into a Staff Account? This will classify their wallet for internal payroll operations.`);
+    if (!confirmed) return;
+
+    try {
+      const { error: updateErr } = await supabase.from('profiles').update({ role: 'staff' }).eq('id', selectedUser.id);
+      if (updateErr) throw updateErr;
+      alert('User successfully converted to Staff Account.');
+      setSelectedUser(null);
+      void fetchUsers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update role to staff.');
+    }
+  };
+
   if(!allowed)return <AdminLayout title="Customer Governance"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
   if(loadedStamp!==stamp)return <AdminLayout title="Customer Governance"><p className="p-6">Loading customers...</p></AdminLayout>;
   return (
     <AdminLayout
       title="Customer Governance"
-      subtitle="Monitor and manage Riders, Drivers, and Merchants"
+      subtitle="Monitor and manage Riders, Drivers, Merchants, and Staff Wallets"
     >
       <section aria-label="CSV export" className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4">
         <div><p className="text-sm font-bold">Export displayed records</p><p className="text-xs text-slate-600">Exports the currently loaded records matching your filters. This is the loaded customer list, not a complete database backup.</p></div>
@@ -116,7 +134,7 @@ export default function UsersPage() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search customers..."
+              placeholder="Search customers & staff..."
               value={search}
               onChange={event => setSearch(event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm shadow-sm outline-none focus:ring-2 focus:ring-indigo-600"
@@ -126,7 +144,7 @@ export default function UsersPage() {
           <select
             value={roleFilter}
             onChange={event =>
-              setRoleFilter(event.target.value as typeof roleFilter)
+              setRoleFilter(event.target.value as any)
             }
             className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm outline-none"
           >
@@ -134,6 +152,7 @@ export default function UsersPage() {
             <option value="rider">Riders</option>
             <option value="driver">Drivers</option>
             <option value="merchant">Merchants</option>
+            <option value="staff">Staff Wallets</option>
           </select>
         </div>
 
@@ -198,7 +217,7 @@ export default function UsersPage() {
                     </td>
 
                     <td className="px-6 py-4">
-                      <span className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[10px] font-bold uppercase text-indigo-700">
+                      <span className={`rounded-lg border px-3 py-1.5 text-[10px] font-bold uppercase ${user.role === 'staff' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
                         {user.role}
                       </span>
                     </td>
@@ -269,14 +288,21 @@ export default function UsersPage() {
                   </span>
                 </p>
               </div>
-
-              <button
-                onClick={() => setSelectedUser(null)}
-                aria-label="Close customer profile"
-                className="rounded-full bg-slate-100 p-2 text-slate-400 hover:text-slate-700"
-              >
-                <X size={20} />
-              </button>
+              
+              <div className="flex items-center gap-3">
+                {selectedUser.role !== 'staff' && (
+                  <button onClick={handleMakeStaff} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition">
+                    <Briefcase size={16} /> Convert to Staff Account
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  aria-label="Close customer profile"
+                  className="rounded-full bg-slate-100 p-2 text-slate-400 hover:text-slate-700"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-8 p-8">
