@@ -1,4 +1,3 @@
-
 import AdminAssistance from './AdminAssistance';
 import { useState, useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -46,7 +45,8 @@ const navItems = [
   { key: 'pricing', name: 'Vehicle Pricing', path: '/pricing', icon: Car },
   { key: 'kyc', name: 'KYC & Onboarding', path: '/kyc', icon: ShieldCheck },
   { key: 'financials', name: 'Financial & Wallets', path: '/financials', icon: Wallet },
-  { key: 'special', name: 'Refunds & Special Ops', path: '/special', icon: ShieldAlert },
+  { key: 'special', name: 'Customer Refunds', path: '/special', icon: ShieldAlert },
+  { key: 'special', name: 'Administrative Payroll', path: '/payroll', icon: CreditCard },
   { key: 'transactions', name: 'Gateway Transactions', path: '/transactions', icon: ArrowRightLeft },
   { key: 'payouts', name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },
   { key: 'customers', name: 'Customer Governance', path: '/customers', icon: Users },
@@ -71,8 +71,6 @@ export default function AdminLayout({
   const [signingOut, setSigningOut] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
-  // Recognise the main owner from both the authenticated account
-  // and the trusted owner access context supplied by App.tsx.
   const contextOwner = Boolean((access as any)?.is_owner);
 
   useEffect(() => {
@@ -80,9 +78,7 @@ export default function AdminLayout({
 
     supabase.auth.getUser().then(({ data, error }) => {
       if (!mounted || error) return;
-
       const email = data.user?.email?.toLowerCase().trim();
-
       setIsSuperAdmin(email === SUPER_ADMIN_EMAIL);
     }).catch((error) => {
       console.error('Unable to verify administrator account:', error);
@@ -97,9 +93,7 @@ export default function AdminLayout({
 
   async function handleSignOut() {
     if (signingOut) return;
-
     setSigningOut(true);
-
     try {
       await supabase.auth.signOut({ scope: 'local' });
     } catch (error) {
@@ -109,7 +103,6 @@ export default function AdminLayout({
     }
   }
 
-  // The main administrator sees every registered navigation section.
   const visibleItems = navItems.filter((item) => {
     if (owner) return true;
 
@@ -129,7 +122,6 @@ export default function AdminLayout({
 
   const canSeeTab = (tab: string, module: string) => {
     if (owner) return true;
-
     return (
       canAccess(access, `${module}.${tab}`) ||
       canAccess(access, module)
@@ -140,7 +132,6 @@ export default function AdminLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
-
       {sidebarOpen && (
         <button
           type="button"
@@ -156,7 +147,6 @@ export default function AdminLayout({
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-
         {/* BRAND */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
           <div className="flex items-center">
@@ -165,11 +155,9 @@ export default function AdminLayout({
               alt="MatMove"
               className="mr-3 h-10 w-10 rounded-lg bg-white object-contain p-1"
             />
-
             <span className="text-lg font-bold tracking-wide text-white">
               MatMove
             </span>
-
             <span className="ml-2 mt-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Admin
             </span>
@@ -186,40 +174,28 @@ export default function AdminLayout({
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4">
-
+        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4 custom-scrollbar">
           {visibleItems.map((item) => {
             const Icon = item.icon;
-
             const isActive =
               location.pathname === item.path ||
               (item.path === '/dashboard' && location.pathname === '/');
 
             {/* TRAVEL SUBMENU */}
             if (item.key === 'travel') {
-              const selected =
-                new URLSearchParams(location.search).get('tab') || 'overview';
-
+              const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div
-                  key="travel"
-                  className="rounded-xl border border-indigo-900/40 bg-indigo-950/20"
-                >
+                <div key="travel" className="rounded-xl border border-indigo-900/40 bg-indigo-950/20">
                   <button
                     type="button"
                     onClick={() => setTravelExpanded((o) => !o)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${
-                      isActive
-                        ? 'text-indigo-400'
-                        : 'text-slate-300 hover:bg-slate-900'
+                      isActive ? 'text-indigo-400' : 'text-slate-300 hover:bg-slate-900'
                     }`}
                   >
                     <Bus size={18} className="text-indigo-400" />
                     <span className="flex-1">Travel on Bus</span>
-                    <ChevronDown
-                      size={16}
-                      className={travelExpanded ? 'rotate-180' : ''}
-                    />
+                    <ChevronDown size={16} className={travelExpanded ? 'rotate-180' : ''} />
                   </button>
 
                   {travelExpanded && (
@@ -229,22 +205,20 @@ export default function AdminLayout({
                         ['manifest', 'Manifest & Approvals'],
                         ['boarding', 'Boarding & Activation'],
                         ['payments', 'Fare Payments Audit'],
-                      ]
-                        .filter(([tab]) => canSeeTab(tab, 'travel'))
-                        .map(([tab, label]) => (
-                          <Link
-                            key={tab}
-                            to={`/travel?tab=${tab}`}
-                            onClick={closeSidebar}
-                            className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-                              isActive && selected === tab
-                                ? 'bg-indigo-700 text-white'
-                                : 'text-slate-400 hover:bg-indigo-900/40 hover:text-white'
-                            }`}
-                          >
-                            {label}
-                          </Link>
-                        ))}
+                      ].filter(([tab]) => canSeeTab(tab, 'travel')).map(([tab, label]) => (
+                        <Link
+                          key={tab}
+                          to={`/travel?tab=${tab}`}
+                          onClick={closeSidebar}
+                          className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+                            isActive && selected === tab
+                              ? 'bg-indigo-700 text-white'
+                              : 'text-slate-400 hover:bg-indigo-900/40 hover:text-white'
+                          }`}
+                        >
+                          {label}
+                        </Link>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -253,29 +227,19 @@ export default function AdminLayout({
 
             {/* EVENTS SUBMENU */}
             if (item.key === 'events') {
-              const selected =
-                new URLSearchParams(location.search).get('tab') || 'overview';
-
+              const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div
-                  key="events"
-                  className="rounded-xl border border-sky-900/40 bg-sky-950/20"
-                >
+                <div key="events" className="rounded-xl border border-sky-900/40 bg-sky-950/20">
                   <button
                     type="button"
                     onClick={() => setEventsExpanded((o) => !o)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${
-                      isActive
-                        ? 'text-sky-400'
-                        : 'text-slate-300 hover:bg-slate-900'
+                      isActive ? 'text-sky-400' : 'text-slate-300 hover:bg-slate-900'
                     }`}
                   >
                     <Ticket size={18} className="text-sky-400" />
                     <span className="flex-1">Events Hub</span>
-                    <ChevronDown
-                      size={16}
-                      className={eventsExpanded ? 'rotate-180' : ''}
-                    />
+                    <ChevronDown size={16} className={eventsExpanded ? 'rotate-180' : ''} />
                   </button>
 
                   {eventsExpanded && (
@@ -284,22 +248,20 @@ export default function AdminLayout({
                         ['overview', 'Events & Flyers'],
                         ['sales', 'Ticket Sales Audit'],
                         ['checkin', 'Gate Check-In & Activation'],
-                      ]
-                        .filter(([tab]) => canSeeTab(tab, 'events'))
-                        .map(([tab, label]) => (
-                          <Link
-                            key={tab}
-                            to={`/events?tab=${tab}`}
-                            onClick={closeSidebar}
-                            className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-                              isActive && selected === tab
-                                ? 'bg-sky-700 text-white'
-                                : 'text-slate-400 hover:bg-sky-900/40 hover:text-white'
-                            }`}
-                          >
-                            {label}
-                          </Link>
-                        ))}
+                      ].filter(([tab]) => canSeeTab(tab, 'events')).map(([tab, label]) => (
+                        <Link
+                          key={tab}
+                          to={`/events?tab=${tab}`}
+                          onClick={closeSidebar}
+                          className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+                            isActive && selected === tab
+                              ? 'bg-sky-700 text-white'
+                              : 'text-slate-400 hover:bg-sky-900/40 hover:text-white'
+                          }`}
+                        >
+                          {label}
+                        </Link>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -308,29 +270,19 @@ export default function AdminLayout({
 
             {/* GAMES SUBMENU */}
             if (item.key === 'games') {
-              const selected =
-                new URLSearchParams(location.search).get('tab') || 'overview';
-
+              const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div
-                  key="games"
-                  className="rounded-xl border border-purple-900/40 bg-purple-950/20"
-                >
+                <div key="games" className="rounded-xl border border-purple-900/40 bg-purple-950/20">
                   <button
                     type="button"
                     onClick={() => setGamesExpanded((o) => !o)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${
-                      isActive
-                        ? 'text-amber-300'
-                        : 'text-purple-200 hover:bg-slate-900'
+                      isActive ? 'text-amber-300' : 'text-purple-200 hover:bg-slate-900'
                     }`}
                   >
                     <Activity size={18} />
                     <span className="flex-1">Games — Spin & Win</span>
-                    <ChevronDown
-                      size={16}
-                      className={gamesExpanded ? 'rotate-180' : ''}
-                    />
+                    <ChevronDown size={16} className={gamesExpanded ? 'rotate-180' : ''} />
                   </button>
 
                   {gamesExpanded && (
@@ -342,22 +294,20 @@ export default function AdminLayout({
                         ['winnings', 'Winnings'],
                         ['settings', 'Settings & access'],
                         ['recovery', 'Receipt recovery'],
-                      ]
-                        .filter(([tab]) => canSeeTab(tab, 'games'))
-                        .map(([tab, label]) => (
-                          <Link
-                            key={tab}
-                            to={`/games?tab=${tab}`}
-                            onClick={closeSidebar}
-                            className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-                              isActive && selected === tab
-                                ? 'bg-purple-700 text-white'
-                                : 'text-slate-300 hover:bg-purple-900/50'
-                            }`}
-                          >
-                            {label}
-                          </Link>
-                        ))}
+                      ].filter(([tab]) => canSeeTab(tab, 'games')).map(([tab, label]) => (
+                        <Link
+                          key={tab}
+                          to={`/games?tab=${tab}`}
+                          onClick={closeSidebar}
+                          className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+                            isActive && selected === tab
+                              ? 'bg-purple-700 text-white'
+                              : 'text-slate-300 hover:bg-purple-900/50 hover:text-white'
+                          }`}
+                        >
+                          {label}
+                        </Link>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -367,19 +317,14 @@ export default function AdminLayout({
             {/* STANDARD NAVIGATION */}
             return (
               <Link
-                key={item.key}
+                key={item.name}
                 to={item.path}
                 onClick={closeSidebar}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-indigo-600/15 font-bold text-indigo-400'
-                    : 'hover:bg-slate-900 hover:text-white'
+                  isActive ? 'bg-indigo-600/15 font-bold text-indigo-400' : 'hover:bg-slate-900 hover:text-white'
                 }`}
               >
-                <Icon
-                  size={18}
-                  className={isActive ? 'text-indigo-500' : 'text-slate-500'}
-                />
+                <Icon size={18} className={isActive ? 'text-indigo-500' : 'text-slate-500'} />
                 {item.name}
               </Link>
             );
@@ -388,29 +333,16 @@ export default function AdminLayout({
 
         {/* ADMIN ACCOUNT */}
         <div className="shrink-0 border-t border-slate-800 p-4">
-
           {owner ? (
             <div className="mb-3 rounded-xl border border-amber-700/30 bg-amber-950/20 p-3">
-              <p className="truncate text-xs font-bold text-amber-400">
-                MAIN SUPER ADMIN
-              </p>
-              <p className="mt-1 truncate text-xs text-slate-400">
-                {SUPER_ADMIN_EMAIL}
-              </p>
-              <p className="mt-1 text-[10px] text-emerald-400">
-                Full administrative access
-              </p>
+              <p className="truncate text-xs font-bold text-amber-400">MAIN SUPER ADMIN</p>
+              <p className="mt-1 truncate text-xs text-slate-400">{SUPER_ADMIN_EMAIL}</p>
+              <p className="mt-1 text-[10px] text-emerald-400">Full administrative access</p>
             </div>
           ) : access ? (
             <div className="mb-3 px-2 text-xs text-slate-400">
-              <p className="truncate font-semibold text-slate-200">
-                {access.full_name || access.email}
-              </p>
-              {access.department && (
-                <p className="mt-0.5 text-slate-500">
-                  {access.department}
-                </p>
-              )}
+              <p className="truncate font-semibold text-slate-200">{access.full_name || access.email}</p>
+              {access.department && <p className="mt-0.5 text-slate-500">{access.department}</p>}
             </div>
           ) : null}
 
@@ -428,7 +360,6 @@ export default function AdminLayout({
 
       {/* MAIN CONTENT */}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-[260px]">
-
         <header className="z-10 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex items-center gap-4">
             <button
@@ -441,18 +372,10 @@ export default function AdminLayout({
             </button>
 
             <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                {title}
-              </h1>
-
-              {subtitle && (
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {subtitle}
-                </p>
-              )}
+              <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+              {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
             </div>
           </div>
-
           <AdminAssistance key={access?.id || 'signed-out'} />
         </header>
 
