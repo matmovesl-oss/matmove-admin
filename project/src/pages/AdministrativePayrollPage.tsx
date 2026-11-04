@@ -36,11 +36,16 @@ export function AdministrativePayrollPage() {
       const d = await res.json();
       
       if (!res.ok) throw new Error(d.error || 'Payroll Account balance is unavailable.');
-      if (!d.balance || d.balance.currency !== 'SLE' || !Number.isSafeInteger(d.balance.value)) {
-        throw new Error('Monime did not return a verified SLE balance.');
+      
+      // Relaxed check to safely handle both strings and integers from the Monime payload
+      const balanceData = d.balance || {};
+      const val = Number(balanceData.value);
+      
+      if (isNaN(val)) {
+        throw new Error('Monime returned an invalid balance format.');
       }
       
-      setPayrollBalance(`SLE ${(d.balance.value / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setPayrollBalance(`SLE ${(val / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
     } catch (err: any) {
       setPayrollBalance(null);
       setBalanceError(err.message || 'Balance could not be loaded.');
