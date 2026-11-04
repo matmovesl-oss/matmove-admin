@@ -287,7 +287,7 @@ export function SpecialOperationsPage() {
                 <button
                   type="button"
                   onClick={() => setShowConfirmModal(true)}
-                  disabled={!accountId || !/^\\d+(?:\\.\\d{1,2})?$/.test(amount.trim()) || Number(amount) <= 0 ||
+                  disabled={!accountId || !/^\d+(?:\.\d{1,2})?$/.test(amount.trim()) || Number(amount) <= 0 ||
                     !reason.trim() || refundBalanceLoading || !refundBalance || !!refundBalanceError}
                   className="flex-1 rounded-xl bg-indigo-600 py-4 text-xs font-bold text-white shadow-md transition hover:bg-indigo-500 disabled:opacity-50"
                 >
