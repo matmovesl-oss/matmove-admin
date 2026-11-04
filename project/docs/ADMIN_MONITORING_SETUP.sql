@@ -38,7 +38,12 @@ language sql immutable set search_path=pg_catalog,public as $definition$
 ('arcade_entries','Dice, fruit and number entry transfers','games.entries','matmove_arcade_legs','id',array['id','round_id','amount_minor','provider_id','status','created_at','updated_at']::text[],'entry'),
 ('arcade_winnings','Dice, fruit and number prize transfers','games.winnings','matmove_arcade_legs','id',array['id','round_id','attempt_index','amount_minor','provider_id','status','created_at','updated_at']::text[],'win'),
 ('game_settings','Published game configuration versions','games.settings','matmove_arcade_configs','id',array['id','created_by','created_at']::text[],''),
-('game_recovery','Game recovery audit history','games.recovery','matmove_arcade_admin_events','id',array['id','admin_id','action','created_at']::text[],'')
+('game_recovery','Game recovery audit history','games.recovery','matmove_arcade_admin_events','id',array['id','admin_id','action','created_at']::text[],''),
+('payroll','Staff payroll transfers','special','matmove_admin_payroll','id',array['id','staff_user_id','wallet_id','source_account_id','recipient_account_id','amount_minor','currency','reason','provider_transfer_id','provider_status','state','failure_detail','completed_at','created_at','updated_at']::text[],''),
+('refunds','Customer refunds','special','matmove_admin_refunds','id',array['id','recipient_user_id','source_account_id','recipient_account_id','amount_minor','currency','reason','provider_transfer_id','provider_status','state','failure_detail','completed_at','created_at','updated_at']::text[],''),
+('concierge_services','Concierge services','special','concierge_services','id',array['id','slug','title','category','description','price_label','is_active','display_order','created_at','updated_at','deleted_at']::text[],''),
+('concierge_enquiries','Concierge customer enquiries','special','concierge_interests','id',array['id','service_id','service_slug','service_title','price_label_snapshot','customer_id','customer_name','customer_email','customer_phone','message','status','created_at','updated_at']::text[],''),
+('concierge_audit','Concierge service audit history','special','concierge_service_audit','id',array['id','service_id','actor_id','action','before_data','after_data','created_at']::text[],'')
  ) as definitions(report,title,permission,table_name,key_name,columns,row_filter)
  where report=p_report;
 $definition$;
@@ -63,7 +68,7 @@ begin
     when d.row_filter in ('entry','win') then 'Amounts are SLE minor units (100 = SLE 1). Only completed transfers are confirmed receipts.'
     else 'Operational database history. Missing optional fields are blank. Records reflect their state when read.' end)
   order by d.title),'[]'::jsonb) into result
- from unnest(array['customers','dispatch','pricing','kyc','wallets','withdrawals','payments','ride_payments','payouts','merchant_payments','staff','logs','staff_audit','spin_players','arcade_players','spin_overview','arcade_overview','spin_entries','spin_winnings','arcade_entries','arcade_winnings','game_settings','game_recovery']::text[]) k
+ from unnest(array['customers','dispatch','pricing','kyc','wallets','withdrawals','payments','ride_payments','payouts','merchant_payments','staff','logs','staff_audit','spin_players','arcade_players','spin_overview','arcade_overview','spin_entries','spin_winnings','arcade_entries','arcade_winnings','game_settings','game_recovery','payroll','refunds','concierge_services','concierge_enquiries','concierge_audit']::text[]) k
  cross join lateral public.matmove_report_definition(k) d
  where public.matmove_report_allowed(p_actor,d.permission);
  return result;
@@ -88,13 +93,80 @@ begin
   begin
    where_sql:='true';money:=null;unverified:=null;
    if d.row_filter='customer' then where_sql:='j->>''role'' in (''rider'',''driver'',''merchant'')';
+   elsif d.report in ('payroll','refunds') then
+    execute format($money$
+     with source as (select to_jsonb(t) j from public.%I t),completed as
+      (select j from source where j->>'state'='completed'),
+     checked as (select j,coalesce(nullif(btrim(j->>'provider_transfer_id'),''),'')<>''
+       and coalesce(j->>'currency','')='SLE'
+       and case when coalesce(j->>'amount_minor','')~'^[0-9]+ where_sql:=format('j->>''kind''=%L',d.row_filter);end if;
+   group_field:=case
+    when d.report='customers' then 'role'
+    when d.report='wallets' then 'currency'
+    when d.report='staff' then 'is_active'
+    when d.report in ('concierge_services') then 'is_active'
+    when d.report='concierge_enquiries' then 'status'
+    when d.report='concierge_audit' then 'action'
+    when d.report in ('ride_payments','payouts','merchant_payments','spin_players','arcade_players','spin_overview','arcade_overview') then 'state'
+    when d.report in ('dispatch','kyc','withdrawals','payments','spin_entries','spin_winnings','arcade_entries','arcade_winnings') then 'status'
+    when d.report in ('payroll','refunds') then 'state'
+    else null end;
+   execute format($counts$
+    with source as (select to_jsonb(t) j from public.%I t),filtered as (select j from source where %s),
+    buckets as (select coalesce(nullif(j->>$1,''),'Not supplied') as value,count(*)::text as count from filtered group by 1)
+    select (select count(*)::text from filtered),case when $1 is null then '[]'::jsonb else coalesce((select jsonb_agg(to_jsonb(b) order by b.value) from buckets b),'[]'::jsonb) end
+   $counts$,d.table_name,where_sql) into total,groups using group_field;
+   if d.row_filter in ('entry','win') then
+    -- These four game transfer tables are SLE-only and store integer cents.
+    -- A pending/processing/failed leg is never included in a paid total.
+    execute format($receipts$
+     with source as (select to_jsonb(t) j from public.%I t),completed as
+      (select j from source where %s and j->>'status'='completed'),
+     checked as (select j,coalesce(nullif(btrim(j->>'provider_id'),''),'')<>''
+       and case when coalesce(j->>'amount_minor','')~'^[0-9]+$' then (j->>'amount_minor')::numeric>0 else false end as verified from completed)
+     select jsonb_build_object('currency','SLE','minor',coalesce(sum(case when verified then (j->>'amount_minor')::numeric else 0 end),0)::text),
+       count(*) filter(where not coalesce(verified,false))::text from checked
+    $receipts$,d.table_name,where_sql) into money,unverified;
+   end if;
+   if d.report='dispatch' then
+    execute format($recent$
+     select coalesce(jsonb_agg(r.row order by r.created desc nulls last,r.id desc),'[]'::jsonb) from (
+      select j->>'created_at' as created,j->>'id' as id,
+       jsonb_build_object('id',j->>'id','service_type',j->>'service_type','status',j->>'status',
+        'fare_amount',j->>'fare_amount','created_at',j->>'created_at',
+        'pickup_location',j->>'pickup_location','destination_location',j->>'destination_location') as row
+      from (select to_jsonb(t) j from public.%I t) source
+      order by j->>'created_at' desc nulls last,j->>'id' desc limit 5
+     ) r
+    $recent$,d.table_name) into latest;
+   end if;
+   modules:=modules||jsonb_build_array(jsonb_build_object('id',d.report,'title',d.title,'permission',d.permission,'status','ok','count',total,'groups',groups,'completedMoney',money,'unverifiedCompleted',unverified,'message',null));
+  exception when others then
+   modules:=modules||jsonb_build_array(jsonb_build_object('id',d.report,'title',d.title,'permission',d.permission,'status','error','count',null,'groups','[]'::jsonb,'completedMoney',null,'unverifiedCompleted',null,'message','This module could not be read. Retry monitoring and check the installed schema.'));
+  end;
+ end loop;
+ return jsonb_build_object('actor',p_actor,'generatedAt',observed,'modules',modules,'recentBookings',latest);
+end;
+$overview$;
+revoke all on function public.matmove_admin_report_overview(uuid) from public,anon,authenticated;
+grant execute on function public.matmove_admin_report_overview(uuid) to service_role;
+notify pgrst, 'reload schema';
+commit;
+ then (j->>'amount_minor')::numeric>0 else false end as verified from completed)
+     select jsonb_build_object('currency','SLE','minor',coalesce(sum(case when verified then (j->>'amount_minor')::numeric else 0 end),0)::text),
+       count(*) filter(where not coalesce(verified,false))::text from checked
+    $money$,d.table_name) into money,unverified;
    elsif d.row_filter in ('entry','win') then where_sql:=format('j->>''kind''=%L',d.row_filter);end if;
    group_field:=case
     when d.report='customers' then 'role'
     when d.report='wallets' then 'currency'
     when d.report='staff' then 'is_active'
+    when d.report in ('concierge_services') then 'is_active'
+    when d.report='concierge_enquiries' then 'status'
+    when d.report='concierge_audit' then 'action'
     when d.report in ('ride_payments','payouts','merchant_payments','spin_players','arcade_players','spin_overview','arcade_overview') then 'state'
     when d.report in ('dispatch','kyc','withdrawals','payments','spin_entries','spin_winnings','arcade_entries','arcade_winnings') then 'status'
+    when d.report in ('payroll','refunds') then 'state'
     else null end;
    execute format($counts$
     with source as (select to_jsonb(t) j from public.%I t),filtered as (select j from source where %s),
