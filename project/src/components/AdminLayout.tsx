@@ -21,6 +21,7 @@ import {
   Ticket,
   ShieldAlert,
   BarChart3,
+  Briefcase,
   ClipboardCheck,
 } from 'lucide-react';
 
@@ -47,6 +48,7 @@ const navItems = [
   { key: 'financials', name: 'Financial & Wallets', path: '/financials', icon: Wallet },
   { key: 'special', name: 'Customer Refunds', path: '/special', icon: ShieldAlert },
   { key: 'special', name: 'Administrative Payroll', path: '/payroll', icon: CreditCard },
+  { key: 'special', name: 'MatMove Concierge', path: '/concierge', icon: Briefcase },
   { key: 'transactions', name: 'Gateway Transactions', path: '/transactions', icon: ArrowRightLeft },
   { key: 'payouts', name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },
   { key: 'customers', name: 'Customer Governance', path: '/customers', icon: Users },
