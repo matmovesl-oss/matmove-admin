@@ -112,6 +112,10 @@ export default function AdminLayout({
       return false;
     }
 
+    if (item.path === '/concierge') {
+      return canAccess(access, 'special');
+    }
+
     if (item.key === 'special') {
       return (
         canAccess(access, 'special') ||
