@@ -12,6 +12,20 @@ type PendingPayrollBatch = {
   statuses: Record<string, PayrollStatus>;
 };
 
+type PayrollHistoryItem = {
+  id: string;
+  staff_user_id: string;
+  amount_minor: number | string;
+  currency: string;
+  reason: string;
+  provider_transfer_id: string | null;
+  provider_status: string;
+  state: string;
+  failure_detail: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
 const PENDING_BATCH_KEY = 'matmove.admin.payroll.pending.v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -70,6 +84,9 @@ export function AdministrativePayrollPage() {
   const [payrollAccountId, setPayrollAccountId] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
   const [balanceError, setBalanceError] = useState('');
+  const [payrollHistory, setPayrollHistory] = useState<PayrollHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
     if (pendingBatch) sessionStorage.setItem(PENDING_BATCH_KEY, JSON.stringify(pendingBatch));
@@ -103,12 +120,22 @@ export function AdministrativePayrollPage() {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }));
+      if (Array.isArray(data.payrollHistory)) {
+        setPayrollHistory(data.payrollHistory);
+        setHistoryError(data.historyError || '');
+      } else {
+        setPayrollHistory([]);
+        setHistoryError('Payroll history could not be verified.');
+      }
     } catch (cause) {
       setPayrollBalance(null);
       setPayrollAccountId(null);
       setBalanceError(cause instanceof Error ? cause.message : 'Balance could not be loaded.');
+      setPayrollHistory([]);
+      setHistoryError('Payroll history could not be loaded.');
     } finally {
       setBalanceLoading(false);
+      setHistoryLoading(false);
     }
   };
 
@@ -329,6 +356,61 @@ export function AdministrativePayrollPage() {
             </div>
           </section>
         )}
+
+        <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Recent payroll history</h2>
+              <p className="mt-1 text-xs text-slate-500">Latest recorded payments from the dedicated payroll ledger (up to 100 records).</p>
+            </div>
+            <button type="button" onClick={() => void refreshPayrollBalance()} disabled={balanceLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">
+              <RefreshCw size={13} className={balanceLoading ? 'animate-spin' : ''} />Refresh history
+            </button>
+          </div>
+          {historyError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{historyError}</p>}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px] text-left text-xs">
+              <thead className="bg-slate-50 uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Staff member</th>
+                  <th className="p-3">Amount</th>
+                  <th className="p-3">Memo</th>
+                  <th className="p-3">Provider status</th>
+                  <th className="p-3">Transfer reference</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {historyLoading ? (
+                  <tr><td colSpan={6} className="p-5 text-center text-slate-500">Loading payroll history…</td></tr>
+                ) : historyError && payrollHistory.length === 0 ? (
+                  <tr><td colSpan={6} className="p-5 text-center text-amber-800">Payroll history is unavailable. Retry the refresh.</td></tr>
+                ) : !payrollHistory.length ? (
+                  <tr><td colSpan={6} className="p-5 text-center text-slate-500">No payroll payments have been recorded yet.</td></tr>
+                ) : payrollHistory.map(item => {
+                  const staff = staffList.find(person => person.id === item.staff_user_id);
+                  const minor = Number(item.amount_minor);
+                  const amountText = Number.isSafeInteger(minor) && minor >= 0
+                    ? item.currency + ' ' + (minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : 'Amount unavailable';
+                  return (
+                    <tr key={item.id}>
+                      <td className="whitespace-nowrap p-3 text-slate-500">{new Date(item.created_at).toLocaleString()}</td>
+                      <td className="p-3 font-semibold text-slate-900">{staff?.full_name || 'Staff account'}</td>
+                      <td className="whitespace-nowrap p-3 font-bold text-slate-900">{amountText}</td>
+                      <td className="max-w-[180px] whitespace-normal p-3 text-slate-600">{item.reason || '—'}</td>
+                      <td className="p-3">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 font-bold uppercase text-slate-700">{item.provider_status || item.state}</span>
+                      </td>
+                      <td className="max-w-[150px] break-all p-3 font-mono text-[10px] text-slate-500">{item.provider_transfer_id || 'Not yet assigned'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <Search size={18} className="text-slate-400" />
