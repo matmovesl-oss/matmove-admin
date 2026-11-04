@@ -72,7 +72,10 @@ export function createHandler({ authorize = requireAdmin, env = process.env, fet
   return async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Vary', 'Authorization');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+  if (!['GET', 'POST'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST');
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
   let ledgerRow = null;
   let client = null;
@@ -80,6 +83,18 @@ export function createHandler({ authorize = requireAdmin, env = process.env, fet
     const admin = await authorize(req, ['financials', 'special'], { env });
     client = admin.client;
     const actor = admin.user;
+
+    if (req.method === 'GET') {
+      const history = await client.from('matmove_admin_refunds')
+        .select('id,initiated_by,recipient_user_id,recipient_account_id,source_account_id,amount_minor,currency,reason,provider_transfer_id,provider_status,state,failure_detail,created_at,updated_at,completed_at')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (history.error) {
+        return res.status(503).json({ error: 'Refund history is unavailable. The refund ledger could not be read.' });
+      }
+      return res.status(200).json({ refunds: history.data || [], generatedAt: new Date().toISOString() });
+    }
+
     const { amount, recipientAccountId, recipientUserId, reason, requestKey } = req.body || {};
     const amountMinor = amountToMinor(amount);
     if (!amountMinor) return res.status(400).json({ error: 'Enter a valid SLE refund amount with up to two decimal places.' });
