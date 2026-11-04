@@ -116,7 +116,19 @@ export function createHandler(
         }
 
         const result = await response.json();
-        for (const account of result.result || []) {
+        const pageAccounts = Array.isArray(result.result)
+          ? result.result
+          : Array.isArray(result.result?.items)
+            ? result.result.items
+            : null;
+        if (!pageAccounts) {
+          return res.status(502).json({ error: 'Monime returned an invalid financial-account page.' });
+        }
+        for (const account of pageAccounts) {
+          if (!account || typeof account.id !== 'string' ||
+              !/^fac-[A-Za-z0-9_-]+$/.test(account.id) || accounts.has(account.id)) {
+            return res.status(502).json({ error: 'Monime returned a missing or duplicate financial account. No complete balance list is available.' });
+          }
           accounts.set(account.id, {
             id: account.id,
             currency: account.currency,
