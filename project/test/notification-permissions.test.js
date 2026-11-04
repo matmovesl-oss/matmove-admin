@@ -51,7 +51,7 @@ async function database(){
 }
 
 test('Notifications is an explicit independent staff assignment and a valid restricted landing page',()=>{
- assert.equal(PERMISSION_KEYS.length,17);assert.deepEqual(validPermissions(['notifications','notifications']),['notifications']);assert.throws(()=>validPermissions(['notifications','owner']));
+ assert.equal(PERMISSION_KEYS.length,26);assert.deepEqual(validPermissions(['notifications','notifications']),['notifications']);assert.throws(()=>validPermissions(['notifications','owner']));
  const a={id:target,is_active:true,is_owner:false,permissions:['notifications']};assert.equal(canAdminAccess(a,'notifications'),true);for(const p of ['customers','kyc','financials','transactions','payouts','staff','dispatch'])assert.equal(canAdminAccess(a,p),false);assert.equal(homeFor(a),'/notifications');assert.equal(canAdminAccess({...a,is_active:false},'notifications'),false);assert.equal(canAdminAccess({...a,permissions:['customers']},'notifications'),false);assert.ok(SECTION_GROUPS.some(g=>g.items.some(i=>i[0]==='notifications')));
 });
 test('additive SQL accepts notification grants without reviving removed staff or expanding existing access',async t=>{
@@ -69,8 +69,8 @@ test('additive SQL accepts notification grants without reviving removed staff or
    await f.session(target,'authenticated');await assert.rejects(()=>f.rpc('matmove_staff_save',[owner,target,'staff@example.com','Forged',['notifications'],'Communications',true,false]),/permission denied/);
    await assert.rejects(()=>save(['staff'],other),/Only the active owner/);await assert.rejects(()=>save(['notifications','super_admin']),/Invalid assignments/);await assert.rejects(()=>save(['notifications','notifications']),/Invalid assignments/);
   });
-  await t.test('all seventeen checked assignments are accepted, while malformed values fail atomically',async()=>{
-   await save(PERMISSION_KEYS);await f.pg.exec('reset role');assert.equal((await f.pg.query('select jsonb_array_length(permissions) n from matmove_staff_access where id=$1',[target])).rows[0].n,17);
+  await t.test('all twenty-six checked assignments are accepted, while malformed values fail atomically',async()=>{
+   await save(PERMISSION_KEYS);await f.pg.exec('reset role');assert.equal((await f.pg.query('select jsonb_array_length(permissions) n from matmove_staff_access where id=$1',[target])).rows[0].n,26);
    await assert.rejects(()=>save({permissions:['notifications']}),/Invalid assignments/);await assert.rejects(()=>save(null),/Invalid assignments/);await assert.rejects(()=>save([]),/Invalid assignments/);
   });
   await t.test('removal immediately revokes notifications; legacy save and stale restore stay blocked',async()=>{
@@ -95,5 +95,5 @@ test('existing staff API saves the narrow notification grant and never trusts bo
 });
 test('Staff checkbox groups, verified self-session and navigation all use the same assignment registry',async()=>{
  const ui=await readFile('src/pages/StaffGovernancePage.tsx','utf8'),api=await readFile('api/admin-staff.js','utf8'),app=await readFile('src/App.tsx','utf8'),layout=await readFile('src/components/AdminLayout.tsx','utf8');
- assert.match(ui,/SECTION_GROUPS.map/);assert.match(ui,/toggle\(\[key\],e.target.checked\)/);assert.match(api,/self\?PERMISSION_KEYS:\['staff'\]/);assert.match(app,/path="\/notifications" element=\{<Gate access=\{access\} section="notifications"/);assert.match(layout,/key:'notifications',name:'Customer Messages',path:'\/notifications'/);
+ assert.match(ui,/SECTION_GROUPS.map/);assert.match(ui,/toggle\(\[key\],e.target.checked\)/);assert.match(api,/self\?PERMISSION_KEYS:\['staff'\]/);assert.match(app,/path="\/notifications" element=\{<Gate access=\{access\} section="notifications"/);assert.match(layout,/key:\s*'notifications',\s*name:\s*'Customer Messages',\s*path:\s*'\/notifications'/);
 });
