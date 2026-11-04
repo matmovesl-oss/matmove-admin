@@ -14,10 +14,10 @@ function amountToMinor(value) {
   return Number(minor);
 }
 
-async function monimeRequest(path, { method = 'GET', body, requestKey, env }) {
+async function monimeRequest(path, { method = 'GET', body, requestKey, env, fetcher = fetch }) {
   let response;
   try {
-    response = await fetch(`https://api.monime.io/v1/${path}`, {
+    response = await fetcher(`https://api.monime.io/v1/${path}`, {
       method,
       redirect: 'error',
       headers: {
@@ -46,8 +46,8 @@ async function monimeRequest(path, { method = 'GET', body, requestKey, env }) {
   return payload?.result || payload;
 }
 
-async function getAccount(id, env) {
-  const account = await monimeRequest(`financial-accounts/${encodeURIComponent(id)}?withBalance=true`, { env });
+async function getAccount(id, env, fetcher) {
+  const account = await monimeRequest(`financial-accounts/${encodeURIComponent(id)}?withBalance=true`, { env, fetcher });
   if (!account || account.id !== id || account.currency !== 'SLE') {
     const error = new Error('Both the refund source and customer destination must be verified SLE Monime accounts.');
     error.status = 409;
@@ -68,7 +68,8 @@ function responseTransferMatches(transfer, { request, sourceId, destinationId, a
   );
 }
 
-export default async function handler(req, res) {
+export function createHandler({ authorize = requireAdmin, env = process.env, fetcher = fetch } = {}) {
+  return async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Vary', 'Authorization');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
@@ -76,8 +77,7 @@ export default async function handler(req, res) {
   let ledgerRow = null;
   let client = null;
   try {
-    const env = process.env;
-    const admin = await requireAdmin(req, ['financials', 'special'], { env });
+    const admin = await authorize(req, ['financials', 'special'], { env });
     client = admin.client;
     const actor = admin.user;
     const { amount, recipientAccountId, recipientUserId, reason, requestKey } = req.body || {};
@@ -121,8 +121,8 @@ export default async function handler(req, res) {
     } else {
       // Verify source balance only before the first attempt. Rechecks of a pending request
       // must not fail just because its earlier attempt has already reserved/debited funds.
-      const source = await getAccount(sourceId, env);
-      const destination = await getAccount(recipientAccountId, env);
+      const source = await getAccount(sourceId, env, fetcher);
+      const destination = await getAccount(recipientAccountId, env, fetcher);
       const available = source.balance?.available;
       if (!available || available.currency !== 'SLE' || !Number.isSafeInteger(available.value) || available.value < amountMinor) {
         return res.status(400).json({ error: `Insufficient confirmed funds in the SLE Refund Account. Available: SLE ${Number(available?.value || 0) / 100}.` });
@@ -150,13 +150,14 @@ export default async function handler(req, res) {
 
     let transfer;
     if (ledgerRow.provider_transfer_id) {
-      transfer = await monimeRequest(`internal-transfers/${encodeURIComponent(ledgerRow.provider_transfer_id)}`, { env });
+      transfer = await monimeRequest(`internal-transfers/${encodeURIComponent(ledgerRow.provider_transfer_id)}`, { env, fetcher });
     } else {
       // Reusing the exact same key recovers an uncertain POST without creating a second debit.
       transfer = await monimeRequest('internal-transfers', {
         method: 'POST',
         requestKey,
         env,
+        fetcher,
         body: {
           amount: { currency: 'SLE', value: amountMinor },
           sourceFinancialAccount: { id: sourceId },
@@ -195,4 +196,7 @@ export default async function handler(req, res) {
     }
     return res.status(error.status || 502).json({ error: error.message || 'Refund processing failed. Check the refund ledger before retrying.' });
   }
+  };
 }
+
+export default createHandler();
