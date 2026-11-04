@@ -19,6 +19,7 @@ import { StaffGovernancePage } from './pages/StaffGovernancePage';
 import { LogsPage } from './pages/LogsPage';
 import { SpecialOperationsPage } from './pages/SpecialOperationsPage';
 import { AdministrativePayrollPage } from './pages/AdministrativePayrollPage';
+import { ConciergeAdminPage } from './pages/ConciergeAdminPage';
 import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage';
@@ -328,6 +329,15 @@ function Console({
             element={
               <Gate access={access} session={session} section="special">
                 <AdministrativePayrollPage />
+              </Gate>
+            }
+          />
+
+          <Route
+            path="/concierge"
+            element={
+              <Gate access={access} session={session} section="special">
+                <ConciergeAdminPage />
               </Gate>
             }
           />
