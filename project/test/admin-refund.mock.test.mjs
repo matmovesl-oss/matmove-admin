@@ -29,6 +29,8 @@ function makeClient(existing = []) {
       let action = 'select', filters = [], payload = null;
       const builder = {
         select() { return this; },
+        order() { return this; },
+        limit() { return this; },
         eq(key, value) { filters.push([key, value]); return this; },
         maybeSingle() { return execute(true); },
         single() { return execute(true); },
@@ -211,4 +213,28 @@ test('pending refund recovery reads the existing provider transfer and does not 
   assert.equal(res.body.status, 'processing');
   assert.equal(calls.length, 1);
   assert.ok(calls[0].url.includes('/internal-transfers/trn-refund-existing'));
+});
+
+
+test('refund GET returns recent ledger history without contacting Monime', async () => {
+  const existing = [{
+    id: refundId, initiated_by: actorId,
+    recipient_user_id: customerId, recipient_account_id: destinationId,
+    source_account_id: sourceId, amount_minor: 12550, currency: 'SLE',
+    reason: 'Duplicate debit case 123', provider_transfer_id: 'trn-refund-history',
+    provider_status: 'completed', state: 'completed', failure_detail: null,
+    created_at: '2026-11-02T12:00:00.000Z',
+    updated_at: '2026-11-02T12:01:00.000Z',
+    completed_at: '2026-11-02T12:01:00.000Z',
+  }];
+  const client = makeClient(existing);
+  const { handler, calls } = handlerWith({ client });
+  const res = makeResponse();
+  await handler({ method: 'GET', headers: {} }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.refunds.length, 1);
+  assert.equal(res.body.refunds[0].amount_minor, 12550);
+  assert.equal(res.body.refunds[0].provider_transfer_id, 'trn-refund-history');
+  assert.equal(calls.length, 0);
 });
