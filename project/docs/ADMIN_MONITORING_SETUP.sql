@@ -111,13 +111,21 @@ begin
     select (select count(*)::text from filtered),case when $1 is null then '[]'::jsonb else coalesce((select jsonb_agg(to_jsonb(b) order by b.value) from buckets b),'[]'::jsonb) end
    $counts$,d.table_name,where_sql) into total,groups using group_field;
    if d.report in ('payroll','refunds') then
-    -- Only completed transfers with a matching provider receipt and positive SLE amount count as verified.
-    execute format($money$
-     with source as (select to_jsonb(t) j from public.%I t),completed as
-      (select j from source where j->>'state'='completed'),
-     checked as (select j,coalesce(nullif(btrim(j->>'provider_transfer_id'),''),'')<>''
-       and coalesce(j->>'currency','')='SLE'
-       and case when coalesce(j->>'amount_minor','')~'^[0-9]+
+    -- Count only completed SLE transfers with a provider transfer receipt.
+    execute format($payroll_totals$
+     with source as (select to_jsonb(t) j from public.%I t),
+     completed as (select j from source where j->>'state'='completed'),
+     checked as (select j,
+       (nullif(btrim(j->>'provider_transfer_id'),'') is not null
+        and j->>'currency'='SLE'
+        and case when coalesce(j->>'amount_minor','') ~ '^[0-9]+$'
+          then (j->>'amount_minor')::numeric>0 else false end) as verified
+       from completed)
+     select jsonb_build_object('currency','SLE','minor',
+       coalesce(sum(case when verified then (j->>'amount_minor')::numeric else 0 end),0)::text),
+       count(*) filter(where not verified)::text from checked
+    $payroll_totals$,d.table_name) into money,unverified;
+   elsif d.row_filter in ('entry','win') then
     -- A pending/processing/failed leg is never included in a paid total.
     execute format($receipts$
      with source as (select to_jsonb(t) j from public.%I t),completed as
