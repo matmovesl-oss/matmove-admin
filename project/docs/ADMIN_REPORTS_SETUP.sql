@@ -27,7 +27,12 @@ language sql immutable set search_path=pg_catalog,public as $definition$
 ('arcade_entries','Dice, fruit and number entry transfers','games.entries','matmove_arcade_legs','id',array['id','round_id','amount_minor','provider_id','status','created_at','updated_at']::text[],'entry'),
 ('arcade_winnings','Dice, fruit and number prize transfers','games.winnings','matmove_arcade_legs','id',array['id','round_id','attempt_index','amount_minor','provider_id','status','created_at','updated_at']::text[],'win'),
 ('game_settings','Published game configuration versions','games.settings','matmove_arcade_configs','id',array['id','created_by','created_at']::text[],''),
-('game_recovery','Game recovery audit history','games.recovery','matmove_arcade_admin_events','id',array['id','admin_id','action','created_at']::text[],'')
+('game_recovery','Game recovery audit history','games.recovery','matmove_arcade_admin_events','id',array['id','admin_id','action','created_at']::text[],''),
+('payroll','Staff payroll transfers','special','matmove_admin_payroll','id',array['id','staff_user_id','wallet_id','source_account_id','recipient_account_id','amount_minor','currency','reason','provider_transfer_id','provider_status','state','failure_detail','completed_at','created_at','updated_at']::text[],''),
+('refunds','Customer refund transfers','financials','matmove_admin_refunds','id',array['id','recipient_user_id','source_account_id','recipient_account_id','amount_minor','currency','reason','provider_transfer_id','provider_status','state','failure_detail','completed_at','created_at','updated_at']::text[],''),
+('concierge_services','Concierge service catalogue','special','concierge_services','id',array['id','slug','title','category','description','price_label','is_active','display_order','created_by','updated_by','created_at','updated_at','deleted_at']::text[],''),
+('concierge_enquiries','Customer Concierge enquiries','special','concierge_interests','id',array['id','service_id','service_slug','service_title','price_label_snapshot','customer_id','customer_name','customer_email','customer_phone','message','status','created_at','updated_at']::text[],''),
+('concierge_audit','Concierge catalogue change history','special','concierge_service_audit','id',array['id','service_id','actor_id','action','before_data','after_data','created_at']::text[],'')
  ) as definitions(report,title,permission,table_name,key_name,columns,row_filter)
  where report=p_report;
 $definition$;
@@ -52,7 +57,7 @@ begin
     when d.row_filter in ('entry','win') then 'Amounts are SLE minor units (100 = SLE 1). Only completed transfers are confirmed receipts.'
     else 'Operational database history. Missing optional fields are blank. Records reflect their state when read.' end)
   order by d.title),'[]'::jsonb) into result
- from unnest(array['customers','dispatch','pricing','kyc','wallets','withdrawals','payments','merchant_payments','staff','logs','staff_audit','spin_players','arcade_players','spin_overview','arcade_overview','spin_entries','spin_winnings','arcade_entries','arcade_winnings','game_settings','game_recovery']::text[]) k
+ from unnest(array['customers','dispatch','pricing','kyc','wallets','withdrawals','payments','merchant_payments','staff','logs','staff_audit','spin_players','arcade_players','spin_overview','arcade_overview','spin_entries','spin_winnings','arcade_entries','arcade_winnings','game_settings','game_recovery','payroll','refunds','concierge_services','concierge_enquiries','concierge_audit']::text[]) k
  cross join lateral public.matmove_report_definition(k) d
  where public.matmove_report_allowed(p_actor,d.permission);
  return result;

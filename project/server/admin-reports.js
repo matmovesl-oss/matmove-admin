@@ -66,7 +66,7 @@ export function createReportHandler({authorize=requireAdmin,env=process.env,now=
      if(!definition||seen.has(module.id)||module.permission!==definition.permission||!['ok','unavailable','error'].includes(module.status))throw failure(503,'Monitoring assignments were not confirmed.');
      seen.add(module.id);
      if(module.status==='ok'&&(!count(module.count)||!Array.isArray(module.groups)||module.groups.some(g=>typeof g?.value!=='string'||!count(g.count))||
-      (module.completedMoney!==null&&(!['spin_entries','spin_winnings','arcade_entries','arcade_winnings'].includes(module.id)||module.completedMoney?.currency!=='SLE'||!count(module.completedMoney.minor)||!count(module.unverifiedCompleted)))))throw failure(503,'Monitoring amounts were not confirmed.');
+      (module.completedMoney!==null&&(!['spin_entries','spin_winnings','arcade_entries','arcade_winnings','payroll','refunds'].includes(module.id)||module.completedMoney?.currency!=='SLE'||!count(module.completedMoney.minor)||!count(module.unverifiedCompleted)))))throw failure(503,'Monitoring amounts were not confirmed.');
      if(module.status!=='ok'&&(module.count!==null||module.completedMoney!==null))throw failure(503,'An unavailable module cannot return a successful count.');
     }
     if(seen.size!==reports.length)throw failure(503,'Monitoring modules were incomplete. Retry monitoring.');
