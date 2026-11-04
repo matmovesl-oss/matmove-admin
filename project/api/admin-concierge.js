@@ -40,6 +40,164 @@ function assertManager(access) {
   }
 }
 
+
+const CONCIERGE_REPORT_PAGE_SIZE = 500;
+const CONCIERGE_REPORT_MAX_ROWS = 25000;
+
+function validReportDay(value) {
+  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;
+  const parsed = new Date(value + 'T00:00:00.000Z');
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+    ? value
+    : null;
+}
+
+function reportRange(query, nowValue) {
+  const hasFrom = query?.from != null;
+  const hasTo = query?.to != null;
+  if (hasFrom !== hasTo) throw failure(400, 'Choose both report start and end dates.');
+
+  let from;
+  let to;
+  if (hasFrom) {
+    from = validReportDay(query.from);
+    to = validReportDay(query.to);
+    if (!from || !to) throw failure(400, 'Report dates must use YYYY-MM-DD.');
+  } else {
+    const end = new Date(nowValue);
+    if (!Number.isFinite(end.getTime())) throw failure(503, 'Report date could not be generated.');
+    to = end.toISOString().slice(0, 10);
+    const start = new Date(to + 'T00:00:00.000Z');
+    start.setUTCDate(start.getUTCDate() - 89);
+    from = start.toISOString().slice(0, 10);
+  }
+
+  const startDate = new Date(from + 'T00:00:00.000Z');
+  const endDate = new Date(to + 'T00:00:00.000Z');
+  if (startDate > endDate) throw failure(400, 'Report start date must be on or before its end date.');
+  const days = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+  if (days > 366) throw failure(400, 'Choose a report period of no more than 366 days.');
+
+  const exclusiveEnd = new Date(endDate);
+  exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+  return {
+    from,
+    to,
+    start: startDate.toISOString(),
+    endExclusive: exclusiveEnd.toISOString(),
+    days,
+  };
+}
+
+async function readConciergeRows(client, table, columns, range) {
+  const rows = [];
+  for (let offset = 0; offset < CONCIERGE_REPORT_MAX_ROWS; offset += CONCIERGE_REPORT_PAGE_SIZE) {
+    const result = await client.from(table)
+      .select(columns)
+      .gte('created_at', range.start)
+      .lt('created_at', range.endExclusive)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + CONCIERGE_REPORT_PAGE_SIZE - 1);
+    if (result.error) throw failure(503, table === 'concierge_interests'
+      ? 'Concierge enquiry report could not be loaded.'
+      : 'Concierge audit report could not be loaded.');
+    const page = result.data || [];
+    rows.push(...page);
+    if (page.length < CONCIERGE_REPORT_PAGE_SIZE) return rows;
+  }
+  throw failure(503, 'The selected report period exceeds the reporting safety limit. Narrow the date range before exporting totals.');
+}
+
+function buildConciergeReport({ services, interests, audit, range, generatedAt }) {
+  const statusCounts = Object.fromEntries([...INTEREST_STATUSES].map(status => [status, 0]));
+  const serviceMap = new Map();
+  const trendMap = new Map();
+  const periodKey = range.days <= 62 ? 'day' : 'month';
+
+  for (const row of interests) {
+    const status = INTEREST_STATUSES.has(row.status) ? row.status : 'unknown';
+    if (status !== 'unknown') statusCounts[status] += 1;
+
+    const key = row.service_id || 'legacy:' + row.service_title;
+    let service = serviceMap.get(key);
+    if (!service) {
+      service = {
+        serviceId: row.service_id,
+        serviceTitle: row.service_title,
+        enquiries: 0,
+        statusCounts: Object.fromEntries([...INTEREST_STATUSES].map(value => [value, 0])),
+        priceLabels: new Set(),
+      };
+      serviceMap.set(key, service);
+    }
+    service.enquiries += 1;
+    if (status !== 'unknown') service.statusCounts[status] += 1;
+    if (row.price_label_snapshot) service.priceLabels.add(row.price_label_snapshot);
+
+    const date = String(row.created_at || '').slice(0, 10);
+    const trendKey = periodKey === 'day' ? date : date.slice(0, 7);
+    if (trendKey) {
+      let point = trendMap.get(trendKey);
+      if (!point) {
+        point = {
+          period: trendKey,
+          enquiries: 0,
+          statusCounts: Object.fromEntries([...INTEREST_STATUSES].map(value => [value, 0])),
+        };
+        trendMap.set(trendKey, point);
+      }
+      point.enquiries += 1;
+      if (status !== 'unknown') point.statusCounts[status] += 1;
+    }
+  }
+
+  const auditActions = {};
+  for (const row of audit) {
+    const action = String(row.action || 'unknown');
+    auditActions[action] = (auditActions[action] || 0) + 1;
+  }
+
+  const activeServices = services.filter(row => row.is_active === true && !row.deleted_at).length;
+  const pausedServices = services.filter(row => row.is_active !== true && !row.deleted_at).length;
+  const deletedServices = services.filter(row => !!row.deleted_at).length;
+  const totalEnquiries = interests.length;
+  const openEnquiries = (statusCounts.new || 0) + (statusCounts.contacted || 0) + (statusCounts.in_progress || 0);
+
+  return {
+    range: { from: range.from, to: range.to, days: range.days, trendGrouping: periodKey },
+    catalogue: {
+      totalServices: services.length,
+      activeServices,
+      pausedServices,
+      deletedServices,
+    },
+    enquiries: {
+      total: totalEnquiries,
+      open: openEnquiries,
+      completed: statusCounts.completed || 0,
+      cancelled: statusCounts.cancelled || 0,
+      byStatus: statusCounts,
+    },
+    serviceBreakdown: [...serviceMap.values()]
+      .map(item => ({ ...item, priceLabels: [...item.priceLabels].sort() }))
+      .sort((a, b) => b.enquiries - a.enquiries || a.serviceTitle.localeCompare(b.serviceTitle)),
+    trend: [...trendMap.values()].sort((a, b) => a.period.localeCompare(b.period)),
+    audit: {
+      totalEvents: audit.length,
+      byAction: auditActions,
+      recentEvents: audit.slice(-20).reverse().map(row => ({
+        action: row.action,
+        serviceId: row.service_id,
+        createdAt: row.created_at,
+      })),
+    },
+    revenue: null,
+    revenueNote: 'Concierge price labels are display quotes, not proof of payment. Revenue is not calculated from enquiries.',
+    complete: true,
+    generatedAt,
+  };
+}
+
 export function createHandler({ authorize = requireAdmin, now = () => new Date().toISOString() } = {}) {
   return async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
@@ -55,6 +213,38 @@ export function createHandler({ authorize = requireAdmin, now = () => new Date()
       assertManager(access);
 
       if (req.method === 'GET') {
+        if (req.query?.action === 'reports') {
+          const range = reportRange(req.query, now());
+          const [serviceResult, interestRows, auditRows] = await Promise.all([
+            client.from('concierge_services')
+              .select('id,title,category,slug,price_label,is_active,deleted_at,created_at,updated_at')
+              .order('display_order')
+              .order('title'),
+            readConciergeRows(
+              client,
+              'concierge_interests',
+              'id,service_id,service_title,price_label_snapshot,status,created_at',
+              range
+            ),
+            readConciergeRows(
+              client,
+              'concierge_service_audit',
+              'service_id,actor_id,action,created_at',
+              range
+            ),
+          ]);
+          if (serviceResult.error) throw failure(503, 'Concierge service catalogue could not be loaded for reporting.');
+          return res.status(200).json({
+            report: buildConciergeReport({
+              services: serviceResult.data || [],
+              interests: interestRows,
+              audit: auditRows,
+              range,
+              generatedAt: now(),
+            }),
+          });
+        }
+
         const [serviceResult, interestResult] = await Promise.all([
           client.from('concierge_services').select('*').order('display_order').order('title'),
           client.from('concierge_interests').select(

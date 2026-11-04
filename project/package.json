@@ -1,4 +1,3 @@
-
 {
   "name": "vite-react-typescript-starter",
   "private": true,
@@ -9,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test": "node --test test/*.test.js test/*.test.mjs",
+    "test:finance": "node --test test/admin-pay-staff.mock.test.mjs test/admin-refund.mock.test.mjs test/admin-refund-ui.test.mjs test/admin-wallet-balances.pagination.test.mjs test/admin-reconcile-topups.mock.test.mjs test/admin-concierge-reports.mock.test.mjs test/monime-reports.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

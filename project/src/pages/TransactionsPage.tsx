@@ -20,6 +20,10 @@ export function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
 
+  const [reconciliation, setReconciliation] = useState<any | null>(null);
+  const [reconciliationLoading, setReconciliationLoading] = useState(false);
+  const [reconciliationError, setReconciliationError] = useState('');
+
   const mounted = useRef(false), generation = useRef(0);
   const fetchTransactions = useCallback(async () => {
     const token = ++generation.current;
@@ -48,6 +52,25 @@ export function TransactionsPage() {
     return matchSearch && matchType;
   });
 
+  async function previewPendingTopups() {
+    if (reconciliationLoading || !canAccess(access, 'transactions')) return;
+    setReconciliationLoading(true);
+    setReconciliationError('');
+    try {
+      const response = await adminFetch('/api/admin-reconcile-topups?limit=20');
+      const body = await response.json();
+      if (!response.ok || body?.readOnly !== true || !Array.isArray(body?.findings)) {
+        throw new Error(body.error || 'Pending top-up reconciliation preview could not be verified.');
+      }
+      setReconciliation(body);
+    } catch (error: any) {
+      setReconciliation(null);
+      setReconciliationError(error?.message || 'Pending top-up reconciliation preview failed. Retry safely.');
+    } finally {
+      setReconciliationLoading(false);
+    }
+  }
+
   async function downloadDisplayed() {
     if(exportBusy.current||loading||loadError||!canAccess(access,'transactions'))return;
     exportBusy.current=true;setExporting(true);setExportError('');setExportNotice('');
@@ -74,6 +97,77 @@ export function TransactionsPage() {
         {exportError&&<p role="alert" className="w-full text-sm text-red-800">{exportError}</p>}
         {exportNotice&&<p role="status" className="w-full text-sm text-emerald-800">{exportNotice}</p>}
       </section>
+      <section aria-label="Pending top-up reconciliation" className="my-5 space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-slate-900">Pending wallet top-up reconciliation</p>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+              Read-only preview of pending Monime Checkout Sessions. This checks provider status, wallet identity,
+              currency and amount; it does not credit wallets or change payment records.
+            </p>
+          </div>
+          <button type="button" onClick={() => void previewPendingTopups()} disabled={reconciliationLoading || !canAccess(access, 'transactions')}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">
+            <RefreshCw size={14} className={reconciliationLoading ? 'animate-spin' : ''} />
+            {reconciliationLoading ? 'Checking provider…' : 'Preview pending top-ups'}
+          </button>
+        </div>
+        {reconciliationError && <p role="alert" className="rounded-xl border border-rose-200 bg-white p-3 text-xs text-rose-800">{reconciliationError}</p>}
+        {reconciliation && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+              <span>{reconciliation.checked} checked</span>
+              <span>·</span>
+              <span>Read-only — {reconciliation.updatesApplied} updates applied</span>
+              <span>·</span>
+              <span>{reconciliation.generatedAt && Number.isFinite(Date.parse(reconciliation.generatedAt)) ? new Date(reconciliation.generatedAt).toLocaleString() : 'Time unavailable'}</span>
+            </div>
+            {!reconciliation.findings.length ? (
+              <p className="rounded-xl bg-white p-4 text-xs text-slate-600">No pending Monime top-ups were returned for this preview.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
+                <table className="w-full min-w-[850px] text-left text-xs">
+                  <thead className="bg-slate-100 uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="p-3">Payment / checkout reference</th>
+                      <th className="p-3">Amount</th>
+                      <th className="p-3">Local / provider</th>
+                      <th className="p-3">Identity</th>
+                      <th className="p-3">Amount check</th>
+                      <th className="p-3">Settlement target</th>
+                      <th className="p-3">Finding</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {reconciliation.findings.map((item: any) => (
+                      <tr key={item.paymentTransactionId || item.providerReference}>
+                        <td className="p-3">
+                          <p className="font-mono text-slate-800">{String(item.paymentTransactionId || '—').slice(0, 12)}</p>
+                          <p className="mt-1 font-mono text-[10px] text-slate-500">{item.providerReference || 'No provider reference'}</p>
+                        </td>
+                        <td className="whitespace-nowrap p-3 font-bold text-slate-900">{item.currency || '—'} {item.amount || '—'}</td>
+                        <td className="p-3">
+                          <p className="font-semibold text-slate-800">{item.localStatus || '—'}</p>
+                          <p className="mt-1 text-slate-500">{item.providerStatus || 'not checked'}</p>
+                        </td>
+                        <td className="p-3">{item.identityMatches === true && item.walletReferenceMatches === true ? 'Matched' : 'Review'}</td>
+                        <td className="p-3">{item.amountMatches === true ? 'Matched' : 'Review'}</td>
+                        <td className="p-3">{String(item.settlementTarget || 'not checked').replace(/_/g, ' ')}</td>
+                        <td className="max-w-[190px] whitespace-normal p-3 font-semibold text-slate-700">{String(item.finding || 'review_required').replace(/_/g, ' ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          A provider-completed session is not automatically treated as a customer credit. Any settlement-account mismatch
+          or missing wallet confirmation requires a separate ledger and wallet-credit review.
+        </p>
+      </section>
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 mt-6">
         <div className="flex flex-1 flex-wrap gap-3 w-full max-w-xl">
           <div className="relative min-w-0 flex-1">

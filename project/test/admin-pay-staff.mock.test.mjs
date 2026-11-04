@@ -37,6 +37,8 @@ function makeClient() {
 
       const builder = {
         select() { return this; },
+        order() { return this; },
+        limit() { return this; },
         eq(key, value) { filters.push([key, value]); return this; },
         maybeSingle() { return execute(true); },
         single() { return execute(true); },
@@ -130,13 +132,27 @@ function handlerWith({ client = makeClient(), calls = [], fetcher = makeFetch(ca
 }
 
 test('payroll GET verifies Admin access and returns parsed Monime SLE balance and account ID', async () => {
-  const { handler, calls } = handlerWith();
+  const { handler, client, calls } = handlerWith();
+  client.tables.matmove_admin_payroll.push({
+    id: '66666666-6666-4666-8666-666666666666',
+    staff_user_id: staffId, wallet_id: walletId, amount_minor: 12550,
+    currency: 'SLE', reason: 'November payroll',
+    provider_transfer_id: 'trn-old-payroll', provider_status: 'completed',
+    state: 'completed', failure_detail: null,
+    created_at: '2026-11-01T10:00:00.000Z',
+    updated_at: '2026-11-01T10:01:00.000Z',
+    completed_at: '2026-11-01T10:01:00.000Z',
+  });
   const res = makeResponse();
   await handler({ method: 'GET', headers: {} }, res);
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.accountId, sourceId);
   assert.deepEqual(res.body.balance, { currency: 'SLE', value: 250000 });
+  assert.equal(res.body.payrollHistory.length, 1);
+  assert.equal(res.body.payrollHistory[0].amount_minor, 12550);
+  assert.equal(res.body.payrollHistory[0].provider_transfer_id, 'trn-old-payroll');
+  assert.equal(res.body.historyError, null);
   assert.equal(calls.length, 1);
 });
 

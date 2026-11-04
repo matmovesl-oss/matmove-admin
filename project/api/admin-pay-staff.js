@@ -111,10 +111,17 @@ export function createHandler({
         if (!balance || balance.currency !== 'SLE' || !Number.isSafeInteger(balance.value) || balance.value < 0) {
           throw failure(502, 'Monime returned an invalid SLE payroll balance.');
         }
+        const historyResult = await client.from('matmove_admin_payroll')
+          .select('id,staff_user_id,wallet_id,amount_minor,currency,reason,provider_transfer_id,provider_status,state,failure_detail,created_at,updated_at,completed_at')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
         return res.status(200).json({
           accountId: payrollAccountId,
           currency: 'SLE',
           balance,
+          payrollHistory: historyResult.error ? null : (historyResult.data || []),
+          historyError: historyResult.error ? 'Payroll history could not be loaded. The live balance is still verified.' : null,
         });
       }
 

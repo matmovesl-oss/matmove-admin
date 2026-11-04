@@ -19,6 +19,19 @@ type RefundCustomer = {
   }>;
 };
 
+type RefundHistoryItem = {
+  id: string;
+  recipient_user_id: string;
+  amount_minor: number | string;
+  currency: string;
+  reason: string;
+  provider_transfer_id: string | null;
+  provider_status: string;
+  state: string;
+  created_at: string;
+  completed_at: string | null;
+};
+
 function walletAccountId(customer: RefundCustomer): string {
   const wallet = customer.wallets?.filter(item => item.currency === 'SLE') ?? [];
   if (wallet.length !== 1) return '';
@@ -43,6 +56,9 @@ export function SpecialOperationsPage() {
   const [refundBalanceLoading, setRefundBalanceLoading] = useState(true);
   const [refundBalanceError, setRefundBalanceError] = useState('');
   const [refundRequestKey, setRefundRequestKey] = useState<string | null>(null);
+  const [refundHistory, setRefundHistory] = useState<RefundHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState('');
 
   const refreshRefundBalance = async () => {
     setRefundBalanceLoading(true);
@@ -80,7 +96,34 @@ export function SpecialOperationsPage() {
     }
   };
 
-  useEffect(() => { void refreshRefundBalance(); }, []);
+  const refreshRefundHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        throw new Error('Sign in again to view refund history.');
+      }
+      const response = await fetch('/api/admin-refund', {
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+        cache: 'no-store',
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Refund history could not be loaded.');
+      if (!Array.isArray(body.refunds)) throw new Error('Refund history response could not be verified.');
+      setRefundHistory(body.refunds);
+    } catch (cause) {
+      setRefundHistory([]);
+      setHistoryError(cause instanceof Error ? cause.message : 'Refund history could not be loaded.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshRefundBalance();
+    void refreshRefundHistory();
+  }, []);
 
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -152,9 +195,11 @@ export function SpecialOperationsPage() {
         setUserResult(null);
         setRefundRequestKey(null);
         await refreshRefundBalance();
+        await refreshRefundHistory();
       } else if (body.pending || ['pending', 'processing'].includes(String(body.status || '').toLowerCase())) {
         setSuccess(`Refund is ${body.status}. The request is saved. Use “Check Refund Again” to recheck this same request.`);
         setShowConfirmModal(false);
+        await refreshRefundHistory();
       } else {
         throw new Error(body.error || `Refund status was not confirmed: ${body.status || 'unknown'}.`);
       }
@@ -201,6 +246,59 @@ export function SpecialOperationsPage() {
           </div>
         )}
         {error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">{error}</div>}
+        <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Recent refund history</h2>
+              <p className="mt-1 text-xs text-slate-500">Latest recorded refunds from the dedicated refund ledger (up to 100 records).</p>
+            </div>
+            <button type="button" onClick={() => void refreshRefundHistory()} disabled={historyLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">
+              <RefreshCw size={13} className={historyLoading ? 'animate-spin' : ''} />Refresh history
+            </button>
+          </div>
+          {historyError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{historyError}</p>}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] text-left text-xs">
+              <thead className="bg-slate-50 uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="p-3">Date</th>
+                  <th className="p-3">Customer reference</th>
+                  <th className="p-3">Amount</th>
+                  <th className="p-3">Reason / case</th>
+                  <th className="p-3">Provider status</th>
+                  <th className="p-3">Transfer reference</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {historyLoading ? (
+                  <tr><td colSpan={6} className="p-5 text-center text-slate-500">Loading refund history…</td></tr>
+                ) : historyError && refundHistory.length === 0 ? (
+                  <tr><td colSpan={6} className="p-5 text-center text-amber-800">Refund history is unavailable. Retry the refresh.</td></tr>
+                ) : !refundHistory.length ? (
+                  <tr><td colSpan={6} className="p-5 text-center text-slate-500">No refunds have been recorded yet.</td></tr>
+                ) : refundHistory.map(item => {
+                  const minor = Number(item.amount_minor);
+                  const amountText = Number.isSafeInteger(minor) && minor >= 0
+                    ? item.currency + ' ' + (minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : 'Amount unavailable';
+                  return (
+                    <tr key={item.id}>
+                      <td className="whitespace-nowrap p-3 text-slate-500">{new Date(item.created_at).toLocaleString()}</td>
+                      <td className="p-3 font-mono text-slate-700">{item.recipient_user_id?.slice(0, 8) || 'Unverified'}…</td>
+                      <td className="whitespace-nowrap p-3 font-bold text-slate-900">{amountText}</td>
+                      <td className="max-w-[180px] whitespace-normal p-3 text-slate-600">{item.reason || '—'}</td>
+                      <td className="p-3">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 font-bold uppercase text-slate-700">{item.provider_status || item.state}</span>
+                      </td>
+                      <td className="max-w-[150px] break-all p-3 font-mono text-[10px] text-slate-500">{item.provider_transfer_id || 'Not yet assigned'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
         {success && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold text-emerald-800">{success}</div>}
 
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
