@@ -96,6 +96,8 @@ export function AdministrativePayrollPage() {
   const refreshPayrollBalance = async () => {
     setBalanceLoading(true);
     setBalanceError('');
+    setHistoryLoading(true);
+    setHistoryError('');
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData.session?.access_token) {
