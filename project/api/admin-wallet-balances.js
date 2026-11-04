@@ -148,6 +148,11 @@ export function createHandler(
         }
         cursor = next;
       }
+
+      // Do not return a partial account list if the provider pagination limit is reached.
+      return res.status(502).json({
+        error: 'Monime account pagination exceeded the safety limit. Retry the balance refresh.'
+      });
     } catch (error) {
       return res.status(502).json({
         error: error.message || 'Gateway balances are temporarily unavailable.'
