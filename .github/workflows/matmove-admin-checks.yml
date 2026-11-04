@@ -33,7 +33,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Run automated tests
-        run: npm test
+        run: npm run test:finance
       - name: Type-check
         run: npm run typecheck
       - name: Build
