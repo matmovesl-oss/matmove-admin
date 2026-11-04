@@ -203,7 +203,8 @@ test('pending refund recovery reads the existing provider transfer and does not 
     provider_transfer_id: 'trn-refund-existing',
   }];
   const client = makeClient(existing);
-  const { handler, calls } = handlerWith({ client, fetcher: makeFetch(calls, 'processing') });
+  const calls = [];
+  const { handler } = handlerWith({ client, calls, fetcher: makeFetch(calls, 'processing') });
   const res = makeResponse();
   await handler(request(), res);
   assert.equal(res.statusCode, 202);
