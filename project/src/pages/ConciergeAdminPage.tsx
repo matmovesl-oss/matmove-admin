@@ -43,6 +43,40 @@ type ServiceForm = {
   displayOrder: string;
 };
 
+type ConciergeReport = {
+  range: { from: string; to: string; days: number; trendGrouping: 'day' | 'month' };
+  catalogue: { totalServices: number; activeServices: number; pausedServices: number; deletedServices: number };
+  enquiries: {
+    total: number;
+    open: number;
+    completed: number;
+    cancelled: number;
+    byStatus: Record<string, number>;
+  };
+  serviceBreakdown: Array<{
+    serviceId: string | null;
+    serviceTitle: string;
+    enquiries: number;
+    statusCounts: Record<string, number>;
+    priceLabels: string[];
+  }>;
+  trend: Array<{ period: string; enquiries: number; statusCounts: Record<string, number> }>;
+  audit: { totalEvents: number; byAction: Record<string, number>; recentEvents: Array<{ action: string; serviceId: string | null; createdAt: string }> };
+  revenue: null;
+  revenueNote: string;
+  complete: boolean;
+  generatedAt: string;
+};
+
+function dateOffset(value: string, days: number) {
+  const date = new Date(value + 'T00:00:00.000Z');
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+const initialReportTo = new Date().toISOString().slice(0, 10);
+const initialReportFrom = dateOffset(initialReportTo, -89);
+
 const blankForm: ServiceForm = {
   id: '', slug: '', title: '', category: 'Concierge',
   description: '', priceLabel: '', displayOrder: '100',
@@ -75,6 +109,11 @@ export function ConciergeAdminPage() {
   const [form, setForm] = useState<ServiceForm>(blankForm);
   const [showForm, setShowForm] = useState(false);
   const [interestFilter, setInterestFilter] = useState('all');
+  const [report, setReport] = useState<ConciergeReport | null>(null);
+  const [reportFrom, setReportFrom] = useState(initialReportFrom);
+  const [reportTo, setReportTo] = useState(initialReportTo);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,7 +139,37 @@ export function ConciergeAdminPage() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+
+  const loadReport = useCallback(async (from: string, to: string) => {
+    setReportLoading(true);
+    setReportError('');
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !data.session?.access_token) throw new Error('Sign in again to view Concierge reports.');
+      const query = new URLSearchParams({ action: 'reports', from, to });
+      const response = await fetch('/api/admin-concierge?' + query.toString(), {
+        headers: { Authorization: 'Bearer ' + data.session.access_token },
+        cache: 'no-store',
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Concierge report could not be loaded.');
+      if (!body.report || body.report.complete !== true || !Array.isArray(body.report.trend) ||
+          !Array.isArray(body.report.serviceBreakdown) || typeof body.report.enquiries?.total !== 'number') {
+        throw new Error('Concierge report response could not be verified as complete.');
+      }
+      setReport(body.report as ConciergeReport);
+    } catch (cause) {
+      setReport(null);
+      setReportError(errorText(cause));
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    void loadReport(initialReportFrom, initialReportTo);
+  }, [load, loadReport]);
 
   const activeServices = useMemo(() => services.filter(item => item.is_active && !item.deleted_at), [services]);
   const newInterests = useMemo(() => interests.filter(item => item.status === 'new'), [interests]);
@@ -361,6 +430,167 @@ export function ConciergeAdminPage() {
                 ))}
               </div>
           }
+        </section>
+
+        <section aria-label="Concierge reports and analytics" className="space-y-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-900">Concierge reports & analytics</h2>
+              <p className="mt-1 text-xs text-slate-500">Date-filtered customer enquiries, service interest and service-management audit activity.</p>
+            </div>
+            <button type="button" onClick={() => void loadReport(reportFrom, reportTo)} disabled={reportLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">
+              <RefreshCw size={14} className={reportLoading ? 'animate-spin' : ''} />Refresh report
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-slate-50 p-3">
+            <label className="text-xs font-bold text-slate-700">
+              From
+              <input type="date" value={reportFrom} max={reportTo} onChange={event => setReportFrom(event.target.value)}
+                className="mt-1 block rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium" />
+            </label>
+            <label className="text-xs font-bold text-slate-700">
+              To
+              <input type="date" value={reportTo} min={reportFrom} onChange={event => setReportTo(event.target.value)}
+                className="mt-1 block rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium" />
+            </label>
+            <button type="button" onClick={() => void loadReport(reportFrom, reportTo)}
+              disabled={reportLoading || !reportFrom || !reportTo || reportFrom > reportTo}
+              className="rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+              {reportLoading ? 'Loading…' : 'Apply date range'}
+            </button>
+            {report && <p className="text-[11px] text-slate-500">Complete report · {report.range.days} day(s) · generated {new Date(report.generatedAt).toLocaleString()}</p>}
+          </div>
+
+          {reportError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{reportError}</p>}
+          {reportLoading && !report ? (
+            <p className="py-8 text-center text-sm text-slate-500">Loading Concierge analytics…</p>
+          ) : !report ? (
+            <p className="py-8 text-center text-sm text-slate-500">No verified report is available. Adjust the date range or retry.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Total enquiries</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{report.enquiries.total.toLocaleString()}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Open enquiries</p>
+                  <p className="mt-2 text-2xl font-black text-amber-700">{report.enquiries.open.toLocaleString()}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Completed enquiries</p>
+                  <p className="mt-2 text-2xl font-black text-emerald-700">{report.enquiries.completed.toLocaleString()}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Service audit events</p>
+                  <p className="mt-2 text-2xl font-black text-indigo-700">{report.audit.totalEvents.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">Services total</p><p className="mt-1 text-lg font-black text-slate-900">{report.catalogue.totalServices}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">Active</p><p className="mt-1 text-lg font-black text-emerald-700">{report.catalogue.activeServices}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">Paused</p><p className="mt-1 text-lg font-black text-amber-700">{report.catalogue.pausedServices}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-500">Deleted (retained)</p><p className="mt-1 text-lg font-black text-slate-700">{report.catalogue.deletedServices}</p></div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Enquiry trend ({report.range.trendGrouping === 'day' ? 'daily' : 'monthly'})</h3>
+                  {!report.trend.length ? <p className="py-6 text-center text-xs text-slate-500">No enquiries in this date range.</p> : (
+                    <div className="mt-4 space-y-3">
+                      {report.trend.map(point => {
+                        const max = Math.max(1, ...report.trend.map(item => item.enquiries));
+                        return (
+                          <div key={point.period} className="grid grid-cols-[76px_minmax(0,1fr)_32px] items-center gap-2">
+                            <span className="text-[11px] font-semibold text-slate-500">{point.period}</span>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                              <div className="h-full rounded-full bg-indigo-500" style={{ width: ((point.enquiries / max) * 100) + '%' }} />
+                            </div>
+                            <span className="text-right text-xs font-bold tabular-nums text-slate-700">{point.enquiries}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Enquiry status breakdown</h3>
+                  <div className="mt-3 space-y-2">
+                    {statuses.map(([value, label]) => (
+                      <div key={value} className="flex items-center justify-between border-b border-slate-100 py-2 text-xs">
+                        <span className="text-slate-600">{label}</span>
+                        <span className="font-bold tabular-nums text-slate-900">{(report.enquiries.byStatus[value] || 0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-[11px] text-slate-500">Cancelled enquiries are tracked separately and are not counted as completed.</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <div className="p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Service interest report</h3>
+                  <p className="mt-1 text-[11px] text-slate-500">Price labels are the snapshots customers saw when they enquired.</p>
+                </div>
+                <table className="w-full min-w-[720px] text-left text-xs">
+                  <thead className="bg-slate-50 uppercase tracking-wide text-slate-500">
+                    <tr><th className="p-3">Service</th><th className="p-3">Enquiries</th><th className="p-3">New</th><th className="p-3">In progress</th><th className="p-3">Completed</th><th className="p-3">Cancelled</th><th className="p-3">Price labels</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {!report.serviceBreakdown.length ? (
+                      <tr><td colSpan={7} className="p-5 text-center text-slate-500">No service enquiries in this date range.</td></tr>
+                    ) : report.serviceBreakdown.map(item => (
+                      <tr key={item.serviceId || item.serviceTitle}>
+                        <td className="p-3 font-bold text-slate-900">{item.serviceTitle}</td>
+                        <td className="p-3 font-bold tabular-nums">{item.enquiries}</td>
+                        <td className="p-3 tabular-nums">{item.statusCounts.new || 0}</td>
+                        <td className="p-3 tabular-nums">{(item.statusCounts.contacted || 0) + (item.statusCounts.in_progress || 0)}</td>
+                        <td className="p-3 tabular-nums">{item.statusCounts.completed || 0}</td>
+                        <td className="p-3 tabular-nums">{item.statusCounts.cancelled || 0}</td>
+                        <td className="max-w-[220px] whitespace-normal p-3 text-slate-600">{item.priceLabels.join(', ') || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Service management activity</h3>
+                  {Object.keys(report.audit.byAction).length === 0 ? <p className="py-5 text-xs text-slate-500">No catalogue changes were audited in this date range.</p> : (
+                    <div className="mt-3 space-y-2">
+                      {Object.entries(report.audit.byAction).map(([action, count]) => (
+                        <div key={action} className="flex items-center justify-between border-b border-slate-100 py-2 text-xs">
+                          <span className="capitalize text-slate-600">{action.replace(/_/g, ' ')}</span>
+                          <span className="font-bold tabular-nums text-slate-900">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Recent audit events</h3>
+                  {!report.audit.recentEvents.length ? <p className="py-5 text-xs text-slate-500">No audit events in this date range.</p> : (
+                    <div className="mt-3 space-y-2">
+                      {report.audit.recentEvents.map((event, index) => (
+                        <div key={event.serviceId + ':' + event.createdAt + ':' + index} className="flex items-center justify-between gap-3 border-b border-slate-100 py-2 text-xs">
+                          <span className="font-semibold capitalize text-slate-700">{event.action}</span>
+                          <span className="text-right text-slate-500">{new Date(event.createdAt).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <p className="rounded-xl bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+                {report.revenueNote} This report measures enquiries and catalogue activity; it does not claim that a customer paid or that a booking was fulfilled.
+              </p>
+            </>
+          )}
         </section>
 
         <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
