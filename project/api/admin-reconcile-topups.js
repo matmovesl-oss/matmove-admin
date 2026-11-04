@@ -6,7 +6,7 @@ const VALID_SESSION_STATES = new Set(['pending', 'completed', 'cancelled', 'expi
 
 function amountToMinor(value) {
   const text = String(value ?? '').trim();
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(text)) return null;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return null;
   const [whole, fraction = ''] = text.split('.');
   const minor = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
   if (minor < 0n || minor > BigInt(Number.MAX_SAFE_INTEGER)) return null;
@@ -43,10 +43,12 @@ function summarizeSession(row, session) {
     }
   }
 
+  const walletReferenceMatches = row.walletReferenceMatches === true;
   const identityMatches =
     metadata.payment_transaction_id === row.id &&
     metadata.wallet_id === row.wallet_id &&
-    (!row.user_id || metadata.matmove_user_id === row.user_id);
+    (!row.user_id || metadata.matmove_user_id === row.user_id) &&
+    walletReferenceMatches;
   const amountMatches =
     expectedMinor !== null &&
     metadataMinor === expectedMinor &&
@@ -93,6 +95,7 @@ function summarizeSession(row, session) {
     initiatedAt: row.initiated_at,
     updatedAt: row.updated_at,
     identityMatches,
+    walletReferenceMatches,
     amountMatches,
     settlementTarget,
     settlementAccountId,
@@ -211,7 +214,13 @@ export function createHandler({
           const wallet = walletMap.get(row.wallet_id);
           const walletAccountId = wallet?.monime_account_id ||
             wallet?.metadata?.monime_account_id || null;
-          return summarizeSession({ ...row, walletAccountId }, response.session);
+          const walletReferenceMatches = Boolean(
+            wallet &&
+            wallet.user_id === row.user_id &&
+            wallet.currency === row.currency &&
+            wallet.currency === 'SLE'
+          );
+          return summarizeSession({ ...row, walletAccountId, walletReferenceMatches }, response.session);
         }));
         findings.push(...checked);
       }
