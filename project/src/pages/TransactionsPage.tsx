@@ -152,8 +152,8 @@ export function TransactionsPage() {
                         </td>
                         <td className="p-3">{item.identityMatches === true && item.walletReferenceMatches === true ? 'Matched' : 'Review'}</td>
                         <td className="p-3">{item.amountMatches === true ? 'Matched' : 'Review'}</td>
-                        <td className="p-3">{String(item.settlementTarget || 'not checked').replaceAll('_', ' ')}</td>
-                        <td className="max-w-[190px] whitespace-normal p-3 font-semibold text-slate-700">{String(item.finding || 'review_required').replaceAll('_', ' ')}</td>
+                        <td className="p-3">{String(item.settlementTarget || 'not checked').replace(/_/g, ' ')}</td>
+                        <td className="max-w-[190px] whitespace-normal p-3 font-semibold text-slate-700">{String(item.finding || 'review_required').replace(/_/g, ' ')}</td>
                       </tr>
                     ))}
                   </tbody>
