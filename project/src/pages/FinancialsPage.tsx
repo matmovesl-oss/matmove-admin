@@ -201,6 +201,7 @@ export function FinancialsPage() {
 
   useEffect(() => {
     mounted.current=true;setTarget(null);setReason('');setNotice('');setBusy(false);
+    if(!allowed){mounted.current=false;return()=>{generation.current++;};}
     void load();
 
     // Refresh wallet records as soon as Supabase reports a wallet change.

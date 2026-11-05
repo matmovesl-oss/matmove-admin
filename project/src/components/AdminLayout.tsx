@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
-import { canAccess, useAdminAccess } from '@/lib/adminAccess';
+import { canAccess, useAdminAccess, sections } from '@/lib/adminAccess';
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -33,17 +33,18 @@ interface AdminLayoutProps {
   subtitle?: string;
 }
 
-const SUPER_ADMIN_EMAIL = 'matmove.sl@gmail.com';
 
 const navItems = [
   { key: 'dashboard', name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
   { key: 'notifications', name: 'Customer Messages', path: '/notifications', icon: Send },
+  { key: 'concierge', name: 'Concierge', path: '/concierge', icon: ClipboardCheck },
   { key: 'dispatch', name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
   { key: 'travel', name: 'Travel on Bus', path: '/travel', icon: Bus },
   { key: 'events', name: 'Events Hub', path: '/events', icon: Ticket },
   { key: 'games', name: 'Games — Spin & Win', path: '/games', icon: Activity },
   { key: 'pricing', name: 'Vehicle Pricing', path: '/pricing', icon: Car },
   { key: 'kyc', name: 'KYC & Onboarding', path: '/kyc', icon: ShieldCheck },
+  { key: 'financials', name: 'Civitas Administrative', path: '/civitas', icon: Wallet },
   { key: 'financials', name: 'Financial & Wallets', path: '/financials', icon: Wallet },
   { key: 'special', name: 'Customer Refunds', path: '/special', icon: ShieldAlert },
   { key: 'special', name: 'Administrative Payroll', path: '/payroll', icon: CreditCard },
@@ -69,27 +70,7 @@ export default function AdminLayout({
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
   const [signingOut, setSigningOut] = useState(false);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-
-  const contextOwner = Boolean((access as any)?.is_owner);
-
-  useEffect(() => {
-    let mounted = true;
-
-    supabase.auth.getUser().then(({ data, error }) => {
-      if (!mounted || error) return;
-      const email = data.user?.email?.toLowerCase().trim();
-      setIsSuperAdmin(email === SUPER_ADMIN_EMAIL);
-    }).catch((error) => {
-      console.error('Unable to verify administrator account:', error);
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const owner = isSuperAdmin || contextOwner;
+  const owner = access?.is_active === true && access?.is_owner === true;
 
   async function handleSignOut() {
     if (signingOut) return;
@@ -106,10 +87,10 @@ export default function AdminLayout({
   const visibleItems = navItems.filter((item) => {
     if (owner) return true;
 
-    if (item.key === 'reports' || item.key === 'audit') {
-      return false;
-    }
+    if (item.key === 'reports') return sections.some(([key]) => canAccess(access,key));
+    if (item.key === 'audit') return canAccess(access,'logs');
 
+    if (item.path === '/payroll') return canAccess(access,'special');
     if (item.key === 'special') {
       return (
         canAccess(access, 'special') ||
@@ -336,7 +317,7 @@ export default function AdminLayout({
           {owner ? (
             <div className="mb-3 rounded-xl border border-amber-700/30 bg-amber-950/20 p-3">
               <p className="truncate text-xs font-bold text-amber-400">MAIN SUPER ADMIN</p>
-              <p className="mt-1 truncate text-xs text-slate-400">{SUPER_ADMIN_EMAIL}</p>
+              <p className="mt-1 truncate text-xs text-slate-400">{access?.email || access?.full_name || 'Verified owner'}</p>
               <p className="mt-1 text-[10px] text-emerald-400">Full administrative access</p>
             </div>
           ) : access ? (
