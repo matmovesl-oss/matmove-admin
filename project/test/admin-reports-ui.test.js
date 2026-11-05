@@ -119,7 +119,7 @@ test('Reports navigation and route retain existing section gates and hide Report
  const app=await readFile('src/App.tsx','utf8');assert.match(app,/path="\/reports" element=\{sections.some/);for(const route of ['dashboard','dispatch','pricing','games','kyc','financials','transactions','payouts','customers','staff','logs','audit'])assert.ok(app.includes(`path="/${route}"`));
  const slots=[];let i=0;globalThis.__reportUI={access:owner,hooks:{useState:v=>{const n=i++;if(!(n in slots))slots[n]=v;return[slots[n],()=>{}];}},db:{auth:{signOut:async()=>({})}}};
  const b=await bundle('src/components/AdminLayout.tsx');
- try{assert.match(text(b.module.default({children:null,title:'Test'})),/Reports & CSV/);i=0;globalThis.__reportUI.access={...owner,is_owner:false,permissions:[]};assert.doesNotMatch(text(b.module.default({children:null,title:'Test'})),/Reports & CSV/);}finally{await b.close();delete globalThis.__reportUI;}
+ try{assert.match(text(b.module.default({children:null,title:'Test'})),/Reports & Analytics/);i=0;globalThis.__reportUI.access={...owner,is_owner:false,permissions:[]};assert.doesNotMatch(text(b.module.default({children:null,title:'Test'})),/Reports & Analytics/);}finally{await b.close();delete globalThis.__reportUI;}
 });
 
 // Admin header Help and message controls, tested alongside Reports navigation.
@@ -193,7 +193,7 @@ test('permission revocation hides retained content and prevents a delayed send r
 }));
 test('payload validation rejects external links, malformed IDs and untrimmed/oversized message text',()=>page(async h=>{
  for(const patch of [{target:other},{destination:'https://bad.example'},{key:'bad'},{title:'  Title  '},{body:'x'.repeat(2001)}])assert.throws(()=>h.module.validateMessageDraft({...retained,...patch},uid));
- const layout=await readFile('src/components/AdminLayout.tsx','utf8');assert.match(layout,/<AdminAssistance key=\{access\?\.id/);assert.match(layout,/canAccess\(access,item.key\)/);assert.ok(layout.includes('Reports & CSV'));assert.ok(layout.includes('Games — Spin & Win'));
+ const layout=await readFile('src/components/AdminLayout.tsx','utf8');assert.match(layout,/<AdminAssistance key=\{access\?\.id/);assert.match(layout,/canAccess\(access,\s*item.key\)/);assert.ok(layout.includes('Reports & Analytics'));assert.ok(layout.includes('Games — Spin & Win'));
 }));
 test('blocked browser storage fails before any send, while notification Help can open the assigned message controls',()=>page(async h=>{
  await h.click('Help');await h.field('Ask Admin Help','broadcast notification');h.nodes.find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await h.settle();await h.click('Open Messages');assert.match(h.text,/Customer messages/);assert.equal(h.button('Review message').props.disabled,true);assert.equal(h.calls.some(c=>c.name==='matmove_admin_send_notification'),false);

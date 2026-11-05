@@ -58,9 +58,30 @@ export function createHandler(
       if (financial) {
         const campaign = await client.from('matmove_referral_campaign')
           .select('treasury_account').eq('singleton', true).maybeSingle();
-        if (campaign.data && typeof campaign.data.treasury_account === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(campaign.data.treasury_account)) {
-          savedReferral = campaign.data.treasury_account;
+
+        // Financial totals depend on an authoritative campaign classification.
+        // A missing row, failed read or malformed value must not be treated as
+        // an empty/zero treasury classification.
+        if (
+          campaign.error ||
+          !campaign.data ||
+          !Object.prototype.hasOwnProperty.call(campaign.data, 'treasury_account')
+        ) {
+          return res.status(503).json({
+            error: 'Referral account classification is unavailable. Refresh after the campaign setup is verified.'
+          });
         }
+
+        const campaignReferral = campaign.data.treasury_account;
+        if (
+          campaignReferral !== null &&
+          (typeof campaignReferral !== 'string' || !/^fac-[A-Za-z0-9_-]+$/.test(campaignReferral))
+        ) {
+          return res.status(503).json({
+            error: 'Referral account classification is invalid. No treasury totals were returned.'
+          });
+        }
+        if (typeof campaignReferral === 'string') savedReferral = campaignReferral;
       }
 
       const travelId = env.MONIME_TRAVEL_ACCOUNT_ID || env.VITE_MONIME_TRAVEL_ACCOUNT_ID;
@@ -91,6 +112,7 @@ export function createHandler(
       const businessAccountIds = [...new Set(configured)];
       const referralAccountIds = [...new Set([env.MONIME_REFERRAL_ACCOUNT_ID, savedReferral].filter(Boolean))];
       const accounts = new Map();
+      const seenCursors = new Set();
       let cursor = null;
 
       for (let page = 0; page < 100; page++) {
@@ -116,7 +138,25 @@ export function createHandler(
         }
 
         const result = await response.json();
-        for (const account of result.result || []) {
+        if (!result || !Array.isArray(result.result)) {
+          return res.status(502).json({
+            error: 'Monime returned an invalid financial-account page. No partial balances were returned.'
+          });
+        }
+
+        for (const account of result.result) {
+          if (
+            !account ||
+            typeof account.id !== 'string' ||
+            !/^fac-[A-Za-z0-9_-]+$/.test(account.id) ||
+            typeof account.currency !== 'string' ||
+            account.currency.length < 3 ||
+            accounts.has(account.id)
+          ) {
+            return res.status(502).json({
+              error: 'Monime returned duplicate or invalid financial accounts. No partial balances were returned.'
+            });
+          }
           accounts.set(account.id, {
             id: account.id,
             currency: account.currency,
@@ -125,6 +165,11 @@ export function createHandler(
         }
 
         const next = result.pagination?.next;
+        if (next !== undefined && next !== null && (typeof next !== 'string' || !next.trim())) {
+          return res.status(502).json({
+            error: 'Monime returned an invalid account pagination cursor.'
+          });
+        }
         if (!next) {
           return res.status(200).json({
             accounts: [...accounts.values()].filter(a => financial || (special && a.id === refundId) || a.id === env.MONIME_SPIN_ACCOUNT_ID),
@@ -143,14 +188,26 @@ export function createHandler(
           });
         }
 
-        if (cursor === next) {
+        if (seenCursors.has(next)) {
           return res.status(502).json({ error: 'Monime account pagination repeated a cursor. Retry the balance refresh.' });
         }
+        seenCursors.add(next);
         cursor = next;
       }
-    } catch (error) {
+
       return res.status(502).json({
-        error: error.message || 'Gateway balances are temporarily unavailable.'
+        error: 'Monime account pagination exceeded the safety limit. No partial balances were returned.'
+      });
+    } catch (error) {
+      // requireAdmin deliberately throws typed 401/403/503 failures. Preserve
+      // those statuses so authorization failures are never mislabeled as 502.
+      if ([401, 403, 503].includes(error?.status)) {
+        return res.status(error.status).json({
+          error: error.message || 'Admin access could not be verified.'
+        });
+      }
+      return res.status(502).json({
+        error: 'Gateway balances are temporarily unavailable.'
       });
     }
   };

@@ -301,8 +301,12 @@ export default function DashboardPage() {
           </div>
 
           {!ready || (!overview && loading) ? (
-            /* Skeleton Loading Grid for Modules */
-            <div role="status" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 animate-pulse">
+            /* Keep an explicit accessible loading message above the skeleton. */
+            <div role="status" aria-live="polite" className="space-y-3">
+              <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                Loading system monitoring…
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 animate-pulse">
               {[1, 2, 3, 4, 5, 6].map(i => (
                 <div key={i} className="h-44 rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
                   <div className="h-4 w-1/2 bg-slate-200 rounded"></div>
@@ -311,6 +315,7 @@ export default function DashboardPage() {
                   <div className="h-10 bg-slate-100 rounded-xl mt-3"></div>
                 </div>
               ))}
+              </div>
             </div>
           ) : error ? (
             <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">

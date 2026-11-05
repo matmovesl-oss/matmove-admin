@@ -1,15 +1,23 @@
-import { useState, useEffect, type ReactNode } from 'react';
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-} from 'react-router-dom';
+import ConciergePage from './pages/ConciergePage';
+import {SpecialOperationsPage} from './pages/SpecialOperationsPage';
+import {AdministrativePayrollPage} from './pages/AdministrativePayrollPage';
+import {CivitasAdministrativePage} from './pages/CivitasAdministrativePage';
+import {AdminTravelPage} from './pages/AdminTravelPage';
+import {AdminEventsPage} from './pages/AdminEventsPage';
+import NotificationsPage from './pages/NotificationsPage';
 
+
+import ReportsPage from './pages/ReportsPage';
+
+
+
+import {loadAdminSession} from './lib/adminSession';
+import { GamesPage } from './pages/GamesPage';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
-
 import LoginPage from './pages/LoginPage';
+
 import DashboardPage from './pages/DashboardPage';
 import { KycPage } from './pages/KycPage';
 import { FinancialsPage } from './pages/FinancialsPage';
@@ -17,405 +25,87 @@ import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage';
 import { StaffGovernancePage } from './pages/StaffGovernancePage';
 import { LogsPage } from './pages/LogsPage';
-import { SpecialOperationsPage } from './pages/SpecialOperationsPage';
-import { AdministrativePayrollPage } from './pages/AdministrativePayrollPage';
 import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage';
 import { TransactionsPage } from './pages/TransactionsPage';
-import { CivitasAdministrativePage } from './pages/CivitasAdministrativePage';
-import { AdminTravelPage } from './pages/AdminTravelPage';
-import { AdminEventsPage } from './pages/AdminEventsPage';
-import { GamesPage } from './pages/GamesPage';
-import ReportsPage from './pages/ReportsPage';
-import NotificationsPage from './pages/NotificationsPage';
 
-import {
-  AdminAccessContext,
-  canAccess,
-  homeFor,
-  sections,
-  type AdminAccess,
-} from './lib/adminAccess';
-
-import { loadAdminSession } from './lib/adminSession';
+import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
 import StaffPasswordPage from './pages/StaffPasswordPage';
 
-// MAIN MATMOVE SUPER WEB ADMIN
-const SUPER_ADMIN_EMAIL = 'matmove.sl@gmail.com';
+function Denied({message='Access denied. This section has not been assigned to your staff account.',retry}:{message?:string;retry?:()=>void}){return <AdminLayout title="Access denied"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">{message}</p>{retry&&<button type="button" onClick={retry} className="mt-4 rounded-xl border bg-white px-5 py-3 font-bold">Retry permission check</button>}</AdminLayout>;}
+function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
+function GameGate({access}:{access:AdminAccess}){const loc=useLocation();const tab=new URLSearchParams(loc.search).get('tab');if(!tab){const first=['overview','players','entries','winnings','settings','recovery'].find(t=>canAccess(access,`games.${t}`));return first?<Navigate to={`/games?tab=${first}`} replace/>:<Denied/>;}if(!['overview','players','entries','winnings','settings','recovery'].includes(tab))return <Denied/>;return <Gate access={access} section={`games.${tab}`}><GamesPage/></Gate>;}
+function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean;onRecoveryDone:()=>void}){
+ const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();
+ useEffect(()=>{
+  let live=true,inFlight=false;
+  const refresh=async()=>{
+   if(inFlight)return;inFlight=true;
+   try{const row=await loadAdminSession(supabase,session);if(live){setAccess(row);setError('');}}
+   catch(e){if(live){setAccess(null);setError(e instanceof Error?e.message:'Unable to verify staff permissions.');}}
+   finally{inFlight=false;if(live)setLoading(false);}
+  };
+  setAccess(null);setLoading(true);void refresh();
+  const timer=setInterval(()=>void refresh(),15000);
+  return()=>{live=false;clearInterval(timer);};
+ },[session.user.id,session.access_token,reload]);
+ async function finished(){const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
 
-const isSuperAdmin = (session: any): boolean => {
-  const email = session?.user?.email || '';
-  return email.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
-};
-
-function Denied({
-  message = 'Access denied. This section is not assigned to your staff account.',
-}: {
-  message?: string;
-}) {
-  return (
-    <AdminLayout title="Access Denied">
-      <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 font-medium text-rose-800">
-        {message}
-      </div>
-    </AdminLayout>
-  );
+ if(loading)return <p className="p-8">Checking staff assignments…</p>;
+ return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
+ <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
+ <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
+ <Route path="/concierge" element={<Gate access={access} section="concierge"><ConciergePage/></Gate>}/>
+ <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
+ <Route path="/reports" element={sections.some(([key])=>canAccess(access,key))?<ReportsPage key={access.id}/>:<Denied/>}/>
+ <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage/></Gate>}/>
+ <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage/></Gate>}/>
+ <Route path="/games" element={<GameGate access={access}/>}/>
+ <Route path="/kyc" element={<Gate access={access} section="kyc"><KycPage/></Gate>}/>
+ <Route path="/civitas" element={<Gate access={access} section="financials"><CivitasAdministrativePage/></Gate>}/>
+ <Route path="/special" element={<Gate access={access} section="special"><SpecialOperationsPage/></Gate>}/>
+ <Route path="/payroll" element={<Gate access={access} section="special"><AdministrativePayrollPage/></Gate>}/>
+ <Route path="/travel" element={<Gate access={access} section="travel"><AdminTravelPage/></Gate>}/>
+ <Route path="/events" element={<Gate access={access} section="events"><AdminEventsPage/></Gate>}/>
+ <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage/></Gate>}/>
+ <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage/></Gate>}/>
+ <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
+ <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage/></Gate>}/>
+ <Route path="/staff" element={<Gate access={access} section="staff"><StaffGovernancePage/></Gate>}/>
+ <Route path="/logs" element={<Gate access={access} section="logs"><LogsPage/></Gate>}/>
+ <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage/></Gate>}/>
+ <Route path="/wallets" element={<Navigate to="/financials" replace/>}/><Route path="/withdrawals" element={<Navigate to="/payouts" replace/>}/><Route path="/users" element={<Navigate to="/customers" replace/>}/>
+ <Route path="*" element={<Denied/>}/>
+ </Routes>}</AdminAccessContext.Provider>;
 }
-
-// CENTRAL ADMIN PERMISSION GATE
-function Gate({
-  access,
-  session,
-  section,
-  children,
-}: {
-  access: AdminAccess | null;
-  session: any;
-  section: string;
-  children: ReactNode;
-}) {
-  if (isSuperAdmin(session)) {
-    return <>{children}</>;
-  }
-
-  return canAccess(access, section) ? (
-    <>{children}</>
-  ) : (
-    <Denied />
-  );
+const recoveryKey='matmove_admin_recovery';
+export function validRecoveryMarker(raw:string|null,userId:string,now=Date.now()){
+ try{const v=JSON.parse(raw||'null');return v?.id===userId&&Number.isFinite(v.until)&&v.until>now&&v.until<=now+3600000;}catch{return false;}
 }
-
-function Console({
-  session,
-  recovery,
-  onRecoveryDone,
-}: {
-  session: any;
-  recovery: boolean;
-  onRecoveryDone: () => void;
-}) {
-  const [access, setAccess] = useState<AdminAccess | null>(null);
-  const [loading, setLoading] = useState(true);
-  const location = useLocation();
-
-  useEffect(() => {
-    let mounted = true;
-
-    // The main owner does not depend on a staff assignment.
-    if (isSuperAdmin(session)) {
-      setAccess(null);
-      setLoading(false);
-
-      return () => {
-        mounted = false;
-      };
-    }
-
-    setLoading(true);
-
-    loadAdminSession(supabase, session)
-      .then((row) => {
-        if (mounted) setAccess(row);
-      })
-      .catch((error) => {
-        console.error('Admin session loading failed:', error);
-        if (mounted) setAccess(null);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [session.user.id, session.user.email]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen animate-pulse space-y-6 bg-slate-950 p-8">
-        <div className="h-16 w-full rounded-2xl bg-slate-900" />
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="h-28 rounded-2xl bg-slate-900" />
-          ))}
-        </div>
-
-        <div className="h-96 rounded-3xl bg-slate-900" />
-      </div>
-    );
-  }
-
-  const superAdmin = isSuperAdmin(session);
-
-  // Full owner access for the designated main web administrator.
-  const providedAccess: AdminAccess | null = superAdmin
-    ? {
-        id: session.user.id,
-        full_name: 'MatMove Main Super Admin',
-        email: session.user.email,
-        department: 'Executive',
-        permissions: sections.map(([key]) => key),
-        is_owner: true,
-        is_active: true,
-        role: 'owner',
-      }
-    : access;
-
-  return (
-    <AdminAccessContext.Provider value={providedAccess}>
-      {!superAdmin && !access?.is_active ? (
-        <Denied message="Access denied. An active Admin staff assignment is required." />
-      ) : recovery ||
-        access?.requires_password_setup ||
-        location.pathname === '/accept-invite' ? (
-        <StaffPasswordPage
-          userId={session.user.id}
-          mode={recovery ? 'recovery' : 'invite'}
-          onComplete={onRecoveryDone}
-        />
-      ) : (
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <Navigate
-                to={superAdmin ? '/dashboard' : homeFor(access)}
-                replace
-              />
-            }
-          />
-
-          <Route
-            path="/dashboard"
-            element={
-              <Gate access={access} session={session} section="dashboard">
-                <DashboardPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/dispatch"
-            element={
-              <Gate access={access} session={session} section="dispatch">
-                <DispatchRadarPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/travel"
-            element={
-              <Gate access={access} session={session} section="travel">
-                <AdminTravelPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/events"
-            element={
-              <Gate access={access} session={session} section="events">
-                <AdminEventsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/games"
-            element={
-              <Gate access={access} session={session} section="games">
-                <GamesPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/pricing"
-            element={
-              <Gate access={access} session={session} section="pricing">
-                <PricingPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/kyc"
-            element={
-              <Gate access={access} session={session} section="kyc">
-                <KycPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/customers"
-            element={
-              <Gate access={access} session={session} section="customers">
-                <UsersPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/civitas"
-            element={
-              <Gate access={access} session={session} section="financials">
-                <CivitasAdministrativePage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/financials"
-            element={
-              <Gate access={access} session={session} section="financials">
-                <FinancialsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/transactions"
-            element={
-              <Gate access={access} session={session} section="transactions">
-                <TransactionsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/payouts"
-            element={
-              <Gate access={access} session={session} section="payouts">
-                <PayoutsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/notifications"
-            element={
-              <Gate access={access} session={session} section="notifications">
-                <NotificationsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/staff"
-            element={
-              <Gate access={access} session={session} section="staff">
-                <StaffGovernancePage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/special"
-            element={
-              <Gate access={access} session={session} section="special">
-                <SpecialOperationsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/payroll"
-            element={
-              <Gate access={access} session={session} section="special">
-                <AdministrativePayrollPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/reports"
-            element={superAdmin ? <ReportsPage /> : <Denied />}
-          />
-
-          <Route
-            path="/logs"
-            element={
-              <Gate access={access} session={session} section="logs">
-                <LogsPage />
-              </Gate>
-            }
-          />
-
-          <Route
-            path="/audit"
-            element={
-              <Gate access={access} session={session} section="logs">
-                <AuditPage />
-              </Gate>
-            }
-          />
-
-          <Route path="*" element={<Denied />} />
-        </Routes>
-      )}
-    </AdminAccessContext.Provider>
-  );
-}
-
-export default function App() {
-  const [session, setSession] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (error) throw error;
-        if (mounted) setSession(data.session);
-      })
-      .catch((error) => {
-        console.error('Authentication session error:', error);
-        if (mounted) setSession(null);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      setLoading(false);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen animate-pulse flex-col gap-4 bg-slate-950 p-6">
-        <div className="h-12 w-48 rounded-xl bg-slate-900" />
-        <div className="mt-12 h-64 rounded-3xl bg-slate-900" />
-      </div>
-    );
-  }
-
-  return (
-    <BrowserRouter>
-      {session ? (
-        <Console
-          session={session}
-          recovery={false}
-          onRecoveryDone={() => window.location.assign('/')}
-        />
-      ) : (
-        <LoginPage />
-      )}
-    </BrowserRouter>
-  );
+export function hasRecoveryLinkError(search:string,hash:string){const a=new URLSearchParams(search),b=new URLSearchParams(hash.replace(/^#/,''));return ['error','error_code','error_description'].some(k=>a.has(k)||b.has(k));}
+export default function App(){
+ const [session,setSession]=useState<any>(null),[loading,setLoading]=useState(true),[recoveryUser,setRecoveryUser]=useState<string|null>(null);
+ const [linkError]=useState(()=>window.location.pathname==='/reset-password'&&hasRecoveryLinkError(window.location.search,window.location.hash));
+ useEffect(()=>{
+  let live=true,sequence=0;
+  const remember=(id:string)=>{try{sessionStorage.setItem(recoveryKey,JSON.stringify({id,until:Date.now()+3600000}));}catch{/* Current tab can finish without optional storage. */}};
+  const forget=()=>{try{sessionStorage.removeItem(recoveryKey);}catch{/* Optional storage. */}};
+  const apply=(next:any,event?:string)=>{
+   if(!live)return;setSession(next);setLoading(false);
+   if(event==='PASSWORD_RECOVERY'&&next?.user?.id&&!linkError){setRecoveryUser(next.user.id);remember(next.user.id);}
+   else if(!next){setRecoveryUser(null);forget();}
+   else if(window.location.pathname==='/reset-password'&&!linkError){try{if(validRecoveryMarker(sessionStorage.getItem(recoveryKey),next.user.id))setRecoveryUser(next.user.id);}catch{/* No restored recovery without its marker. */}}
+  };
+  // Subscribe first: PASSWORD_RECOVERY must not be missed while getSession initializes.
+  const {data:{subscription}}=supabase.auth.onAuthStateChange((event,next)=>{sequence++;apply(next,event);});
+  const started=sequence;void supabase.auth.getSession().then(({data,error})=>{if(live&&sequence===started)apply(error?null:data.session);}).catch(()=>{if(live&&sequence===started)apply(null);});
+  return()=>{live=false;subscription.unsubscribe();};
+ },[linkError]);
+ function recovered(){try{sessionStorage.removeItem(recoveryKey);}catch{/* Optional storage. */}setRecoveryUser(null);}
+ if(loading)return <p className="p-8">Loading Admin…</p>;
+ const resetPath=window.location.pathname==='/reset-password',recovery=!!session&&recoveryUser===session.user.id;
+ const invalid=resetPath&&(linkError||!recovery);
+ return <BrowserRouter>{invalid?<LoginPage recoveryError="This password reset link is expired, incomplete or already used. Request a new link below."/>:session?<Console key={session.user.id} session={session} recovery={recovery} onRecoveryDone={recovered}/>:<LoginPage/>}</BrowserRouter>;
 }

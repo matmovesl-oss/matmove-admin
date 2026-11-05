@@ -1,0 +1,5 @@
+-- Read-only readiness. Does not send enquiries, edit prices or move money.
+select to_regprocedure('public.matmove_admin_concierge(uuid,text,uuid,uuid,bigint,jsonb,integer)') is not null as admin_concierge_ready,
+ to_regprocedure('public.matmove_customer_concierge_enquiry(uuid,bigint,uuid,text)') is not null as customer_enquiries_ready;
+select tablename,rowsecurity as rls_enabled from pg_tables where schemaname='public' and tablename in ('concierge_services','concierge_interests','concierge_service_audit','matmove_concierge_mutations') order by tablename;
+select p.proname,has_function_privilege('anon',p.oid,'EXECUTE') as anonymous_execute,has_function_privilege('authenticated',p.oid,'EXECUTE') as customer_execute,has_function_privilege('service_role',p.oid,'EXECUTE') as server_execute from pg_proc p where p.oid in (to_regprocedure('public.matmove_admin_concierge(uuid,text,uuid,uuid,bigint,jsonb,integer)'),to_regprocedure('public.matmove_customer_concierge_enquiry(uuid,bigint,uuid,text)'));

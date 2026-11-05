@@ -4,6 +4,7 @@ export const SECTION_GROUPS = [
     items: [
       ['dashboard', 'Overview', '/dashboard'],
       ['dispatch', 'Dispatch Radar', '/dispatch'],
+      ['concierge', 'Concierge services & enquiries', '/concierge'],
       ['travel.overview', 'Travel — Bus Capacity & Overview', '/travel?tab=overview'],
       ['travel.manifest', 'Travel — Manifest & Approvals', '/travel?tab=manifest'],
       ['travel.boarding', 'Travel — Boarding & Activation', '/travel?tab=boarding'],

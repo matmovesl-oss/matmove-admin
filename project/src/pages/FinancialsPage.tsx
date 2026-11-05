@@ -201,23 +201,33 @@ export function FinancialsPage() {
 
   useEffect(() => {
     mounted.current=true;setTarget(null);setReason('');setNotice('');setBusy(false);
+    if(!allowed){mounted.current=false;return()=>{generation.current++;};}
     void load();
 
-    // Refresh wallet records as soon as Supabase reports a wallet change.
-    // A 60-second foreground refresh remains as a fallback when Realtime is off.
-    const channel = supabase.channel(`admin-financials-wallets:${access?.id || 'admin'}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, () => {
-        if (document.visibilityState === 'visible') void load();
-      })
-      .subscribe();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void load();
-    }, 60000);
+    // Realtime is an enhancement, not a dependency. Some restricted or
+    // test clients do not expose channel(); the foreground timer remains the
+    // reliable fallback in those cases.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      if (typeof supabase.channel === 'function') {
+        channel = supabase.channel(`admin-financials-wallets:${access?.id || 'admin'}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'wallets' }, () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'visible') void load();
+          })
+          .subscribe();
+      }
+    } catch {
+      channel = null;
+    }
+
+    const timer = typeof window !== 'undefined' ? window.setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') void load();
+    }, 60000) : null;
 
     return()=>{
       mounted.current=false;generation.current++;
-      window.clearInterval(timer);
-      void supabase.removeChannel(channel);
+      if (timer !== null && typeof window !== 'undefined') window.clearInterval(timer);
+      if (channel && typeof supabase.removeChannel === 'function') void supabase.removeChannel(channel);
     };
   }, [load, access?.id]);
 
