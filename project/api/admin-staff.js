@@ -34,15 +34,43 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   const {client,user,access}=await authorize(req,self?PERMISSION_KEYS:['staff'],{env});
   if(self)return res.status(200).json({access:{id:user.id,email:access.email,full_name:access.full_name,department:access.department,is_owner:access.is_owner===true,is_active:access.is_active===true,permissions:Array.isArray(access.permissions)?access.permissions:[],requires_password_setup:access.requires_password_setup===true}});
   if(req.method==='GET'){
-   const result=await client.from('matmove_staff_access').select('*').order('created_at',{ascending:false});
-   if(result.error||!Array.isArray(result.data))throw failure(503,'Staff directory unavailable. Retry the directory.');
-   return res.status(200).json({removalReady:result.data.length>0&&result.data.every(row=>Object.prototype.hasOwnProperty.call(row,'removed_at')),staff:result.data.filter(row=>!row.removed_at).map(({id,email,full_name,department,permissions,is_active,is_owner,requires_password_setup,invite_state,updated_at})=>({id,email,full_name,department,permissions,is_active,is_owner,requires_password_setup,invite_state,updated_at}))});
+   const [result,profileResult]=await Promise.all([
+    client.from('matmove_staff_access').select('*').order('created_at',{ascending:false}),
+    client.from('profiles').select('id,email,full_name,phone,role,customer_onboarding_role,created_at,updated_at').eq('role','staff').order('created_at',{ascending:false}).limit(1000)
+   ]);
+   if(result.error||!Array.isArray(result.data)||profileResult.error||!Array.isArray(profileResult.data))throw failure(503,'Staff directory unavailable. Retry the directory.');
+   const accessIds=new Set(result.data.map(row=>row.id));
+   const adminRows=result.data.map(row=>({
+    id:row.id,email:row.email,full_name:row.full_name,department:row.department,
+    permissions:Array.isArray(row.permissions)?row.permissions:[],is_active:row.is_active===true,
+    is_owner:row.is_owner===true,requires_password_setup:row.requires_password_setup===true,
+    invite_state:row.invite_state,updated_at:row.updated_at,removed_at:row.removed_at||null,
+    access_type:'admin',customer_onboarding_role:null
+   }));
+   const payrollRows=profileResult.data.filter(row=>!accessIds.has(row.id)).map(row=>({
+    id:row.id,email:row.email,full_name:row.full_name,phone:row.phone,department:'Payroll staff',
+    permissions:[],is_active:true,is_owner:false,requires_password_setup:false,invite_state:'Payroll only',
+    updated_at:row.updated_at,removed_at:null,access_type:'payroll',
+    customer_onboarding_role:row.customer_onboarding_role||null
+   }));
+   const staff=[...adminRows,...payrollRows].sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
+   return res.status(200).json({
+    removalReady:result.data.length>0&&result.data.every(row=>Object.prototype.hasOwnProperty.call(row,'removed_at')),
+    staff
+   });
   }
   if(access.is_owner!==true)throw failure(403,'Access denied. Only the owner can authorize, remove or change staff.');
   let body;try{body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};}catch{throw failure(400,'Invalid staff request.');}
   const action=body.action;
-  if(!['invite','update','resend','remove'].includes(action))throw failure(400,'Invalid staff action.');
+  if(!['invite','update','resend','remove','restoreCustomer'].includes(action))throw failure(400,'Invalid staff action.');
   let targetId=body.id;
+  if(action==='restoreCustomer'){
+   if(!uuid(targetId)||targetId===user.id)throw failure(400,'Select a valid payroll staff profile.');
+   const result=await client.rpc('matmove_admin_restore_customer_role',{p_user_id:targetId});
+   if(result.error)throw rpcFailure(result.error);
+   if(result.data?.success!==true||result.data.userId!==targetId||!['rider','driver','merchant'].includes(result.data.role))throw failure(503,'Original Customer role restoration was not confirmed.');
+   return res.status(200).json({success:true,emailSent:false,message:`Original Customer role restored: ${result.data.role}. Login, wallet and financial history were preserved.`});
+  }
   if(action==='remove'){
    if(!uuid(targetId)||targetId===user.id)throw failure(400,'Select another staff member to remove.');
    const expected=expectedVersion(body);
