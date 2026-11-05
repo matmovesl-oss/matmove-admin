@@ -40,13 +40,17 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
    ]);
    if(result.error||!Array.isArray(result.data)||profileResult.error||!Array.isArray(profileResult.data))throw failure(503,'Staff directory unavailable. Retry the directory.');
    const accessIds=new Set(result.data.map(row=>row.id));
-   const adminRows=result.data.map(row=>({
-    id:row.id,email:row.email,full_name:row.full_name,department:row.department,
-    permissions:Array.isArray(row.permissions)?row.permissions:[],is_active:row.is_active===true,
-    is_owner:row.is_owner===true,requires_password_setup:row.requires_password_setup===true,
-    invite_state:row.invite_state,updated_at:row.updated_at,removed_at:row.removed_at||null,
-    access_type:'admin',customer_onboarding_role:null
-   }));
+   const profilesById=new Map(profileResult.data.map(row=>[row.id,row]));
+   const adminRows=result.data.map(row=>{
+    const profile=profilesById.get(row.id);
+    return {
+     id:row.id,email:row.email,full_name:row.full_name,phone:profile?.phone||null,department:row.department,
+     permissions:Array.isArray(row.permissions)?row.permissions:[],is_active:row.is_active===true,
+     is_owner:row.is_owner===true,requires_password_setup:row.requires_password_setup===true,
+     invite_state:row.invite_state,updated_at:row.updated_at,removed_at:row.removed_at||null,
+     access_type:'admin',customer_onboarding_role:profile?.customer_onboarding_role||null
+    };
+   });
    const payrollRows=profileResult.data.filter(row=>!accessIds.has(row.id)).map(row=>({
     id:row.id,email:row.email,full_name:row.full_name,phone:row.phone,department:'Payroll staff',
     permissions:[],is_active:true,is_owner:false,requires_password_setup:false,invite_state:'Payroll only',
@@ -79,7 +83,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
    const result=await client.rpc('matmove_staff_remove',{p_actor:user.id,p_id:targetId,p_expected:expected,p_reason:body.reason.trim()});
    if(result.error)throw rpcFailure(result.error);
    if(result.data?.removed!==true||result.data.id!==targetId)throw failure(503,'Removal was not confirmed. Refresh the directory before retrying.');
-   return res.status(200).json({success:true,emailSent:false,message:'Staff removed from Admin. Their login, Customer account and financial history were preserved.'});
+   return res.status(200).json({success:true,emailSent:false,message:'Admin access removed. The saved Rider, Driver or Merchant role was restored when verified; the login, wallets and financial history were preserved.'});
   }
   let permissions,fullName,email;
   if(action!=='resend'){
