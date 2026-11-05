@@ -99,7 +99,7 @@ export default function AdminMoneyOperations({kind}:{kind:Kind}){
     if(d.requestKey!==p.body.requestKey||d.recipientUserId!==recipient||d.amount?.currency!=='SLE'||d.amount.value!==Number(adminMoneyMinor(p.body.amount))||!['initiating','pending','processing','review_required','completed','failed'].includes(d.status))throw Error('Payment receipt did not match the reviewed request. Keep the original request.');
     if(!['completed','failed'].includes(d.status)){setNotice(`${p.name}: ${d.status}. Use Check original requests; no replacement payment is created.`);stopAfterGroup=true;break;}
     if(typeof d.providerTransferId!=='string'||!/^trn-[A-Za-z0-9_-]+$/.test(d.providerTransferId)||d.success!==(d.status==='completed'))throw Error('Terminal payment receipt was not verified.');
-    left=left.filter(v=>v.body.requestKey!==p.body.requestKey);persist(left);setPending(left.length?left:null);completedCount+=1;setNotice(`${p.name}: ${d.status}. Reference ${d.providerTransferId}.`);
+    left=left.filter(v=>v.body.requestKey!==p.body.requestKey);persist(left);setPending(left.length?left:null);completedCount+=1;setNotice(`${p.name}: ${d.status}. Reference ${d.providerTransferId}. ${completedCount} of ${original.length} requests confirmed.`);
    }if(stopAfterGroup)break;}
    if(!left.length){setSelected([]);setAmounts({});setAmount('');setReason('');}await refresh();
   }catch(e:any){if(valid(s))setError(e.message||'Payment was not confirmed. Keep the original request.');}
