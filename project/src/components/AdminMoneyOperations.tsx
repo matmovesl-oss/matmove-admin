@@ -79,7 +79,7 @@ export default function AdminMoneyOperations({kind}:{kind:Kind}){
    const items=selected.map(id=>{
     const person=rows.find(row=>row.id===id);
     if(!person)throw Error('Reload and select the recipient again.');
-    const amountValue=(kind==='payroll'?(amounts[id]||amount):amount).trim();
+    const amountValue=(kind==='payroll'?(amounts[id]??amount):amount).trim();
     adminMoneyMinor(amountValue);
     const dest=destination(person);
     return {
