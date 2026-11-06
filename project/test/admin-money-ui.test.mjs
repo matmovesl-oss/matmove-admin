@@ -23,3 +23,25 @@ for(const kind of ['payroll','refund']){
  test(`${kind} restored pending requests never submit automatically and revoked access invalidates their buttons`,()=>{const body={...(kind==='payroll'?{staffUserId:person}:{recipientUserId:person,recipientAccountId:'fac-recipient'}),requestKey:request,amount:'125.50',reason:'Reviewed original payment'};return ui(async h=>{assert.equal(h.calls.filter(c=>c.body).length,0);assert.match(h.text,/Original requests need confirmation/);const retained=h.button('Check original requests');await h.revoke();retained.props.onClick();await h.settle();assert.equal(h.calls.filter(c=>c.body).length,0);assert.match(h.text,/not been assigned/);},{kind,saved:[[`matmove-admin-money:v2:${kind}:${actor}`,JSON.stringify({version:1,actor,kind,items:[{name:'Original recipient',body}]})]]});});
 }
 test('malformed retained storage blocks new payments and money formatting preserves exact cents',()=>ui(async h=>{assert.match(h.text,/New payments are blocked/);assert.equal(h.calls.filter(c=>c.body).length,0);assert.equal(h.module.adminMoneyMinor('1000.05'),100005n);assert.throws(()=>h.module.adminMoneyMinor('1.001'));assert.throws(()=>h.module.validateMoneyDraft({version:1,actor:person,kind:'payroll',items:[]},actor,'payroll'));},{saved:[[`matmove-admin-money:v2:payroll:${actor}`,'bad JSON']]}));
+
+
+test('Payroll roster is live and searchable even when an old batch warning blocks transfer execution',async()=>{
+  const fs=await import('node:fs/promises');
+  const source=await fs.readFile('src/components/AdminMoneyOperations.tsx','utf8');
+  assert.match(source,/Recipient search/);
+  assert.match(source,/Load staff directory/);
+  assert.match(source,/Customer role/);
+  assert.match(source,/Salary for/);
+  assert.match(source,/matmove-admin-payroll-roster/);
+  assert.match(source,/postgres_changes/);
+  assert.match(source,/Recipient search and review remain available/);
+  assert.match(source,/function buildReview\(\)[\s\S]*?if\(pending\|\|!balance\)/);
+  assert.match(source,/disabled=\{busy\|\|blocked\|\|!balance\?\.newPaymentsEnabled\}/);
+});
+
+test('Review controls are not disabled by a retained-data warning',async()=>{
+  const fs=await import('node:fs/promises');
+  const source=await fs.readFile('src/components/AdminMoneyOperations.tsx','utf8');
+  assert.match(source,/<fieldset disabled=\{busy\|\|!!pending\}/);
+  assert.doesNotMatch(source,/<fieldset disabled=\{busy\|\|!!pending\|\|blocked\}/);
+});
