@@ -43,7 +43,7 @@ async function browser(fn,{access=owner,sessionUser=user}={}){
  const original={document:globalThis.document,window:globalThis.window,create:URL.createObjectURL,revoke:URL.revokeObjectURL};
  const blobs=[],anchors=[],revoked=[],timers=[];let requests=0;
  globalThis.__csvAccess=access;
- globalThis.__csvDb={auth:{getSession:async()=>({data:{session:{user:{id:sessionUser}}},error:null})}};
+ globalThis.__csvDb={auth:{getSession:async()=>({data:{session:{user:{id:sessionUser}}},error:null})},rpc:async()=>({data:{rows:[]},error:null})};
  globalThis.__csvFetch=async url=>{assert.equal(url,'/api/admin-staff?view=me');requests++;return{ok:true,json:async()=>({access})};};
  globalThis.document={createElement:()=>{const a={href:'',download:'',click(){a.clicked=true;},remove(){a.removed=true;}};anchors.push(a);return a;},body:{appendChild(){}}};
  globalThis.window={setTimeout:(cb)=>{timers.push(cb);return timers.length;}};
