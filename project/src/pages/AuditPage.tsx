@@ -30,6 +30,7 @@ export default function AuditPage() {
   const mounted=useRef(false),generation=useRef(0);
   const [audit,setAudit]=useState<AuditLog[]>([]),[fraud,setFraud]=useState<FraudLog[]>([]);
   const [loading,setLoading]=useState(true),[error,setError]=useState(''),[loadedStamp,setLoadedStamp]=useState('');
+  const [search,setSearch]=useState('');
   const load=useCallback(async()=>{
     if(!allowed)return;
     const token=++generation.current;
@@ -37,17 +38,18 @@ export default function AuditPage() {
     setLoading(true);setError('');setLoadedStamp(stamp);
     try{
       const [a,f]=await Promise.all([
-        supabase.from('audit_logs').select('*').order('created_at',{ascending:false}).limit(100),
-        supabase.from('fraud_logs').select('*').order('created_at',{ascending:false}).limit(50),
+        supabase.rpc('matmove_admin_audit_feed',{p_limit:500}),
+        supabase.from('fraud_logs').select('*').order('created_at',{ascending:false}).limit(100),
       ]);
       if(a.error)throw a.error;if(f.error)throw f.error;
-      if(!Array.isArray(a.data)||!Array.isArray(f.data))throw new Error('Audit response could not be verified.');
-      if(valid()){setAudit(a.data as AuditLog[]);setFraud(f.data as FraudLog[]);}
+      if(!a.data||a.data.actor!==access?.id||!Array.isArray(a.data.rows)||a.data.rows.length>500||!Array.isArray(f.data))throw new Error('Audit response could not be verified.');
+      if(valid()){setAudit(a.data.rows as AuditLog[]);setFraud(f.data as FraudLog[]);}
     }catch(err:any){if(valid())setError(err.message||'Audit and fraud records could not be loaded.');}
     finally{if(valid())setLoading(false);}
   },[stamp,allowed]);
   useEffect(()=>{mounted.current=true;setAudit([]);setFraud([]);void load();return()=>{mounted.current=false;generation.current++;};},[load]);
   const waiting=loading||loadedStamp!==stamp;
+  const visibleAudit=useMemo(()=>{const q=search.trim().toLowerCase();if(!q)return audit;return audit.filter(log=>[log.actor_name,log.action,log.table_name,JSON.stringify(log.metadata||{})].some(value=>String(value||'').toLowerCase().includes(q)));},[audit,search]);
   const count=(n:number)=>waiting?'Loading...':error?'Unavailable':String(n);
 
   const riskCounts = useMemo(() => ({
@@ -61,7 +63,7 @@ export default function AuditPage() {
   return (
     <AdminLayout
       title="System & Audit Logs"
-      subtitle="Latest 100 audit events and 50 fraud records. Use Reports for full history."
+      subtitle="Unified Admin change history, including customer governance, KYC, staff, Dispatch, Concierge, wallets and operations."
     >
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <StatCard label="Loaded Audit Events" value={count(audit.length)} icon={Activity} tone="indigo" />
@@ -70,6 +72,7 @@ export default function AuditPage() {
         <StatCard label="Loaded Low Risk" value={count(riskCounts.low)} icon={ShieldCheck} tone="emerald" />
       </div>
 
+      <label className="mb-3 block rounded-xl border bg-white p-3 text-sm font-semibold">Search audit records by actor, action or section<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Name, KYC, wallet, payroll, Dispatch, Concierge…" className="mt-1 w-full rounded-lg border p-3 font-normal"/></label>
       <button type="button" disabled={waiting} onClick={()=>void load()} className="mb-4 min-h-11 rounded-lg border bg-white px-4 font-bold disabled:opacity-50">{waiting?'Loading audit records...':error?'Retry audit records':'Refresh audit records'}</button>
       {error&&<p role="alert" className="mb-4 rounded-lg bg-red-50 p-4 text-red-800">{error}</p>}
 
@@ -86,10 +89,10 @@ export default function AuditPage() {
           {waiting ? (
             <Spinner label="Loading audit logs..." />
           ) : error ? <p className="p-6">Audit records unavailable. Use Retry audit records.</p> : audit.length === 0 ? (
-            <EmptyState icon={ScrollText} title="No audit events" />
+            <EmptyState icon={ScrollText} title={search?"No audit events match this search":"No audit events have been recorded"} />
           ) : (
             <div className="overflow-y-auto max-h-[560px] divide-y divide-slate-100">
-              {audit.map((log) => (
+              {visibleAudit.map((log) => (
                 <div key={log.id} className="px-5 py-3 hover:bg-slate-50 flex items-start gap-3">
                   <div className="mt-1 w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
                   <div className="min-w-0 flex-1">

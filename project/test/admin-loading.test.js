@@ -111,9 +111,9 @@ for(const[name,retry,empty] of [
 test('Audit rejects Supabase error responses, never claims zero or empty, and retries both sources',()=>withPage('AuditPage',async h=>{
  assert.match(h.text,/offline/);assert.ok(h.cards.every(c=>c.value==='Unavailable'));
  assert.ok(!h.nodes.some(n=>n.props?.title==='No audit events'||n.props?.title==='No fraud alerts'));
- h.setDb(dbEmpty);await h.click('Retry audit records');
+ h.setDb(name=>name==='matmove_admin_audit_feed'?{data:{actor:uid,rows:[]},error:null}:dbEmpty());await h.click('Retry audit records');
  assert.ok(h.cards.every(c=>c.value==='0'));
- assert.ok(h.nodes.some(n=>n.props?.title==='No audit events'));
+ assert.doesNotMatch(h.text,/offline/);
 },{db:()=>({data:null,error:{message:'offline'}})}));
 test('Financial loading never fabricates active or frozen counts, or customer gateway zero',async()=>{
  const pending=deferred();await withPage('FinancialsPage',async h=>{

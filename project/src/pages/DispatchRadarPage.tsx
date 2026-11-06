@@ -57,6 +57,9 @@ export default function DispatchRadarPage() {
   current.current = stamp;
   const mounted = useRef(false), epoch = useRef(0), locked = useRef(false);
   const [tripReference, setTripReference] = useState(''), [searchedTrip, setSearchedTrip] = useState('');
+  const [feedSearch,setFeedSearch]=useState('');
+  const [feedPeriod,setFeedPeriod]=useState<'today'|'7'|'30'|'all'>('all');
+  const [feedLimit,setFeedLimit]=useState<'1000'|'2000'>('1000');
   const [reload, setReload] = useState(0), [feed, setFeed] = useState<Feed | null>(null), [loadedStamp, setLoadedStamp] = useState('');
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [actionError, setActionError] = useState(''), [notice, setNotice] = useState('');
   const [selected, setSelected] = useState(''), [driver, setDriver] = useState(''), [note, setNote] = useState(''), [review, setReview] = useState<Action | null>(null), [busy, setBusy] = useState(false);
@@ -92,7 +95,7 @@ export default function DispatchRadarPage() {
         const { data, error } = await supabase.rpc('matmove_admin_dispatch_feed');
         if (error) throw error;
         if (
-          !data || data.actor !== access!.id || !Array.isArray(data.bookings) || !Array.isArray(data.drivers) || data.bookings.length > 100 ||
+          !data || data.actor !== access!.id || !Array.isArray(data.bookings) || !Array.isArray(data.drivers) || data.bookings.length > 2000 ||
           data.drivers.some((d: any) => typeof d?.id !== 'string' || typeof d.label !== 'string' || typeof d.eligible !== 'boolean' || typeof d.reasonCode !== 'string' || typeof d.reason !== 'string') ||
           new Set(data.drivers.map((d: any) => d.id)).size !== data.drivers.length ||
           data.bookings.some((b: any) => typeof b?.id !== 'string' || typeof b.version !== 'string' || !/^\d+$/.test(b.version) || typeof b.paymentStarted !== 'boolean') ||
@@ -119,6 +122,14 @@ export default function DispatchRadarPage() {
 
   const ready = loadedStamp === stamp, booking = ready ? feed?.bookings.find(b => b.id === selected) : undefined;
   const selectedDriver = ready ? feed?.drivers.find(d => d.id === driver) : undefined;
+  const visibleBookings=(feed?.bookings||[]).filter(b=>{
+    const term=feedSearch.trim().toLowerCase();
+    if(term&&![b.id,b.riderLabel,b.driverLabel,b.pickup,b.destination,b.status,b.serviceType,b.vehicleType].some(v=>String(v??'').toLowerCase().includes(term)))return false;
+    if(feedPeriod==='all')return true;
+    const created=Date.parse(b.createdAt);if(!Number.isFinite(created))return false;
+    if(feedPeriod==='today'){const now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();return created>=start;}
+    const days=feedPeriod==='7'?7:30;return created>=Date.now()-days*24*60*60*1000;
+  }).slice(0,Number(feedLimit));
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
   const mutable = !!booking && ['pending', 'pending_admin'].includes(booking.status) && !booking.paymentStarted;
 
@@ -184,7 +195,7 @@ export default function DispatchRadarPage() {
       ) : (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-slate-500">Latest 100 requests. Full booking history is available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
+            <p className="text-xs text-slate-500">Latest 2,000 requests. Use date filters or search by rider, driver, location or booking ID. Full export remains available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
             <button type="button" disabled={loading || busy} onClick={() => setReload(n => n + 1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50">
               <RefreshCw size={16} />Refresh Radar
             </button>
@@ -198,6 +209,18 @@ export default function DispatchRadarPage() {
               Review trip reference
             </button>
           </form>
+          <section className="grid gap-3 rounded-xl border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_180px_150px]">
+            <label className="block text-sm font-semibold">Search dispatch records
+              <input value={feedSearch} onChange={e=>setFeedSearch(e.target.value)} placeholder="Booking ID, rider, driver, pickup or destination" className="mt-1 w-full rounded-lg border p-3 font-normal"/>
+            </label>
+            <label className="block text-sm font-semibold">Date range
+              <select aria-label="Dispatch record date range" value={feedPeriod} onChange={e=>setFeedPeriod(e.target.value as "today"|"7"|"30"|"all")} className="mt-1 w-full rounded-lg border bg-white p-3 font-normal"><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">History</option></select>
+            </label>
+            <label className="block text-sm font-semibold">Records to show
+              <select aria-label="Dispatch records to show" value={feedLimit} onChange={e=>setFeedLimit(e.target.value as "1000"|"2000")} className="mt-1 w-full rounded-lg border bg-white p-3 font-normal"><option value="1000">Latest 1,000</option><option value="2000">Latest 2,000</option></select>
+            </label>
+            <p className="text-xs text-slate-500 sm:col-span-3">Showing {visibleBookings.length.toLocaleString()} matching records from {feed?.bookings.length.toLocaleString()||0} loaded (maximum 2,000).</p>
+          </section>
           {searchedTrip && (
             <div className="rounded-xl border bg-white p-4">
               <button type="button" onClick={() => setSearchedTrip('')} className="mb-3 min-h-11 underline">Close reference review</button>
@@ -214,7 +237,7 @@ export default function DispatchRadarPage() {
           ) : !error && feed ? (
             <div className="grid gap-4 lg:grid-cols-2">
               <section className="space-y-3">
-                {feed.bookings.map(b => (
+                {visibleBookings.map(b => (
                   <button type="button" key={b.id} disabled={busy} onClick={() => pick(b.id)} className={`w-full space-y-2 rounded-2xl border bg-white p-4 text-left disabled:opacity-50 ${selected === b.id ? 'border-indigo-500' : 'border-slate-200'}`}>
                     <div className="flex flex-wrap justify-between gap-2">
                       <span className="font-bold">{b.riderLabel || b.riderId}</span>

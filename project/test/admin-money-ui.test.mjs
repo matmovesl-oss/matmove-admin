@@ -2,10 +2,10 @@ import test from 'node:test';import assert from 'node:assert/strict';import {bui
 const actor='11111111-1111-4111-8111-111111111111',person='22222222-2222-4222-8222-222222222222',request='33333333-3333-4333-8333-333333333333';
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];const text=n=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):Array.isArray(n)?n.map(text).join(''):text(n.props?.children);
 async function ui(fn,options={}){
- const globals={fetch:globalThis.fetch,localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage};const saved=new Map(options.saved||[]),calls=[],slots=[],effects=[];let index=0,dirty=true,tree,identity=actor,dead=false,writeBlocked=false;
+ const globals={fetch:globalThis.fetch,localStorage:globalThis.localStorage,sessionStorage:globalThis.sessionStorage,window:globalThis.window};const saved=new Map(options.saved||[]),calls=[],slots=[],effects=[];let index=0,dirty=true,tree,identity=actor,dead=false,writeBlocked=false;
  const equal=(a,b)=>a&&a.length===b?.length&&a.every((v,i)=>Object.is(v,b[i]));
- const state={access:{id:actor,is_owner:true,is_active:true,permissions:[]},db:{auth:{getSession:async()=>({data:{session:{user:{id:identity},access_token:'fixture'}},error:null})}},hooks:{useState(initial){const i=index++;if(!(i in slots))slots[i]={value:typeof initial==='function'?initial():initial};return [slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v;dirty=true;}];},useRef(initial){const i=index++;if(!(i in slots))slots[i]={current:initial};return slots[i];},useEffect(fn,deps){const i=index++,old=slots[i];if(!old||!equal(old.deps,deps)){slots[i]={deps,cleanup:old?.cleanup};effects.push(()=>{slots[i].cleanup?.();slots[i].cleanup=fn();});}}}};
- globalThis.__moneyUI=state;globalThis.localStorage={getItem:k=>saved.get(k)||null,setItem:(k,v)=>{if(writeBlocked)throw Error('Storage blocked');saved.set(k,v);},removeItem:k=>saved.delete(k)};globalThis.sessionStorage={getItem:()=>null};
+ const state={access:{id:actor,is_owner:true,is_active:true,permissions:[]},db:{auth:{getSession:async()=>({data:{session:{user:{id:identity},access_token:'fixture'}},error:null})},channel(){const channel={on(){return channel;},subscribe(){return channel;}};return channel;},removeChannel:async()=>{}},hooks:{useState(initial){const i=index++;if(!(i in slots))slots[i]={value:typeof initial==='function'?initial():initial};return [slots[i].value,v=>{slots[i].value=typeof v==='function'?v(slots[i].value):v;dirty=true;}];},useRef(initial){const i=index++;if(!(i in slots))slots[i]={current:initial};return slots[i];},useEffect(fn,deps){const i=index++,old=slots[i];if(!old||!equal(old.deps,deps)){slots[i]={deps,cleanup:old?.cleanup};effects.push(()=>{slots[i].cleanup?.();slots[i].cleanup=fn();});}}}};
+ globalThis.__moneyUI=state;globalThis.window={setInterval:()=>1,clearInterval:()=>{}};globalThis.localStorage={getItem:k=>saved.get(k)||null,setItem:(k,v)=>{if(writeBlocked)throw Error('Storage blocked');saved.set(k,v);},removeItem:k=>saved.delete(k)};globalThis.sessionStorage={getItem:()=>null};
  globalThis.fetch=async(url,init={})=>{const u=new URL(url,'https://admin.invalid'),view=u.searchParams.get('view'),body=init.body?JSON.parse(init.body):null;calls.push({url,view,body});let value;if(options.handler)value=await options.handler({view,body,calls});if(value===undefined){if(view==='balance')value={actor,accountId:'fac-payroll',currency:'SLE',balance:{currency:'SLE',value:500000},newPaymentsEnabled:true};else if(view==='history')value={actor,rows:[]};else if(view==='recipients')value={actor,rows:[{id:person,role:options.kind==='refund'?'rider':'driver',is_payroll_staff:options.kind!=='refund',full_name:'Selected recipient',email:'recipient@example.invalid',wallets:[{id:request,currency:'SLE',monime_account_id:'fac-recipient'}]}]};else value={success:true,status:'completed',requestKey:body.requestKey,recipientUserId:body.staffUserId||body.recipientUserId,amount:{currency:'SLE',value:12550},providerTransferId:'trn-fixture'};}return {ok:true,json:async()=>value};};
  const dir=await mkdtemp(join(process.cwd(),'.money-ui-'));try{
   await build({entryPoints:['src/components/AdminMoneyOperations.tsx'],tsconfig:'tsconfig.app.json',outfile:join(dir,'ui.mjs'),bundle:true,platform:'node',format:'esm',jsx:'automatic',external:['react/*'],plugins:[{name:'mocks',setup(b){b.onResolve({filter:/^react$/},()=>({path:'hooks',namespace:'mock'}));b.onResolve({filter:/^@\/lib\/supabase$/},()=>({path:'db',namespace:'mock'}));b.onResolve({filter:/^@\/lib\/adminAccess$/},()=>({path:'access',namespace:'mock'}));b.onResolve({filter:/^@\/components\/AdminLayout$/},()=>({path:'layout',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:{hooks:'export const {useState,useRef,useEffect}=globalThis.__moneyUI.hooks;',db:'export const supabase=globalThis.__moneyUI.db;',access:'export const useAdminAccess=()=>globalThis.__moneyUI.access;export const canAccess=(a)=>a?.is_active===true;',layout:'export default function Layout(){return null;}'}[a.path]}));}}]});
@@ -23,3 +23,25 @@ for(const kind of ['payroll','refund']){
  test(`${kind} restored pending requests never submit automatically and revoked access invalidates their buttons`,()=>{const body={...(kind==='payroll'?{staffUserId:person}:{recipientUserId:person,recipientAccountId:'fac-recipient'}),requestKey:request,amount:'125.50',reason:'Reviewed original payment'};return ui(async h=>{assert.equal(h.calls.filter(c=>c.body).length,0);assert.match(h.text,/Original requests need confirmation/);const retained=h.button('Check original requests');await h.revoke();retained.props.onClick();await h.settle();assert.equal(h.calls.filter(c=>c.body).length,0);assert.match(h.text,/not been assigned/);},{kind,saved:[[`matmove-admin-money:v2:${kind}:${actor}`,JSON.stringify({version:1,actor,kind,items:[{name:'Original recipient',body}]})]]});});
 }
 test('malformed retained storage blocks new payments and money formatting preserves exact cents',()=>ui(async h=>{assert.match(h.text,/New payments are blocked/);assert.equal(h.calls.filter(c=>c.body).length,0);assert.equal(h.module.adminMoneyMinor('1000.05'),100005n);assert.throws(()=>h.module.adminMoneyMinor('1.001'));assert.throws(()=>h.module.validateMoneyDraft({version:1,actor:person,kind:'payroll',items:[]},actor,'payroll'));},{saved:[[`matmove-admin-money:v2:payroll:${actor}`,'bad JSON']]}));
+
+
+test('Payroll roster is live and searchable even when an old batch warning blocks transfer execution',async()=>{
+  const fs=await import('node:fs/promises');
+  const source=await fs.readFile('src/components/AdminMoneyOperations.tsx','utf8');
+  assert.match(source,/Recipient search/);
+  assert.match(source,/Load staff directory/);
+  assert.match(source,/Customer role/);
+  assert.match(source,/Salary for/);
+  assert.match(source,/matmove-admin-payroll-roster/);
+  assert.match(source,/postgres_changes/);
+  assert.match(source,/Recipient search and review remain available/);
+  assert.match(source,/function buildReview\(\)[\s\S]*?if\(pending\|\|!balance\)/);
+  assert.match(source,/disabled=\{busy\|\|blocked\|\|!balance\?\.newPaymentsEnabled\}/);
+});
+
+test('Review controls are not disabled by a retained-data warning',async()=>{
+  const fs=await import('node:fs/promises');
+  const source=await fs.readFile('src/components/AdminMoneyOperations.tsx','utf8');
+  assert.match(source,/<fieldset disabled=\{busy\|\|!!pending\}/);
+  assert.doesNotMatch(source,/<fieldset disabled=\{busy\|\|!!pending\|\|blocked\}/);
+});
