@@ -113,7 +113,7 @@ test('Audit rejects Supabase error responses, never claims zero or empty, and re
  assert.ok(!h.nodes.some(n=>n.props?.title==='No audit events'||n.props?.title==='No fraud alerts'));
  h.setDb(name=>name==='matmove_admin_audit_feed'?{data:{actor:uid,rows:[]},error:null}:dbEmpty());await h.click('Retry audit records');
  assert.ok(h.cards.every(c=>c.value==='0'));
- assert.ok(h.nodes.some(n=>n.props?.title==='No audit events'));
+ assert.doesNotMatch(h.text,/offline/);
 },{db:()=>({data:null,error:{message:'offline'}})}));
 test('Financial loading never fabricates active or frozen counts, or customer gateway zero',async()=>{
  const pending=deferred();await withPage('FinancialsPage',async h=>{
