@@ -83,7 +83,7 @@ export default function AdminMoneyOperations({kind}:{kind:Kind}){
  }
  function buildReview(){
   try{
-   if(pending||!balance)throw Error('The account balance is not ready or another original request needs confirmation.');
+   if(pending)throw Error('Another original payment request needs confirmation before a new review.');
    const period=reason.trim();
    if(period.length<3||period.length>(kind==='payroll'?140:300))throw Error('Enter a valid payment reason.');
    if(!selected.length)throw Error('Select a recipient.');
