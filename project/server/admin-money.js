@@ -30,8 +30,8 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
     if(view==='balance'){const id=source(kind,env),a=await account(id);return res.status(200).json({actor,accountId:id,accountName:a.name||`${kind} account`,currency:'SLE',balance:a.balance.available,newPaymentsEnabled:env.MATMOVE_ADMIN_MONEY_ENABLED==='true'});}
     if(view==='history'){const r=await db.from(table).select('id,request_key,recipient_account_id,amount_minor,currency,reason,state,provider_transfer_id,verified_receipt,created_at').eq('initiated_by',actor).order('created_at',{ascending:false}).limit(50);if(r.error||!Array.isArray(r.data))throw failure(503,'Payment history could not be loaded.');return res.status(200).json({actor,rows:r.data.map(v=>{const {verified_receipt,...safe}=v;return {...safe,state:rowResult(kind,v).status};})});}
     const q=url.searchParams.get('q')||'';if(q&&!/^[\p{L}\p{N}@.+ _'-]{2,80}$/u.test(q))throw failure(400,'Enter 2 to 80 characters using a name, email or phone number.');
-    let query=db.from('profiles').select('id,full_name,email,phone,role,wallets(id,currency,monime_account_id,metadata,is_frozen)');
-    query=kind==='payroll'?query.eq('role','staff'):query.in('role',['rider','driver','merchant']);
+    let query=db.from('profiles').select('id,full_name,email,phone,role,is_payroll_staff,wallets(id,currency,monime_account_id,metadata,is_frozen)');
+    query=kind==='payroll'?query.eq('is_payroll_staff',true).in('role',['rider','driver','merchant']):query.in('role',['rider','driver','merchant']);
     if(q)query=query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
     const r=await query.order('full_name').limit(500);if(r.error||!Array.isArray(r.data))throw failure(503,'Recipient directory could not be loaded.');return res.status(200).json({actor,rows:r.data});
    }
