@@ -82,11 +82,18 @@ export default function UsersPage() {
     let active=true;
     if(!owner){setDeletionRequests([]);return()=>{active=false;};}
     setDeletionRequestsLoading(true);setDeletionRequestsError('');
-    void supabase.rpc('matmove_admin_account_deletion_requests',{p_action:'list',p_user_id:null,p_note:null}).then(({data,error})=>{
-      if(!active)return;
-      if(error||!Array.isArray(data?.rows)){setDeletionRequestsError(error?.message||'Account deletion requests could not be loaded.');return;}
-      setDeletionRequests(data.rows);
-    }).finally(()=>{if(active)setDeletionRequestsLoading(false);});
+    void (async()=>{
+      try{
+        const {data,error}=await supabase.rpc('matmove_admin_account_deletion_requests',{p_action:'list',p_user_id:null,p_note:null});
+        if(!active)return;
+        if(error||!Array.isArray(data?.rows)){setDeletionRequestsError(error?.message||'Account deletion requests could not be loaded.');return;}
+        setDeletionRequests(data.rows);
+      }catch(err:any){
+        if(active)setDeletionRequestsError(err?.message||'Account deletion requests could not be loaded.');
+      }finally{
+        if(active)setDeletionRequestsLoading(false);
+      }
+    })();
     return()=>{active=false;};
   },[owner,stamp]);
 
