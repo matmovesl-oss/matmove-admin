@@ -124,7 +124,7 @@ async function page(fn,{grants={id:admin,is_active:true,is_owner:true,permission
  }}]});const component=(await import(pathToFileURL(out))).default;
  async function settle(){for(let n=0;n<12;n++){if(dirty){i=0;dirty=false;tree=component();while(effects.length)effects.shift()();}await new Promise(r=>setImmediate(r));}}
  const button=label=>{const b=nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);assert.ok(b,`Missing ${label}: ${text(tree)}`);return b;};
- const h={calls,button,settle,get tree(){return tree;},get text(){return text(tree);},async open(){nodes(tree).find(n=>n.type==='button'&&text(n).includes('rider@example.com')).props.onClick();await settle();},async input(kind,value){const n=nodes(tree).find(n=>n.type===kind);n.props.onChange({target:{value}});await settle();},async click(label){const b=button(label);assert.ok(!b.props.disabled);b.props.onClick();await settle();}};
+ const h={calls,button,settle,get tree(){return tree;},get text(){return text(tree);},async open(){nodes(tree).find(n=>n.type==='button'&&text(n).includes('rider@example.com')).props.onClick();await settle();},async input(kind,value){const n=nodes(tree).find(n=>n.type===kind&&(kind!=='select'||n.props['aria-label']==='Approved driver'));assert.ok(n,'Expected the labelled '+kind+' control');n.props.onChange({target:{value}});await settle();},async click(label){const b=button(label);assert.ok(!b.props.disabled);b.props.onClick();await settle();}};
  await settle();await fn(h);
  }finally{for(const s of slots)s?.cleanup?.();if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;delete globalThis.__dispatchUI;await rm(dir,{recursive:true,force:true});}
 }
