@@ -58,6 +58,10 @@ export default function UsersPage() {
   const [roleActionBusy,setRoleActionBusy]=useState(false);
   const [roleActionError,setRoleActionError]=useState('');
   const [roleActionNotice,setRoleActionNotice]=useState('');
+  const [deletionRequests,setDeletionRequests]=useState<any[]>([]);
+  const [deletionRequestsError,setDeletionRequestsError]=useState('');
+  const [deletionRequestsLoading,setDeletionRequestsLoading]=useState(false);
+  const [deletionActionBusy,setDeletionActionBusy]=useState(false);
 
   const mounted=useRef(false),readGeneration=useRef(0);
   const fetchUsers=useCallback(async()=>{
@@ -74,6 +78,17 @@ export default function UsersPage() {
     finally{if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setLoading(false);}
   },[stamp,allowed]);
   useEffect(()=>{mounted.current=true;setUsers([]);setSelectedUser(null);void fetchUsers();return()=>{mounted.current=false;readGeneration.current++;};},[fetchUsers]);
+  useEffect(()=>{
+    let active=true;
+    if(!owner){setDeletionRequests([]);return()=>{active=false;};}
+    setDeletionRequestsLoading(true);setDeletionRequestsError('');
+    void supabase.rpc('matmove_admin_account_deletion_requests',{p_action:'list',p_user_id:null,p_note:null}).then(({data,error})=>{
+      if(!active)return;
+      if(error||!Array.isArray(data?.rows)){setDeletionRequestsError(error?.message||'Account deletion requests could not be loaded.');return;}
+      setDeletionRequests(data.rows);
+    }).finally(()=>{if(active)setDeletionRequestsLoading(false);});
+    return()=>{active=false;};
+  },[owner,stamp]);
 
   const filteredUsers = users.filter(user => {
     const term = search.trim().toLowerCase();
@@ -85,6 +100,19 @@ export default function UsersPage() {
 
     return matchesSearch && matchesRole;
   });
+
+  async function reviewDeletionRequest(userId:string,action:'under_review'|'reject'){
+    if(!owner||deletionActionBusy)return;
+    setDeletionActionBusy(true);setDeletionRequestsError('');
+    const note=action==='under_review'?'Owner accepted request for manual closure review. Preserve financial, trip and legal records until final settlement is verified.':'Request declined by the account owner. Customer may contact MatMove support for next steps.';
+    try{
+      const {data,error}=await supabase.rpc('matmove_admin_account_deletion_requests',{p_action:action,p_user_id:userId,p_note:note});
+      if(error)throw error;
+      if(data?.success!==true||data.userId!==userId)throw new Error('Deletion review action was not confirmed.');
+      setDeletionRequests(rows=>rows.map(row=>row.user_id===userId?{...row,status:data.status,review_note:note,reviewed_at:new Date().toISOString()}:row));
+    }catch(e:any){setDeletionRequestsError(e.message||'Could not update the deletion request.');}
+    finally{setDeletionActionBusy(false);}
+  }
 
   async function downloadDisplayed() {
     if(exportBusy.current||loading||error||!canAccess(access,'customers'))return;
@@ -151,6 +179,11 @@ export default function UsersPage() {
       title="Customer Governance"
       subtitle="Monitor and manage Riders, Drivers, Merchants, and Staff Wallets"
     >
+      {owner&&<section aria-label="Account deletion requests" className="my-4 space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+        <div><h2 className="font-bold text-slate-900">Account deletion requests</h2><p className="text-sm text-slate-600">Requests are reviewed here. This queue does not erase profiles or financial history automatically.</p></div>
+        {deletionRequestsError&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{deletionRequestsError}</p>}
+        {deletionRequestsLoading?<p className="text-sm">Loading requests…</p>:deletionRequests.filter(row=>['requested','under_review'].includes(row.status)).length===0?<p className="text-sm text-slate-600">No open account deletion requests.</p>:deletionRequests.filter(row=>['requested','under_review'].includes(row.status)).map(row=><article key={row.id} className="rounded-xl border bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><b>{row.full_name||row.email||row.user_id}</b><p className="text-xs text-slate-600">{row.email} · {row.phone||'No phone'} · {row.role}</p><p className="mt-1 text-xs text-slate-500">Requested {row.requested_at?new Date(row.requested_at).toLocaleString():'date unavailable'}</p></div><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold capitalize">{String(row.status).replace('_',' ')}</span></div><p className="mt-3 text-sm">{row.reason||'No reason supplied.'}</p>{row.status==='requested'&&<div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={deletionActionBusy} onClick={()=>void reviewDeletionRequest(row.user_id,'under_review')} className="min-h-10 rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white">Start review</button><button type="button" disabled={deletionActionBusy} onClick={()=>void reviewDeletionRequest(row.user_id,'reject')} className="min-h-10 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700">Reject request</button></div>}{row.status==='under_review'&&<p className="mt-3 text-xs text-amber-800">Under review. Verify unsettled funds, outstanding trips/orders and applicable record-retention requirements before any final action.</p>}</article>)}
+      </section>}
       <section aria-label="CSV export" className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4">
         <div><p className="text-sm font-bold">Export displayed records</p><p className="text-xs text-slate-600">Exports the currently loaded records matching your filters. This is the loaded customer list, not a complete database backup.</p></div>
         <button type="button" onClick={()=>void downloadDisplayed()} disabled={exporting||loading||!!error||!filteredUsers.length||!canAccess(access,'customers')} className="min-h-11 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{exporting?'Exporting…':'Export displayed CSV'}</button>
