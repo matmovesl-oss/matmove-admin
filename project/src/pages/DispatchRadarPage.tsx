@@ -214,10 +214,10 @@ export default function DispatchRadarPage() {
               <input value={feedSearch} onChange={e=>setFeedSearch(e.target.value)} placeholder="Booking ID, rider, driver, pickup or destination" className="mt-1 w-full rounded-lg border p-3 font-normal"/>
             </label>
             <label className="block text-sm font-semibold">Date range
-              <select value={feedPeriod} onChange={e=>setFeedPeriod(e.target.value as "today"|"7"|"30"|"all")} className="mt-1 w-full rounded-lg border bg-white p-3 font-normal"><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">History</option></select>
+              <select aria-label="Dispatch record date range" value={feedPeriod} onChange={e=>setFeedPeriod(e.target.value as "today"|"7"|"30"|"all")} className="mt-1 w-full rounded-lg border bg-white p-3 font-normal"><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="all">History</option></select>
             </label>
             <label className="block text-sm font-semibold">Records to show
-              <select value={feedLimit} onChange={e=>setFeedLimit(e.target.value as "1000"|"2000")} className="mt-1 w-full rounded-lg border bg-white p-3 font-normal"><option value="1000">Latest 1,000</option><option value="2000">Latest 2,000</option></select>
+              <select aria-label="Dispatch records to show" value={feedLimit} onChange={e=>setFeedLimit(e.target.value as "1000"|"2000")} className="mt-1 w-full rounded-lg border bg-white p-3 font-normal"><option value="1000">Latest 1,000</option><option value="2000">Latest 2,000</option></select>
             </label>
             <p className="text-xs text-slate-500 sm:col-span-3">Showing {visibleBookings.length.toLocaleString()} matching records from {feed?.bookings.length.toLocaleString()||0} loaded (maximum 2,000).</p>
           </section>
