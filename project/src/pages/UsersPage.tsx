@@ -281,9 +281,12 @@ export default function UsersPage() {
                     </td>
 
                     <td className="px-6 py-4">
-                      <span className={`rounded-lg border px-3 py-1.5 text-[10px] font-bold uppercase ${user.role === 'staff' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
-                        {user.role}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-lg border px-3 py-1.5 text-[10px] font-bold uppercase ${user.role === 'staff' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'}`}>
+                          {user.role}
+                        </span>
+                        {user.is_payroll_staff===true&&<span className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-bold uppercase text-amber-800">Payroll</span>}
+                      </div>
                     </td>
 
                     <td className="px-6 py-4">
