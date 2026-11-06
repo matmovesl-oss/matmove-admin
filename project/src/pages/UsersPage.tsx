@@ -50,7 +50,7 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [roleFilter, setRoleFilter] = useState<
-    'all' | 'rider' | 'driver' | 'merchant' | 'staff'
+    'all' | 'rider' | 'driver' | 'merchant' | 'staff' | 'payroll'
   >('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [restoreRolePrompt,setRestoreRolePrompt]=useState(false);
@@ -80,8 +80,8 @@ export default function UsersPage() {
     const matchesSearch = !term || [user.full_name,user.first_name,user.last_name,user.email,user.phone,user.phone_number, user.oname_id]
       .some(value=>String(value||'').toLowerCase().includes(term));
 
-    const matchesRole =
-      roleFilter === 'all' || user.role === roleFilter;
+    const matchesRole = roleFilter === 'all' ||
+      (roleFilter === 'payroll' ? user.is_payroll_staff === true : user.role === roleFilter);
 
     return matchesSearch && matchesRole;
   });
@@ -105,14 +105,14 @@ export default function UsersPage() {
   }
 
   const handleMakeStaff = async () => {
-    if (!selectedUser || !owner || roleActionBusy || selectedUser.role==='staff') return;
+    if (!selectedUser || !owner || roleActionBusy || selectedUser.is_payroll_staff===true || !['rider','driver','merchant'].includes(selectedUser.role)) return;
     setRoleActionBusy(true);setRoleActionError('');setRoleActionNotice('');
     try {
       const {data,error:updateErr}=await supabase.rpc('matmove_admin_set_staff_role',{p_user_id:selectedUser.id});
       if(updateErr)throw updateErr;
       if(data!==true)throw new Error('Staff conversion was not confirmed. Refresh the profile before retrying.');
       setConvertStaffPrompt(false);
-      setRoleActionNotice('Payroll staff classification saved. The original Customer role remains stored for later restoration.');
+      setRoleActionNotice('Payroll eligibility enabled. Their Rider, Driver or Merchant role and normal app access remain active.');
       setSelectedUser(null);
       await fetchUsers();
     } catch(err:any) {
@@ -122,7 +122,7 @@ export default function UsersPage() {
 
 
   const handleRestoreOriginalRole = async () => {
-    if (!selectedUser || !owner || selectedUser.role !== 'staff' || roleActionBusy) return;
+    if (!selectedUser || !owner || selectedUser.is_payroll_staff!==true || roleActionBusy) return;
     const expectedRole=selectedUser.customer_onboarding_role;
     if (!['rider','driver','merchant'].includes(expectedRole)) {
       setRoleActionError('The original Customer role is not recorded. Manual support review is required; no role was changed.');
@@ -135,7 +135,7 @@ export default function UsersPage() {
       if(data?.success!==true||data.userId!==selectedUser.id||data.role!==expectedRole) {
         throw new Error('The original Customer role could not be confirmed. Refresh the profile before retrying.');
       }
-      setRoleActionNotice(`Restored this account to ${data.role}. The existing login, wallet and financial history were preserved.`);
+      setRoleActionNotice(`Payroll eligibility removed. The existing ${data.role} account and its wallet and financial history were preserved.`);
       setRestoreRolePrompt(false);
       setSelectedUser(null);
       await fetchUsers();
@@ -181,7 +181,8 @@ export default function UsersPage() {
             <option value="rider">Riders</option>
             <option value="driver">Drivers</option>
             <option value="merchant">Merchants</option>
-            <option value="staff">Staff Wallets</option>
+            <option value="staff">Admin Staff Accounts</option>
+            <option value="payroll">Payroll Staff</option>
           </select>
         </div>
 
@@ -320,12 +321,12 @@ export default function UsersPage() {
               </div>
               
               <div className="flex items-center gap-3">
-                {selectedUser.role !== 'staff' && owner && (
+                {owner && ['rider','driver','merchant'].includes(selectedUser.role) && selectedUser.is_payroll_staff!==true && (
                   <button type="button" onClick={()=>{setRoleActionError('');setConvertStaffPrompt(true);}} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition">
                     <Briefcase size={16} /> Convert to Payroll Staff
                   </button>
                 )}
-                {selectedUser.role==='staff'&&owner&&['rider','driver','merchant'].includes(selectedUser.customer_onboarding_role)&&(
+                {selectedUser.is_payroll_staff===true&&owner&&['rider','driver','merchant'].includes(selectedUser.customer_onboarding_role||selectedUser.role)&&(
                   <button type="button" onClick={()=>{setRoleActionError('');setRestoreRolePrompt(true);}} className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-900">
                     Restore original {selectedUser.customer_onboarding_role} account
                   </button>
@@ -340,20 +341,20 @@ export default function UsersPage() {
               </div>
             </div>
 
-            {convertStaffPrompt&&selectedUser.role!=='staff'&&owner&&(
+            {convertStaffPrompt&&owner&&selectedUser.is_payroll_staff!==true&&['rider','driver','merchant'].includes(selectedUser.role)&&(
               <section role="group" aria-label="Confirm conversion to Payroll staff" className="mx-8 mt-6 space-y-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
                 <h3 className="font-bold text-emerald-950">Convert this account to Payroll staff?</h3>
-                <p className="text-sm text-emerald-900">The person will keep the same Auth login, wallet, KYC documents and financial history. Their current Rider, Driver or Merchant role will be saved so it can be restored when Admin/Payroll staff access is removed. They will no longer sign in through the Customer Portal while classified as active staff.</p>
+                <p className="text-sm text-emerald-900">The person will keep the same Auth login, wallet, KYC documents and financial history. Payroll eligibility is added separately; their current Rider, Driver or Merchant role does not change, and they can continue using the Customer Portal while receiving staff payroll.</p>
                 <div className="flex flex-wrap gap-3">
                   <button type="button" disabled={roleActionBusy} onClick={()=>void handleMakeStaff()} className="min-h-11 rounded-lg bg-emerald-800 px-4 py-2 font-bold text-white disabled:opacity-50">{roleActionBusy?'Saving…':'Confirm Payroll staff conversion'}</button>
                   <button type="button" disabled={roleActionBusy} onClick={()=>setConvertStaffPrompt(false)} className="min-h-11 rounded-lg border bg-white px-4 py-2 font-bold">Cancel</button>
                 </div>
               </section>
             )}
-            {restoreRolePrompt&&selectedUser.role==='staff'&&owner&&(
+            {restoreRolePrompt&&selectedUser.is_payroll_staff===true&&owner&&(
               <section role="group" aria-label="Confirm original Customer role restoration" className="mx-8 mt-6 space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
                 <h3 className="font-bold text-amber-950">Restore original {selectedUser.customer_onboarding_role} account?</h3>
-                <p className="text-sm text-amber-900">This removes the Payroll staff classification and returns the existing account to its saved Customer role. The same Auth login, wallets, KYC documents and financial history are retained. No new account or wallet is created.</p>
+                <p className="text-sm text-amber-900">This removes payroll eligibility only. The account remains a normal Customer account with the same login, wallet, KYC documents and financial history.</p>
                 <div className="flex flex-wrap gap-3">
                   <button type="button" disabled={roleActionBusy} onClick={()=>void handleRestoreOriginalRole()} className="min-h-11 rounded-lg bg-amber-800 px-4 py-2 font-bold text-white disabled:opacity-50">{roleActionBusy?'Restoring…':'Confirm restore Customer role'}</button>
                   <button type="button" disabled={roleActionBusy} onClick={()=>setRestoreRolePrompt(false)} className="min-h-11 rounded-lg border bg-white px-4 py-2 font-bold">Cancel</button>
