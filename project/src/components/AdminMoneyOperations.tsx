@@ -60,7 +60,7 @@ export default function AdminMoneyOperations({kind}:{kind:Kind}){
    if(!response.ok)throw Error(data.error||'Recipient lookup failed.');
    if(data.actor!==actor||!Array.isArray(data.rows)||data.rows.length>500||data.rows.some((v:any)=>!uuid(v.id)))throw Error('Recipient list was not confirmed.');
    if(valid()){
-    if(!searchValue.trim()){const freshIds=new Set(data.rows.map((person:Recipient)=>person.id));setRows(data.rows);setSelected(previous=>previous.filter(id=>freshIds.has(id)));}else{setRows(previous=>{const merged=new Map(data.rows.map((person:Recipient)=>[person.id,person]));for(const person of previous){if(selected.includes(person.id)&&!merged.has(person.id))merged.set(person.id,person);}return [...merged.values()].slice(0,500);});}
+    if(!searchValue.trim()){const freshIds=new Set(data.rows.map((person:Recipient)=>person.id));setRows(data.rows);setSelected(previous=>previous.filter(id=>freshIds.has(id)));}else{setRows(previous=>{const merged=new Map<string,Recipient>(data.rows.map((person:Recipient)=>[person.id,person] as const));for(const person of previous){if(selected.includes(person.id)&&!merged.has(person.id))merged.set(person.id,person);}return [...merged.values()].slice(0,500);});}
    }
   }catch(e:any){if(valid())setError(e.message);}
   finally{if(valid()){mutex.current=false;setSearching(false);}}
