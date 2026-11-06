@@ -143,7 +143,7 @@ test('Migration reruns keep removed staff removed and a database failure rolls b
 
 function apiFixture({staff=record(),access={is_owner:true},rpcError=null}={}){
  const calls=[],emails=[];
- const client={from(){return{select(){return this;},eq(){return this;},order:async()=>({data:[record({id:owner,is_owner:true}),staff],error:null}),maybeSingle:async()=>({data:staff,error:null})};},auth:{admin:{inviteUserByEmail:async()=>{throw Error('Must reuse Auth identity');}},resetPasswordForEmail:async(email)=>{emails.push(email);return{error:null};}},rpc:async(name,args)=>{calls.push({name,args});if(name==='matmove_staff_find_user')return{data:target,error:null};if(rpcError)return{error:rpcError};if(name==='matmove_staff_remove')return{data:{removed:true,id:args.p_id},error:null};return{error:null};}};
+ const client={from(table){const data=table==='matmove_staff_access'?[record({id:owner,is_owner:true}),staff]:[];const chain={select(){return this;},eq(){return this;},or(){return this;},limit(){return this;},order(){return this;},then(resolve,reject){return Promise.resolve({data,error:null}).then(resolve,reject);},maybeSingle:async()=>({data:staff,error:null})};return chain;},auth:{admin:{inviteUserByEmail:async()=>{throw Error('Must reuse Auth identity');}},resetPasswordForEmail:async(email)=>{emails.push(email);return{error:null};}},rpc:async(name,args)=>{calls.push({name,args});if(name==='matmove_staff_find_user')return{data:target,error:null};if(rpcError)return{error:rpcError};if(name==='matmove_staff_remove')return{data:{removed:true,id:args.p_id},error:null};return{error:null};}};
  const handler=createHandler({authorize:async()=>({client,user:{id:owner},access}),env});
  const invoke=async(body,method='POST')=>{const r=response();await handler({method,headers:{},body},r);return r;};
  return{client,calls,emails,invoke};
@@ -155,8 +155,8 @@ test('API removal uses verified actor/version and sends no email; non-owner and 
  for(const body of [{action:'remove',id:target},{action:'remove',id:owner,expectedUpdatedAt:version,reason:'Do not remove'},{action:'remove',id:target,expectedUpdatedAt:version,reason:'x'}])assert.equal((await f.invoke(body)).code,400);
 });
 
-test('API hides removed directory rows, blocks removed edits/resends, and requires explicit restoration',async()=>{
- const f=apiFixture({staff:record({removed_at:version,is_active:false})});const directory=await f.invoke(null,'GET');assert.equal(directory.body.staff.length,1);assert.equal(directory.body.removalReady,true);
+test('API displays removed Admin records, blocks removed edits/resends, and requires explicit restoration',async()=>{
+ const f=apiFixture({staff:record({removed_at:version,is_active:false})});const directory=await f.invoke(null,'GET');assert.equal(directory.body.staff.length,2);assert.equal(directory.body.staff.find(row=>row.id===target).removed_at,version);assert.equal(directory.body.removalReady,true);
  assert.equal((await f.invoke({action:'resend',id:target})).code,404);
  const invite={action:'invite',email:'staff@example.com',fullName:'Staff Again',permissions:['games.entries']};
  const first=await f.invoke(invite);assert.equal(first.code,409);assert.equal(first.body.code,'STAFF_REMOVED');assert.equal(f.emails.length,0);assert.equal(f.calls.filter(c=>c.name==='matmove_staff_restore').length,0);
@@ -212,7 +212,7 @@ test('Directory fetch failure shows Retry instead of claiming no staff, and unco
 
 
 test('Restoring a removed person requires the separate owner confirmation and sends the exact reviewed identity/version',()=>withPage(async h=>{
- await h.click('Invite staff');await h.field('Full name','Staff Again');await h.field('Work email','staff@example.com');await h.assignment('Entry payments');await h.submit();
+ await h.click('Invite Admin staff');await h.field('Full name','Staff Again');await h.field('Work email','staff@example.com');await h.assignment('Entry payments');await h.submit();
  assert.ok(h.button('Confirm restore and send login email'));assert.equal(h.button('Authorize and send invitation').props.disabled,true);
  assert.equal(h.calls.filter(c=>c.body?.restoreRemoved).length,0);
  await h.click('Confirm restore and send login email');
