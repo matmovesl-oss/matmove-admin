@@ -37,6 +37,7 @@ type Notification = {
   destination: string | null;
   recipient_count: number;
   created_at: string;
+  deleted_at?: string|null;
 };
 
 function customerName(customer: Customer) {
