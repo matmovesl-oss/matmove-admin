@@ -33,7 +33,7 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
     let query=db.from('profiles').select('id,full_name,email,phone,role,wallets(id,currency,monime_account_id,metadata,is_frozen)');
     query=kind==='payroll'?query.eq('role','staff'):query.in('role',['rider','driver','merchant']);
     if(q)query=query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
-    const r=await query.order('full_name').limit(50);if(r.error||!Array.isArray(r.data))throw failure(503,'Recipient directory could not be loaded.');return res.status(200).json({actor,rows:r.data});
+    const r=await query.order('full_name').limit(500);if(r.error||!Array.isArray(r.data))throw failure(503,'Recipient directory could not be loaded.');return res.status(200).json({actor,rows:r.data});
    }
    if(url.searchParams.size)throw failure(400,'Payment confirmations do not accept query parameters.');
    let b;try{b=typeof req.body==='string'?JSON.parse(req.body):req.body;}catch{throw failure(400,'Invalid request body.');}

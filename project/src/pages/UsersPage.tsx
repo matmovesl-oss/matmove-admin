@@ -35,7 +35,8 @@ function Info({
 
 export default function UsersPage() {
   const access=useAdminAccess();
-  const allowed=canAccess(access,'customers') || access?.permissions?.includes('*'); // Safely supports super admin
+  const allowed=canAccess(access,'customers') || access?.permissions?.includes('*');
+  const owner=allowed&&access?.is_owner===true; // Role recovery is owner-only.
   const stamp=JSON.stringify([access?.id,allowed,access?.is_active,access?.permissions]);
   const current=useRef(stamp);current.current=stamp;
   const [loadedStamp,setLoadedStamp]=useState('');
@@ -52,6 +53,11 @@ export default function UsersPage() {
     'all' | 'rider' | 'driver' | 'merchant' | 'staff'
   >('all');
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [restoreRolePrompt,setRestoreRolePrompt]=useState(false);
+  const [convertStaffPrompt,setConvertStaffPrompt]=useState(false);
+  const [roleActionBusy,setRoleActionBusy]=useState(false);
+  const [roleActionError,setRoleActionError]=useState('');
+  const [roleActionNotice,setRoleActionNotice]=useState('');
 
   const mounted=useRef(false),readGeneration=useRef(0);
   const fetchUsers=useCallback(async()=>{
@@ -98,24 +104,44 @@ export default function UsersPage() {
     finally{exportBusy.current=false;setExporting(false);}
   }
 
-  // --- NEW: Convert to Staff ---
   const handleMakeStaff = async () => {
-    if (!selectedUser) return;
-    const confirmed = window.confirm(`Are you sure you want to change ${selectedUser.full_name || 'this user'} into a Staff Account? This will classify their wallet for internal payroll operations.`);
-    if (!confirmed) return;
-
+    if (!selectedUser || !owner || roleActionBusy || selectedUser.role==='staff') return;
+    setRoleActionBusy(true);setRoleActionError('');setRoleActionNotice('');
     try {
-      // Uses the secure RPC to bypass RLS restrictions
-      const { error: updateErr } = await supabase.rpc('matmove_admin_set_staff_role', { p_user_id: selectedUser.id });
-      
-      if (updateErr) throw updateErr;
-      
-      alert('User successfully converted to Staff Account.');
+      const {data,error:updateErr}=await supabase.rpc('matmove_admin_set_staff_role',{p_user_id:selectedUser.id});
+      if(updateErr)throw updateErr;
+      if(data!==true)throw new Error('Staff conversion was not confirmed. Refresh the profile before retrying.');
+      setConvertStaffPrompt(false);
+      setRoleActionNotice('Payroll staff classification saved. The original Customer role remains stored for later restoration.');
       setSelectedUser(null);
-      void fetchUsers();
-    } catch (err: any) {
-      alert(err.message || 'Failed to update role to staff.');
+      await fetchUsers();
+    } catch(err:any) {
+      setRoleActionError(err.message||'Failed to convert this account to Payroll staff.');
+    } finally { setRoleActionBusy(false); }
+  };
+
+
+  const handleRestoreOriginalRole = async () => {
+    if (!selectedUser || !owner || selectedUser.role !== 'staff' || roleActionBusy) return;
+    const expectedRole=selectedUser.customer_onboarding_role;
+    if (!['rider','driver','merchant'].includes(expectedRole)) {
+      setRoleActionError('The original Customer role is not recorded. Manual support review is required; no role was changed.');
+      return;
     }
+    setRoleActionBusy(true);setRoleActionError('');setRoleActionNotice('');
+    try {
+      const {data,error:restoreError}=await supabase.rpc('matmove_admin_restore_customer_role',{p_user_id:selectedUser.id});
+      if(restoreError)throw restoreError;
+      if(data?.success!==true||data.userId!==selectedUser.id||data.role!==expectedRole) {
+        throw new Error('The original Customer role could not be confirmed. Refresh the profile before retrying.');
+      }
+      setRoleActionNotice(`Restored this account to ${data.role}. The existing login, wallet and financial history were preserved.`);
+      setRestoreRolePrompt(false);
+      setSelectedUser(null);
+      await fetchUsers();
+    } catch (err:any) {
+      setRoleActionError(err?.message||'Original Customer role restoration failed.');
+    } finally { setRoleActionBusy(false); }
   };
 
   if(!allowed)return <AdminLayout title="Customer Governance"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
@@ -172,6 +198,7 @@ export default function UsersPage() {
         </button>
       </div>
 
+      {roleActionNotice&&<p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{roleActionNotice}</p>}{roleActionError&&<p role="alert" className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{roleActionError}</p>}
       {error && (
         <p
           role="alert"
@@ -293,9 +320,14 @@ export default function UsersPage() {
               </div>
               
               <div className="flex items-center gap-3">
-                {selectedUser.role !== 'staff' && (
-                  <button onClick={handleMakeStaff} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition">
-                    <Briefcase size={16} /> Convert to Staff Account
+                {selectedUser.role !== 'staff' && owner && (
+                  <button type="button" onClick={()=>{setRoleActionError('');setConvertStaffPrompt(true);}} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold text-xs border border-emerald-200 transition">
+                    <Briefcase size={16} /> Convert to Payroll Staff
+                  </button>
+                )}
+                {selectedUser.role==='staff'&&owner&&['rider','driver','merchant'].includes(selectedUser.customer_onboarding_role)&&(
+                  <button type="button" onClick={()=>{setRoleActionError('');setRestoreRolePrompt(true);}} className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-900">
+                    Restore original {selectedUser.customer_onboarding_role} account
                   </button>
                 )}
                 <button
@@ -308,6 +340,26 @@ export default function UsersPage() {
               </div>
             </div>
 
+            {convertStaffPrompt&&selectedUser.role!=='staff'&&owner&&(
+              <section role="group" aria-label="Confirm conversion to Payroll staff" className="mx-8 mt-6 space-y-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
+                <h3 className="font-bold text-emerald-950">Convert this account to Payroll staff?</h3>
+                <p className="text-sm text-emerald-900">The person will keep the same Auth login, wallet, KYC documents and financial history. Their current Rider, Driver or Merchant role will be saved so it can be restored when Admin/Payroll staff access is removed. They will no longer sign in through the Customer Portal while classified as active staff.</p>
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" disabled={roleActionBusy} onClick={()=>void handleMakeStaff()} className="min-h-11 rounded-lg bg-emerald-800 px-4 py-2 font-bold text-white disabled:opacity-50">{roleActionBusy?'Saving…':'Confirm Payroll staff conversion'}</button>
+                  <button type="button" disabled={roleActionBusy} onClick={()=>setConvertStaffPrompt(false)} className="min-h-11 rounded-lg border bg-white px-4 py-2 font-bold">Cancel</button>
+                </div>
+              </section>
+            )}
+            {restoreRolePrompt&&selectedUser.role==='staff'&&owner&&(
+              <section role="group" aria-label="Confirm original Customer role restoration" className="mx-8 mt-6 space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+                <h3 className="font-bold text-amber-950">Restore original {selectedUser.customer_onboarding_role} account?</h3>
+                <p className="text-sm text-amber-900">This removes the Payroll staff classification and returns the existing account to its saved Customer role. The same Auth login, wallets, KYC documents and financial history are retained. No new account or wallet is created.</p>
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" disabled={roleActionBusy} onClick={()=>void handleRestoreOriginalRole()} className="min-h-11 rounded-lg bg-amber-800 px-4 py-2 font-bold text-white disabled:opacity-50">{roleActionBusy?'Restoring…':'Confirm restore Customer role'}</button>
+                  <button type="button" disabled={roleActionBusy} onClick={()=>setRestoreRolePrompt(false)} className="min-h-11 rounded-lg border bg-white px-4 py-2 font-bold">Cancel</button>
+                </div>
+              </section>
+            )}
             <div className="space-y-8 p-8">
               <section>
                 <h3 className="mb-4 text-sm font-bold uppercase tracking-wide text-slate-400">
