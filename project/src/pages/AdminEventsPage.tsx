@@ -294,7 +294,7 @@ export function AdminEventsPage() {
                     </div>
 
                     <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-base font-black text-sky-600">SLE {Number(evt.ticket_price).toLocaleString()}</span>
+                      <div className="text-base font-black text-sky-600">SLE {Number(evt.ticket_price).toLocaleString()}</div>{evt.ticket_price_usd!=null&&<div className="text-xs font-bold text-emerald-700">USD ${Number(evt.ticket_price_usd).toFixed(2)} display quote</div>}
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
