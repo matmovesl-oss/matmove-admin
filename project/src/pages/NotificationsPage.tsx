@@ -37,6 +37,7 @@ type Notification = {
   destination: string | null;
   recipient_count: number;
   created_at: string;
+  deleted_at?: string|null;
 };
 
 function customerName(customer: Customer) {
@@ -90,6 +91,8 @@ export default function NotificationsPage() {
   const [history, setHistory] = useState<Notification[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
+  const [deleteTarget,setDeleteTarget]=useState<string|null>(null);
+  const [deleteBusy,setDeleteBusy]=useState(false);
 
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
@@ -267,25 +270,20 @@ export default function NotificationsPage() {
     }
   }
 
-  // --- NEW: Delete Notification ---
   async function handleDelete(id: string) {
-    const confirmed = window.confirm("Are you sure you want to delete this notification? It will be permanently removed.");
-    if (!confirmed) return;
-
-    // Optimistically remove from UI
-    setHistory(prev => prev.filter(item => item.id !== id));
-    setSendError('');
-    setSendNotice('');
-
+    if(deleteBusy||!allowed)return;
+    setDeleteBusy(true);setSendError('');setSendNotice('');
     try {
-      const { error } = await supabase.from('notifications').delete().eq('id', id);
-      if (error) throw error;
-      setSendNotice('Notification deleted successfully.');
+      const {data,error}=await supabase.rpc('matmove_admin_delete_notification',{p_id:id});
+      if(error)throw error;
+      if(data?.deleted!==true||data.messageId!==id||data.deletedForAllRecipients!==true)throw new Error('Global notification deletion was not confirmed. Refresh the history before retrying.');
+      setHistory(previous=>previous.map(item=>item.id===id?{...item,deleted_at:new Date().toISOString()}:item));
+      setDeleteTarget(null);
+      setSendNotice('Notification withdrawn from every recipient inbox. The original send record is retained for audit.');
     } catch (err: any) {
-      // Revert UI on failure
+      setSendError(err.message || 'Notification could not be withdrawn from customer inboxes.');
       void loadHistory();
-      setSendError(err.message || 'Failed to delete notification.');
-    }
+    } finally {setDeleteBusy(false);}
   }
 
   if (!allowed) {
@@ -551,13 +549,7 @@ export default function NotificationsPage() {
                         {formatDate(item.created_at)}
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition"
-                          title="Delete Notification"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {item.deleted_at ? <span className="text-xs font-bold text-slate-500">Deleted for all users</span> : deleteTarget===item.id ? <div className="flex flex-wrap justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={()=>void handleDelete(item.id)} className="min-h-10 rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white">{deleteBusy?'Deleting…':'Confirm global delete'}</button><button type="button" disabled={deleteBusy} onClick={()=>setDeleteTarget(null)} className="min-h-10 rounded-lg border px-3 py-2 text-xs">Cancel</button></div> : <button type="button" disabled={deleteBusy} onClick={()=>setDeleteTarget(item.id)} className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" title="Delete for all users" aria-label={'Delete notification '+item.title}><Trash2 size={16} /></button>}
                       </td>
                     </tr>
                   ))}

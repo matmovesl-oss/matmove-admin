@@ -36,7 +36,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   if(req.method==='GET'){
    const [result,profileResult]=await Promise.all([
     client.from('matmove_staff_access').select('*').order('created_at',{ascending:false}),
-    client.from('profiles').select('id,email,full_name,phone,role,customer_onboarding_role,created_at,updated_at').eq('role','staff').order('created_at',{ascending:false}).limit(1000)
+    client.from('profiles').select('id,email,full_name,phone,role,customer_onboarding_role,is_payroll_staff,created_at,updated_at').or('is_payroll_staff.eq.true,role.eq.staff').order('created_at',{ascending:false}).limit(1000)
    ]);
    if(result.error||!Array.isArray(result.data)||profileResult.error||!Array.isArray(profileResult.data))throw failure(503,'Staff directory unavailable. Retry the directory.');
    const accessIds=new Set(result.data.map(row=>row.id));
@@ -48,14 +48,14 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
      permissions:Array.isArray(row.permissions)?row.permissions:[],is_active:row.is_active===true,
      is_owner:row.is_owner===true,requires_password_setup:row.requires_password_setup===true,
      invite_state:row.invite_state,updated_at:row.updated_at,removed_at:row.removed_at||null,
-     access_type:'admin',customer_onboarding_role:profile?.customer_onboarding_role||null
+     access_type:'admin',customer_onboarding_role:profile?.customer_onboarding_role||(['rider','driver','merchant'].includes(profile?.role)?profile.role:null)
     };
    });
-   const payrollRows=profileResult.data.filter(row=>!accessIds.has(row.id)).map(row=>({
+   const payrollRows=profileResult.data.filter(row=>!accessIds.has(row.id)&&(row.is_payroll_staff===true||row.role==='staff')).map(row=>({
     id:row.id,email:row.email,full_name:row.full_name,phone:row.phone,department:'Payroll staff',
     permissions:[],is_active:true,is_owner:false,requires_password_setup:false,invite_state:'Payroll only',
     updated_at:row.updated_at,removed_at:null,access_type:'payroll',
-    customer_onboarding_role:row.customer_onboarding_role||null
+    customer_onboarding_role:row.customer_onboarding_role||(['rider','driver','merchant'].includes(row.role)?row.role:null),role:row.role,is_payroll_staff:row.is_payroll_staff===true
    }));
    const staff=[...adminRows,...payrollRows].sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
    return res.status(200).json({
