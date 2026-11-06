@@ -20,6 +20,7 @@ export function PayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'failed'>('all');
+  const [search,setSearch]=useState('');
 
   const mounted = useRef(false), generation = useRef(0);
   const fetchRealPayouts = useCallback(async () => {
@@ -51,10 +52,15 @@ export function PayoutsPage() {
   }, [payouts]);
 
   const filteredItems = useMemo(() => {
-    if (filter === 'all') return payouts;
-    if (filter === 'pending') return payouts.filter(p => p.status === 'pending' || p.status === 'processing');
-    return payouts.filter(p => p.status === filter);
-  }, [payouts, filter]);
+    const q=search.trim().toLowerCase();
+    return payouts.filter(p=>{
+      const statusMatch=filter==='all'||(filter==='pending'?(p.status==='pending'||p.status==='processing'):p.status===filter);
+      if(!statusMatch)return false;
+      if(!q)return true;
+      return [p.id,p.reference,p.transactionId,p.paymentId,p.destination?.phoneNumber,p.destination?.accountNumber,p.destination?.providerId]
+        .some(value=>String(value??'').toLowerCase().includes(q));
+    });
+  }, [payouts, filter, search]);
 
   async function downloadDisplayed() {
     if(exportBusy.current||loading||apiError||!canAccess(access,'payouts'))return;
@@ -90,17 +96,22 @@ export function PayoutsPage() {
         <StatCard label="Loaded failed payouts" value={loading ? 'Loading…' : apiError ? 'Check connection' : String(stats.failed)} icon={XCircle} tone="red" />
       </div>
 
-      <div className="mb-4 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 flex flex-wrap gap-3 justify-between items-center">
-        <div className="flex flex-wrap gap-2">
-          {(['all', 'pending', 'completed', 'failed'] as const).map(tab => (
-            <button key={tab} onClick={() => setFilter(tab)} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize transition ${filter === tab ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              {tab}
-            </button>
-          ))}
+      <div className="mb-4 bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3 space-y-3">
+        <label className="block text-sm font-semibold text-slate-700">Search payouts by transaction ID or destination phone
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Transaction ID, reference or phone number" className="mt-1 w-full rounded-lg border p-3 font-normal"/>
+        </label>
+        <div className="flex flex-wrap gap-3 justify-between items-center">
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'pending', 'completed', 'failed'] as const).map(tab => (
+              <button key={tab} onClick={() => setFilter(tab)} className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize transition ${filter === tab ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+          <button onClick={fetchRealPayouts} disabled={loading} className="flex items-center gap-2 px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition disabled:opacity-50">
+            {loading ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />} Refresh Live
+          </button>
         </div>
-        <button onClick={fetchRealPayouts} disabled={loading} className="flex items-center gap-2 px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition disabled:opacity-50">
-          {loading ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />} Refresh Live
-        </button>
       </div>
 
       {apiError && (
