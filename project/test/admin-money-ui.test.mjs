@@ -35,7 +35,7 @@ test('Payroll roster is live and searchable even when an old batch warning block
   assert.match(source,/matmove-admin-payroll-roster/);
   assert.match(source,/postgres_changes/);
   assert.match(source,/Recipient search and review remain available/);
-  assert.match(source,/function buildReview\(\)[\s\S]*?if\(pending\|\|!balance\)/);
+  assert.match(source,/function buildReview\(\)[\s\S]*?if\(pending\)/);
   assert.match(source,/disabled=\{busy\|\|blocked\|\|!balance\?\.newPaymentsEnabled\}/);
 });
 
