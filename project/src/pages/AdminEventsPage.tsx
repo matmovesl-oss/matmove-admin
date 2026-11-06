@@ -29,6 +29,7 @@ export function AdminEventsPage() {
   const [date, setDate] = useState('');
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState('100');
+  const [priceUsd,setPriceUsd]=useState('');
   const [description, setDescription] = useState('');
   
   // Status dropdown: 'active', 'postponed', 'past'
@@ -74,6 +75,7 @@ export function AdminEventsPage() {
     setDate(evt.event_date ? new Date(evt.event_date).toISOString().slice(0, 16) : '');
     setVenue(evt.venue);
     setPrice(String(evt.ticket_price));
+    setPriceUsd(evt.ticket_price_usd==null?'':String(evt.ticket_price_usd));
     setDescription(evt.description || '');
     setEventStatus(evt.is_active ? 'active' : 'postponed'); // Map existing boolean to dropdown
     setFlyerFile(null);
@@ -137,6 +139,7 @@ export function AdminEventsPage() {
           event_date: new Date(date).toISOString(),
           venue: venue.trim(),
           ticket_price: Number(price),
+          ticket_price_usd: priceUsd.trim()?Number(priceUsd):null,
           description: description.trim(),
           is_active: eventStatus === 'active'
         }).eq('id', editingEvent.id);
@@ -149,6 +152,7 @@ export function AdminEventsPage() {
           event_date: new Date(date).toISOString(),
           venue: venue.trim(),
           ticket_price: Number(price),
+          ticket_price_usd: priceUsd.trim()?Number(priceUsd):null,
           description: description.trim(),
           is_active: eventStatus === 'active'
         });
@@ -158,7 +162,7 @@ export function AdminEventsPage() {
 
       setShowAddModal(false);
       setEditingEvent(null);
-      setTitle(''); setFlyerFile(null); setDate(''); setVenue(''); setPrice('100'); setDescription('');
+      setTitle(''); setFlyerFile(null); setDate(''); setVenue(''); setPrice('100'); setPriceUsd(''); setDescription('');
       void fetchEventsAndTickets();
     } catch (err: any) {
       setActionError(err.message || 'Failed to save event.');
@@ -445,14 +449,20 @@ export function AdminEventsPage() {
                     className="w-full p-2 border border-dashed rounded-xl text-xs bg-slate-50 cursor-pointer"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Date & Time</label>
                     <input type="datetime-local" required value={date} onChange={e => setDate(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Ticket Price (SLE)</label>
-                    <input type="number" required value={price} onChange={e => setPrice(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs font-bold" />
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Wallet debit price (SLE)</label>
+                    <input type="number" min="0.01" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} className="w-full p-2.5 border rounded-xl text-xs font-bold" />
+                    <p className="mt-1 text-[10px] text-slate-500">The customer's SLE wallet is charged this exact amount.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Display price (USD)</label>
+                    <input type="number" min="0.01" step="0.01" value={priceUsd} onChange={e => setPriceUsd(e.target.value)} placeholder="Optional" className="w-full p-2.5 border rounded-xl text-xs font-bold" />
+                    <p className="mt-1 text-[10px] text-slate-500">Display only; not used for wallet charging.</p>
                   </div>
                 </div>
                 <div>
