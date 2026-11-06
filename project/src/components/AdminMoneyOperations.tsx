@@ -81,7 +81,8 @@ export default function AdminMoneyOperations({kind}:{kind:Kind}){
     if(!person)throw Error('Reload and select the recipient again.');
     const amountValue=(kind==='payroll'?(amounts[id]??amount):amount).trim();
     adminMoneyMinor(amountValue);
-    const dest=kind==='refund'?destination(person):undefined;
+    const linkedAccount=destination(person);
+    const dest=kind==='refund'?linkedAccount:undefined;
     return {
      name:(person.full_name||person.email||person.phone||person.id).slice(0,200),
      body:{...(kind==='payroll'?{staffUserId:id}:{recipientUserId:id,recipientAccountId:dest!}),requestKey:crypto.randomUUID(),amount:amountValue,reason:period}
