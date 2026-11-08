@@ -8,7 +8,7 @@ export const config = {
 };
 
 const EVENT_ID = /^wke-[A-Za-z0-9_-]{1,120}$/;
-const ACCOUNT_ID = /^fac-[A-Za-z0-9_-]{1,116}$/;
+const ACCOUNT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{2,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function claimEvent(client, event) {
@@ -110,7 +110,7 @@ async function processEvent(client, event) {
         .from('withdrawal_requests')
         .update({
           status,
-          provider_transaction_id: typeof data.id === 'string' ? data.id : null,
+          provider_transaction_id: typeof event.object?.id === 'string' ? event.object.id : (typeof data.id === 'string' ? data.id : null),
           processed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -122,32 +122,34 @@ async function processEvent(client, event) {
   }
 
   if (eventType === 'financial_account.credited' || eventType === 'financial_account.debited') {
-    if (typeof data.id !== 'string') throw new Error('Financial account event is missing its account ID.');
+    const accountId = event.object?.id;
+    if (typeof accountId !== 'string') throw new Error('Financial account event is missing its account ID.');
     // Never apply a potentially stale balance snapshot from an event. Read the
     // account's current authoritative balance from Monime instead.
-    await refreshWalletBalance(client, data.id);
+    await refreshWalletBalance(client, accountId);
     return;
   }
 
   if (eventType.startsWith('payment.')) {
-    if (typeof data.id !== 'string' || !data.id) throw new Error('Payment event is missing its provider reference.');
+    const paymentId = event.object?.id;
+    if (typeof paymentId !== 'string' || !paymentId) throw new Error('Payment event is missing its provider reference.');
     const status = eventType.slice('payment.'.length);
     const update = await client
       .from('payment_transactions')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('provider', 'monime')
-      .eq('provider_reference', data.id);
+      .eq('provider_reference', paymentId);
     if (update.error) throw new Error('Payment status update failed.');
     return;
   }
 
   if (eventType === 'financial_transaction.created') {
-    const accountId = data.financialAccountId;
-    const transactionId = data.id;
+    const accountId = data.financialAccount?.id || data.financialAccountId;
+    const transactionId = event.object?.id || data.id;
     const amount = data.amount;
     const currency = amount?.currency;
     const minor = amount?.value;
-    const direction = data.direction;
+    const direction = data.type || data.direction;
 
     if (
       typeof accountId !== 'string' ||
