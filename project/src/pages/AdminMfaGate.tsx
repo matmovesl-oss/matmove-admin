@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, LogOut, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -18,6 +18,8 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     let live = true;
@@ -38,7 +40,7 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
 
         if (verified.length > 0) {
           if (aal.data.currentLevel === 'aal2' && aal.data.nextLevel === 'aal2') {
-            await onComplete();
+            await onCompleteRef.current();
             return;
           }
           if (live) {
@@ -67,7 +69,7 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
 
     void prepare();
     return () => { live = false; };
-  }, [onComplete, retryCount]);
+  }, [retryCount]);
 
   async function beginEnrollment() {
     if (busy || mode !== 'setup') return;
