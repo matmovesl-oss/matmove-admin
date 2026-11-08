@@ -26,10 +26,7 @@ async function claimEvent(client, event) {
     .maybeSingle();
 
   if (!inserted.error) return { claimed: true };
-
-  if (inserted.error.code !== '23505') {
-    throw new Error('Webhook event could not be recorded.');
-  }
+  if (inserted.error.code !== '23505') throw new Error('Webhook event could not be recorded.');
 
   const existing = await client
     .from('matmove_monime_webhook_events')
@@ -37,19 +34,12 @@ async function claimEvent(client, event) {
     .eq('event_id', event.id)
     .maybeSingle();
 
-  if (existing.error || !existing.data) {
-    throw new Error('Webhook event state could not be checked.');
-  }
-
-  if (existing.data.status === 'processed') {
-    return { claimed: false, duplicate: true };
-  }
+  if (existing.error || !existing.data) throw new Error('Webhook event state could not be checked.');
+  if (existing.data.status === 'processed') return { claimed: false, duplicate: true };
 
   const updatedAt = Date.parse(existing.data.updated_at || '');
   const stale = !Number.isFinite(updatedAt) || now.getTime() - updatedAt > 5 * 60 * 1000;
-  if (existing.data.status === 'processing' && !stale) {
-    return { claimed: false, duplicate: true };
-  }
+  if (existing.data.status === 'processing' && !stale) return { claimed: false, duplicate: true };
 
   let update = client
     .from('matmove_monime_webhook_events')
@@ -61,11 +51,8 @@ async function claimEvent(client, event) {
     })
     .eq('event_id', event.id);
 
-  if (existing.data.status === 'failed') {
-    update = update.eq('status', 'failed');
-  } else {
-    update = update.eq('status', 'processing').lt('updated_at', new Date(now.getTime() - 5 * 60 * 1000).toISOString());
-  }
+  if (existing.data.status === 'failed') update = update.eq('status', 'failed');
+  else update = update.eq('status', 'processing').lt('updated_at', new Date(now.getTime() - 5 * 60 * 1000).toISOString());
 
   const reclaimed = await update.select('event_id').maybeSingle();
   if (reclaimed.error) throw new Error('Webhook event could not be claimed.');
@@ -101,9 +88,7 @@ async function refreshWalletBalance(client, monimeAccountId) {
     !['SLE', 'USD'].includes(available.currency) ||
     !Number.isSafeInteger(available.value) ||
     available.value < 0
-  ) {
-    throw new Error('Monime returned an invalid financial account balance.');
-  }
+  ) throw new Error('Monime returned an invalid financial account balance.');
 
   const updated = await client
     .from('wallets')
@@ -171,9 +156,7 @@ async function processEvent(client, event) {
       !['SLE', 'USD'].includes(currency) ||
       !Number.isSafeInteger(minor) ||
       minor <= 0
-    ) {
-      throw new Error('Financial transaction event is invalid.');
-    }
+    ) throw new Error('Financial transaction event is invalid.');
 
     const transactionType =
       direction === 'in' || direction === 'credit' ? 'credit' :
@@ -216,17 +199,13 @@ async function processEvent(client, event) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).send('Method Not Allowed');
   }
 
   const webhookSecret = process.env.MONIME_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    // Fail closed: never process an unsigned event when the signing secret is absent.
-    return res.status(503).json({ error: 'Webhook verification is not configured.' });
-  }
+  if (!webhookSecret) return res.status(503).json({ error: 'Webhook verification is not configured.' });
 
   let eventId = null;
   let claimed = false;
@@ -235,37 +214,47 @@ export default async function handler(req, res) {
   try {
     const rawBody = await readMonimeRawBody(req);
     const signature = req.headers?.['monime-signature'];
-
     if (!verifyMonimeSignature(rawBody, signature, webhookSecret)) {
       return res.status(401).json({ error: 'Unauthorized webhook.' });
     }
 
-    let event;
+    let envelope;
     try {
-      event = JSON.parse(rawBody.toString('utf8'));
+      envelope = JSON.parse(rawBody.toString('utf8'));
     } catch {
       return res.status(400).json({ error: 'Invalid webhook payload.' });
     }
 
+    // Monime's webhook envelope uses event.id / event.name, object.id / object.type,
+    // and a top-level data object. Do not confuse event.name with object.type.
+    const descriptor = envelope?.event;
+    const object = envelope?.object;
+    const event = {
+      id: descriptor?.id,
+      type: descriptor?.name,
+      timestamp: descriptor?.timestamp,
+      object,
+      data: envelope?.data,
+    };
+
     if (
-      !event ||
-      typeof event !== 'object' ||
+      !envelope ||
+      typeof envelope !== 'object' ||
       !EVENT_ID.test(event.id || '') ||
       typeof event.type !== 'string' ||
       !event.type ||
+      !object ||
+      typeof object.id !== 'string' ||
+      typeof object.type !== 'string' ||
       !event.data ||
       typeof event.data !== 'object' ||
       Array.isArray(event.data)
-    ) {
-      return res.status(400).json({ error: 'Invalid webhook event.' });
-    }
+    ) return res.status(400).json({ error: 'Invalid webhook event.' });
 
     eventId = event.id;
     const projectUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!projectUrl || !serviceKey) {
-      return res.status(503).json({ error: 'Webhook storage is not configured.' });
-    }
+    if (!projectUrl || !serviceKey) return res.status(503).json({ error: 'Webhook storage is not configured.' });
 
     supabase = createClient(projectUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -291,7 +280,6 @@ export default async function handler(req, res) {
       .eq('status', 'processing');
 
     if (completed.error) throw new Error('Webhook completion could not be recorded.');
-
     return res.status(200).json({ received: true, event: event.type });
   } catch (error) {
     if (claimed && supabase && eventId) {
