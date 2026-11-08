@@ -13,7 +13,7 @@ import ReportsPage from './pages/ReportsPage';
 
 import {loadAdminSession} from './lib/adminSession';
 import { GamesPage } from './pages/GamesPage';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import LoginPage from './pages/LoginPage';
@@ -69,8 +69,8 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
   return()=>{live=false;};
  },[access?.id,access?.is_active,access?.requires_password_setup,recovery,loc.pathname,session.access_token,reload]);
  async function finished(){const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
- const mfaCompleted=useCallback(async()=>{const assurance=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();if(assurance.error||assurance.data.currentLevel!=='aal2')throw new Error('Admin second-factor verification was not confirmed.');const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);setMfaState('verified');},[session.user.id,session.access_token]);
- const mfaSignOut=useCallback(async()=>{const result=await supabase.auth.signOut({scope:'local'});if(result.error)throw result.error;},[]);
+ async function mfaCompleted(){const assurance=await supabase.auth.mfa.getAuthenticatorAssuranceLevel();if(assurance.error||assurance.data.currentLevel!=='aal2')throw new Error('Admin second-factor verification was not confirmed.');const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);setMfaState('verified');}
+ async function mfaSignOut(){const result=await supabase.auth.signOut({scope:'local'});if(result.error)throw result.error;}
 
  if(loading)return <p className="p-8">Checking staff assignments…</p>;
  return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:mfaState==='checking'?<p role="status" className="p-8">Checking Admin two-factor security…</p>:mfaState==='error'?<Denied message="Two-factor security could not be verified. Retry before opening the Admin workspace." retry={()=>setReload(n=>n+1)}/>:mfaState!=='verified'?<AdminMfaGate key={session.user.id} onComplete={mfaCompleted} onSignOut={mfaSignOut}/>:<Routes>
