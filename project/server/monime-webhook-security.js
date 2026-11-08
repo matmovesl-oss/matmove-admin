@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export const MONIME_WEBHOOK_MAX_BYTES = 1024 * 1024;
+const EVENT_ID = /^wke-[A-Za-z0-9_-]{1,120}$/;
 
 export function verifyMonimeSignature(rawBody, signatureHeader, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
-  if (!Buffer.isBuffer(rawBody) || typeof secret !== 'string' || !secret.trim()) return false;
+  if (!Buffer.isBuffer(rawBody) || typeof secret !== 'string' || secret.length < 32 || secret.length > 256) return false;
   if (typeof signatureHeader !== 'string') return false;
 
   const match = /^t=(\d{10}),v1=([A-Za-z0-9+/]{43}=)$/.exec(signatureHeader.trim());
@@ -22,6 +23,36 @@ export function verifyMonimeSignature(rawBody, signatureHeader, secret, nowSecon
     .digest();
 
   return timingSafeEqual(expected, received);
+}
+
+export function normalizeMonimeEnvelope(envelope) {
+  const descriptor = envelope?.event;
+  const object = envelope?.object;
+  const normalized = {
+    id: descriptor?.id,
+    type: descriptor?.name,
+    timestamp: descriptor?.timestamp,
+    object,
+    data: envelope?.data,
+  };
+
+  if (
+    !envelope ||
+    typeof envelope !== 'object' ||
+    !EVENT_ID.test(normalized.id || '') ||
+    typeof normalized.type !== 'string' ||
+    !normalized.type ||
+    !object ||
+    typeof object.id !== 'string' ||
+    typeof object.type !== 'string' ||
+    !normalized.data ||
+    typeof normalized.data !== 'object' ||
+    Array.isArray(normalized.data)
+  ) {
+    throw new Error('Invalid Monime webhook envelope.');
+  }
+
+  return normalized;
 }
 
 export async function readMonimeRawBody(req, maxBytes = MONIME_WEBHOOK_MAX_BYTES) {
