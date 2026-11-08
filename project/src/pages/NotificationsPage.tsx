@@ -108,11 +108,9 @@ export default function NotificationsPage() {
     setCustomerError('');
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id,role,full_name,first_name,last_name,email,phone,phone_number')
-        .in('role', ['rider', 'driver', 'merchant'])
-        .order('created_at', { ascending: false });
+      const { data, error } = await supabase.rpc(
+        'matmove_admin_notification_customers'
+      );
 
       if (error) throw error;
       if (!Array.isArray(data)) {
