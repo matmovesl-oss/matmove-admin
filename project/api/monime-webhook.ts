@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { readMonimeRawBody, verifyMonimeSignature } from '../server/monime-webhook-security.js';
+import { normalizeMonimeEnvelope, readMonimeRawBody, verifyMonimeSignature } from '../server/monime-webhook-security.js';
 
 export const config = {
   api: {
@@ -225,31 +225,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid webhook payload.' });
     }
 
-    // Monime's webhook envelope uses event.id / event.name, object.id / object.type,
-    // and a top-level data object. Do not confuse event.name with object.type.
-    const descriptor = envelope?.event;
-    const object = envelope?.object;
-    const event = {
-      id: descriptor?.id,
-      type: descriptor?.name,
-      timestamp: descriptor?.timestamp,
-      object,
-      data: envelope?.data,
-    };
-
-    if (
-      !envelope ||
-      typeof envelope !== 'object' ||
-      !EVENT_ID.test(event.id || '') ||
-      typeof event.type !== 'string' ||
-      !event.type ||
-      !object ||
-      typeof object.id !== 'string' ||
-      typeof object.type !== 'string' ||
-      !event.data ||
-      typeof event.data !== 'object' ||
-      Array.isArray(event.data)
-    ) return res.status(400).json({ error: 'Invalid webhook event.' });
+    let event;
+    try {
+      // Monime's signed envelope contains event.id / event.name,
+      // object.id / object.type, and a top-level data object.
+      event = normalizeMonimeEnvelope(envelope);
+    } catch {
+      return res.status(400).json({ error: 'Invalid webhook event.' });
+    }
 
     eventId = event.id;
     const projectUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
