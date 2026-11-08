@@ -89,6 +89,6 @@ test('an AAL2 session must have most recently authenticated with TOTP',async()=>
 });
 test('database Admin permission migration requires the latest AMR method to be TOTP',async()=>{
  const migration=await readFile(new URL('../supabase/migrations/20261108123000_matmove_admin_aal2_permission_enforcement_v1.sql',import.meta.url),'utf8');
- assert.match(migration,/(auth\.jwt\(\)->>'aal'\)\s*=\s*'aal2'/);
- assert.match(migration,/auth\.jwt\(\)->'amr'->0->>'method'\)\s*=\s*'totp'/);
+ assert.ok(migration.includes("(auth.jwt()->>'aal') = 'aal2'"));
+ assert.ok(migration.includes("(auth.jwt()->'amr'->0->>'method') = 'totp'"));
 });
