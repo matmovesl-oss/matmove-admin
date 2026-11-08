@@ -1,5 +1,6 @@
 
 
+import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {canAdminAccess,homeFor,validPermissions} from '../shared/admin-permissions.js';
@@ -7,11 +8,33 @@ import {requireAdmin} from '../server/admin-auth.js';
 import {createHandler} from '../api/admin-staff.js';
 const id='33333333-3333-4333-8333-333333333333',ownerId='44444444-4444-4444-8444-444444444444';
 const row={id,is_active:true,is_owner:false,permissions:['games.entries']};
+function authFor(userId,aal='aal2',factors=[{id:'totp-factor',status:'verified',factor_type:'totp'}],method=aal==='aal2'?'totp':'password'){
+ return {
+  getUser:async()=>({data:{user:{id:userId}},error:null}),
+  getClaims:async token=>({data:{claims:{sub:userId,aal,amr:[{method,timestamp:1}]}},error:null}),
+  admin:{mfa:{listFactors:async({userId:requested})=>{assert.equal(requested,userId);return {data:{factors},error:null};}}}
+ };
+}
 const response=()=>({code:null,body:null,setHeader(){},status(c){this.code=c;return this;},json(b){this.body=b;return this;}});
 test('individual game permissions deny other tabs and choose assigned landing page',()=>{assert.equal(canAdminAccess(row,'games'),true);assert.equal(canAdminAccess(row,'games.entries'),true);assert.equal(canAdminAccess(row,'games.settings'),false);assert.equal(canAdminAccess(row,'games.winnings'),false);assert.equal(homeFor(row),'/games?tab=entries');assert.equal(canAdminAccess(null,'games'),false);assert.equal(canAdminAccess({...row,is_active:false,is_owner:true},'staff'),false);});
 test('owner can access every section; browser cannot invent assignments',()=>{assert.equal(canAdminAccess({...row,is_owner:true},'games.settings'),true);assert.throws(()=>validPermissions(['super_admin']));assert.throws(()=>validPermissions(['games.secret']));assert.deepEqual(validPermissions(['games.entries','games.entries']),['games.entries']);});
-test('API verifies token and reads authoritative permissions, ignoring client claims',async()=>{let read=0;const client={auth:{getUser:async()=>({data:{user:{id}},error:null})},rpc:async(name,args)=>{read++;assert.equal(name,'matmove_admin_access');assert.equal(args.p_id,id);return {data:row,error:null};}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'},body:{is_owner:true}},['games.settings'],{client}),e=>e.status===403);assert.equal((await requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client})).user.id,id);assert.equal(read,2);await assert.rejects(requireAdmin({headers:{}},['games.entries'],{client}),e=>e.status===401);});
-test('expired sessions and deactivated staff cannot reach APIs',async()=>{const client={auth:{getUser:async()=>({data:{user:null},error:new Error()})}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer expired'}},['staff'],{client}),e=>e.status===401);const inactive={auth:{getUser:async()=>({data:{user:{id}}})},rpc:async()=>({data:{...row,is_active:false}})};await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:inactive}),e=>e.status===403);});
+test('API verifies token, requires a verified TOTP and aal2, and reads authoritative permissions',async()=>{let read=0;const client={auth:authFor(id),rpc:async(name,args)=>{read++;assert.equal(name,'matmove_admin_access');assert.equal(args.p_id,id);return {data:row,error:null};}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'},body:{is_owner:true}},['games.settings'],{client}),e=>e.status===403);assert.equal((await requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client})).user.id,id);assert.equal(read,2);await assert.rejects(requireAdmin({headers:{}},['games.entries'],{client}),e=>e.status===401);});
+test('expired sessions and deactivated staff cannot reach APIs',async()=>{const client={auth:{getUser:async()=>({data:{user:null},error:new Error()})}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer expired'}},['staff'],{client}),e=>e.status===401);const inactive={auth:authFor(id),rpc:async()=>({data:{...row,is_active:false}})};await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:inactive}),e=>e.status===403);});
+
+test('Admin APIs fail closed when TOTP setup is missing or the access token is only aal1',async()=>{
+ const noFactor={auth:authFor(id,'aal1',[]),rpc:async()=>({data:row,error:null})};
+ await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:noFactor}),e=>e.status===428&&e.message.includes('MFA_SETUP_REQUIRED'));
+ const enrolledButNotVerified={auth:authFor(id,'aal1'),rpc:async()=>({data:row,error:null})};
+ await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:enrolledButNotVerified}),e=>e.status===428&&e.message.includes('MFA_REQUIRED'));
+});
+test('only the read-only self-session bootstrap can run before MFA setup',async()=>{
+ let directoryRead=false;
+ const client={auth:authFor(id,'aal1',[]),rpc:async(name,args)=>{assert.equal(name,'matmove_admin_access');return {data:row,error:null};}};
+ const result=await requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client,allowMfaSetup:true});
+ assert.equal(result.user.id,id);
+ assert.equal(directoryRead,false);
+});
+
 test('directory-only staff cannot send invitation or grant privileges',async()=>{let sent=0;const handler=createHandler({authorize:async()=>({client:{auth:{admin:{inviteUserByEmail:async()=>{sent++;}}}},user:{id},access:{...row,permissions:['staff']}})});const res=response();await handler({method:'POST',headers:{},body:{action:'invite',email:'new@example.com',fullName:'New Staff',permissions:['games.settings']}},res);assert.equal(res.code,403);assert.equal(sent,0);});
 function fixture(existing=false){let sent=0,saved=0,resets=0;const client={auth:{admin:{inviteUserByEmail:async(email,options)=>{assert.equal(options.redirectTo,'https://admin.example.com/accept-invite');assert.equal(options.data.role,undefined);sent++;return {data:{user:{id,email}}};}},resetPasswordForEmail:async()=>{resets++;return {error:null};}},rpc:async(name,args)=>{if(name==='matmove_staff_find_user')return {data:existing?id:null};if(name==='matmove_staff_save'){saved++;assert.equal(args.p_actor,ownerId);assert.deepEqual(args.p_permissions,['games.entries']);return {error:null};}throw new Error(name);},from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:null})})};return {client,get sent(){return sent;},get saved(){return saved;},get resets(){return resets;}};}
 test('owner invitation sends email with configured callback and narrow assignments',async()=>{const f=fixture();const handler=createHandler({authorize:async()=>({client:f.client,user:{id:ownerId},access:{is_owner:true}}),env:{ADMIN_APP_URL:'https://admin.example.com'}});const res=response();await handler({method:'POST',headers:{},body:{action:'invite',email:'staff@example.com',fullName:'Staff Member',permissions:['games.entries']}},res);assert.equal(res.code,200);assert.equal(f.sent,1);assert.equal(f.saved,1);assert.equal(f.resets,0);});
@@ -54,4 +77,18 @@ test('full operational administrator can open every section but cannot invite, u
 test('legacy role label cannot create owner privileges without the verified owner flag',()=>{
  assert.equal(canAdminAccess({...row,role:'super_admin'},'staff'),false);
  assert.equal(canAdminAccess({...row,role:'super_admin'},'games.settings'),false);
+});
+
+test('AAL2 from a verified phone factor does not satisfy the Admin TOTP requirement',async()=>{
+ const phoneOnly={auth:authFor(id,'aal2',[{id:'phone-factor',status:'verified',factor_type:'phone'}]),rpc:async()=>({data:row,error:null})};
+ await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:phoneOnly}),e=>e.status===428&&e.message.includes('MFA_SETUP_REQUIRED'));
+});
+test('an AAL2 session must have most recently authenticated with TOTP',async()=>{
+ const nonTotpAssurance={auth:authFor(id,'aal2',[{id:'totp-factor',status:'verified',factor_type:'totp'}],'otp'),rpc:async()=>({data:row,error:null})};
+ await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:nonTotpAssurance}),e=>e.status===428&&e.message.includes('MFA_REQUIRED'));
+});
+test('database Admin permission migration requires the latest AMR method to be TOTP',async()=>{
+ const migration=await readFile(new URL('../supabase/migrations/20261108123000_matmove_admin_aal2_permission_enforcement_v1.sql',import.meta.url),'utf8');
+ assert.ok(migration.includes("(auth.jwt()->>'aal') = 'aal2'"));
+ assert.ok(migration.includes("(auth.jwt()->'amr'->0->>'method') = 'totp'"));
 });

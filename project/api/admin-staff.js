@@ -31,7 +31,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   if(view!=null&&view!=='me')throw failure(400,'Invalid staff view.');
   if(view==='me'&&req.method!=='GET')throw failure(405,'Use GET for your staff session.');
   const self=view==='me';
-  const {client,user,access}=await authorize(req,self?PERMISSION_KEYS:['staff'],{env});
+  const {client,user,access}=await authorize(req,self?PERMISSION_KEYS:['staff'],{env,allowMfaSetup:self});
   if(self)return res.status(200).json({access:{id:user.id,email:access.email,full_name:access.full_name,department:access.department,is_owner:access.is_owner===true,is_active:access.is_active===true,permissions:Array.isArray(access.permissions)?access.permissions:[],requires_password_setup:access.requires_password_setup===true}});
   if(req.method==='GET'){
    const [result,profileResult]=await Promise.all([
