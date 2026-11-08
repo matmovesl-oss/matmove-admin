@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, LogOut, ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -7,7 +7,7 @@ type Props = {
   onSignOut: () => Promise<void>;
 };
 
-type Mode = 'loading' | 'enroll' | 'challenge' | 'blocked' | 'error';
+type Mode = 'loading' | 'setup' | 'enroll' | 'challenge' | 'blocked' | 'error';
 
 export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
   const [mode, setMode] = useState<Mode>('loading');
@@ -17,14 +17,13 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const started = useRef(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-
     let live = true;
     async function prepare() {
+      setMode('loading');
+      setError('');
       try {
         const [aal, factors] = await Promise.all([
           supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
@@ -56,20 +55,10 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
           return;
         }
 
-        const enrolled = await supabase.auth.mfa.enroll({
-          factorType: 'totp',
-          friendlyName: 'MatMove Admin',
-        });
-        if (enrolled.error) throw enrolled.error;
-        if (!live) return;
-
-        setFactorId(enrolled.data.id);
-        setQrCode(enrolled.data.totp.qr_code);
-        setSecret(enrolled.data.totp.secret);
-        setMode('enroll');
+        if (live) setMode('setup');
       } catch (cause) {
         if (live) {
-          setError(cause instanceof Error ? cause.message : 'Two-factor setup could not be started. Try again or contact the owner.');
+          setError(cause instanceof Error ? cause.message : 'Two-factor setup could not be checked. Try again or contact the owner.');
           setMode('error');
         }
       }
@@ -77,7 +66,28 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
 
     void prepare();
     return () => { live = false; };
-  }, [onComplete]);
+  }, [onComplete, retryCount]);
+
+  async function beginEnrollment() {
+    if (busy || mode !== 'setup') return;
+    setBusy(true);
+    setError('');
+    try {
+      const enrolled = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'MatMove Admin',
+      });
+      if (enrolled.error) throw enrolled.error;
+      setFactorId(enrolled.data.id);
+      setQrCode(enrolled.data.totp.qr_code);
+      setSecret(enrolled.data.totp.secret);
+      setMode('enroll');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Authenticator setup could not be started. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function verifyCode(event: React.FormEvent) {
     event.preventDefault();
@@ -151,11 +161,22 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
           </p>
         )}
 
+        {mode === 'setup' && (
+          <div className="space-y-3">
+            <p className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+              Set up an authenticator app such as Google Authenticator, Microsoft Authenticator or 1Password.
+              We will show you a QR code and ask you to confirm it with a six-digit code.
+            </p>
+            <button type="button" disabled={busy} onClick={() => void beginEnrollment()} className="flex min-h-12 w-full items-center justify-center rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-50">
+              {busy ? <><Loader2 size={18} className="mr-2 animate-spin" /> Preparing setup…</> : 'Set up authenticator'}
+            </button>
+          </div>
+        )}
+
         {enrolling && (
           <div className="space-y-4">
             <p className="text-sm text-slate-700">
-              1. Install or open an authenticator app such as Google Authenticator, Microsoft Authenticator or 1Password.
-              2. Scan this QR code, or enter the setup key manually.
+              Scan this QR code with your authenticator app, or enter the setup key manually.
             </p>
             {qrCode && (
               <div className="mx-auto flex w-fit rounded-xl border bg-white p-3">
@@ -179,7 +200,7 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
         {(enrolling || mode === 'challenge') && (
           <form onSubmit={verifyCode} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
-              {enrolling ? '3. Verify your authenticator app' : 'Authenticator code'}
+              {enrolling ? 'Verify your authenticator app' : 'Authenticator code'}
               <input
                 type="text"
                 inputMode="numeric"
@@ -201,9 +222,10 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
         )}
 
         {blocked && (
-          <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            {error}
-          </p>
+          <div className="space-y-3">
+            <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</p>
+            {mode === 'error' && <button type="button" onClick={() => setRetryCount(value => value + 1)} className="min-h-11 w-full rounded-xl border px-4 py-2 text-sm font-semibold">Retry security check</button>}
+          </div>
         )}
         {error && !blocked && (
           <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>
