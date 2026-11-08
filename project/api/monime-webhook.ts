@@ -1,83 +1,76 @@
 import { createClient } from '@supabase/supabase-js';
+import {
+  readMonimeRawBody,
+  verifyMonimeWebhookSignature,
+  parseMonimeWebhook
+} from '../server/monime-webhook-security.js';
 
-// Initializes Supabase with the SERVICE ROLE KEY so it bypasses all RLS
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export const config = { api: { bodyParser: false } };
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+function serviceClient() {
+  const url=process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if(!url || !key) throw new Error('Webhook service configuration is incomplete.');
+  return createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+}
+
+export default async function handler(req:any,res:any) {
+  res.setHeader('Cache-Control','no-store');
+  res.setHeader('X-Content-Type-Options','nosniff');
+
+  if(req.method!=='POST') return res.status(405).json({error:'Method Not Allowed'});
+
+  const secret=process.env.MONIME_WEBHOOK_SECRET;
+  if(!secret) return res.status(503).json({error:'Webhook service unavailable.'});
+
+  let rawBody:Buffer,event:any;
+  try {
+    rawBody=await readMonimeRawBody(req);
+    if(!verifyMonimeWebhookSignature(rawBody,req.headers['monime-signature'],secret)) {
+      return res.status(401).json({error:'Unauthorized.'});
+    }
+    event=parseMonimeWebhook(rawBody);
+    if(!event) return res.status(400).json({error:'Invalid event.'});
+  } catch(error:any) {
+    const status=error?.status===413?413:400;
+    return res.status(status).json({error:'Invalid request.'});
+  }
 
   try {
-    const event = req.body;
-    const eventType = event.type; 
-    const data = event.data;
-
-    console.log(`[Monime Webhook Received] Type: ${eventType}`);
-
-    // 1. HANDLE PAYOUTS (WITHDRAWALS)
-    if (eventType === 'payout.completed' || eventType === 'payout.failed') {
-      const status = eventType === 'payout.completed' ? 'completed' : 'failed';
-      const withdrawalId = data.metadata?.withdrawal_id; 
-
-      if (withdrawalId) {
-        await supabase
-          .from('withdrawal_requests')
-          .update({ status: status, updated_at: new Date().toISOString() })
-          .eq('id', withdrawalId);
-      }
+    const db=serviceClient();
+    const registration=await db.rpc('register_provider_webhook_event',{
+      p_provider:'monime_admin',
+      p_event_id:event.id,
+      p_event_type:event.type,
+      p_withdrawal_id:null,
+      p_payment_transaction_id:null,
+      p_provider_transaction_id:null,
+      p_idempotency_key:event.id,
+      p_payload:event
+    });
+    if(registration.error || !registration.data?.success || typeof registration.data.event_id!=='string') {
+      throw new Error('Unable to persist verified webhook event.');
     }
 
-    // 2. HANDLE WALLET BALANCES (SINGLE SOURCE OF TRUTH)
-    if (eventType === 'financial_account.credited' || eventType === 'financial_account.debited') {
-      const monimeId = String(data.id).trim();
-      const rawBalance = data.balance?.available?.value ?? data.balance?.value ?? 0;
-      const trueBalance = Number(rawBalance) / 100; // Convert cents to SLE/USD
-
-      await supabase
-        .from('wallets')
-        .update({ balance: trueBalance })
-        .contains('metadata', { monime_account_id: monimeId });
+    if(registration.data.duplicate && ['processed','ignored','processing'].includes(registration.data.processing_status)) {
+      return res.status(200).json({received:true,duplicate:true});
     }
 
-    // 3. HANDLE PAYMENTS (PAY-INS)
-    if (eventType.startsWith('payment.')) {
-      const paymentId = data.id;
-      const status = eventType.split('.')[1]; // 'created', 'processing_started', 'processing_completed'
-      
-      // Upsert into payment_transactions table tracking
-      await supabase
-        .from('payment_transactions')
-        .update({ status: status, updated_at: new Date().toISOString() })
-        .eq('provider_reference', paymentId);
-    }
+    // The Admin application is not a payment processor. It must never
+    // overwrite balances or settle withdrawals from callback fields.
+    const ignored=await db.from('provider_webhook_events')
+      .update({
+        processing_status:'ignored',
+        processed_at:new Date().toISOString(),
+        processing_error:'Recorded for audit only; financial reconciliation is handled by the customer payment backend.'
+      })
+      .eq('id',registration.data.event_id)
+      .eq('provider','monime_admin');
+    if(ignored.error) throw new Error('Unable to record audit-only webhook event.');
 
-    // 4. HANDLE TRANSACTIONS
-    if (eventType === 'financial_transaction.created') {
-      // Automatically log to your wallet_transactions ledger
-      const monimeId = data.financialAccountId;
-      
-      // Optional: find the wallet_id linked to this monimeId
-      const { data: walletData } = await supabase.from('wallets').select('id, user_id').contains('metadata', { monime_account_id: monimeId }).single();
-      
-      if (walletData) {
-         await supabase.from('wallet_transactions').insert({
-            wallet_id: walletData.id,
-            user_id: walletData.user_id,
-            amount: Number(data.amount?.value || 0) / 100,
-            type: data.direction === 'in' ? 'credit' : 'debit',
-            status: 'completed',
-            reference_code: data.id,
-            description: data.description || 'Monime Webhook Transaction'
-         });
-      }
-    }
-
-    return res.status(200).json({ received: true, event: eventType });
-    
-  } catch (error: any) {
-    console.error('Webhook processing failed:', error.message);
-    return res.status(500).json({ error: error.message });
+    return res.status(200).json({received:true,ignored:true});
+  } catch(error:any) {
+    console.error('Admin Monime webhook ingestion failed:',error?.message||'unknown error');
+    return res.status(503).json({error:'Webhook processing unavailable.'});
   }
 }
