@@ -29,9 +29,12 @@ export async function requireAdmin(req,keys,{client,env=process.env,allowMfaSetu
   const factorsResult=await client.auth.admin.mfa.listFactors({userId:auth.data.user.id});
   if(factorsResult.error)throw failure(503,'Admin authenticator status could not be verified. Try again.');
   const factors=Array.isArray(factorsResult.data?.factors)?factorsResult.data.factors:[];
-  const hasVerifiedFactor=factors.some(factor=>factor.status==='verified');
-  if(!hasVerifiedFactor)throw failure(428,'MFA_SETUP_REQUIRED: Set up an authenticator app before using Admin.');
-  if(claims.aal!=='aal2')throw failure(428,'MFA_REQUIRED: Verify your authenticator code before using Admin.');
+  const hasVerifiedTotp=factors.some(factor=>factor.factor_type==='totp'&&factor.status==='verified');
+  if(!hasVerifiedTotp)throw failure(428,'MFA_SETUP_REQUIRED: Set up an authenticator app before using Admin.');
+  // Supabase orders AMR entries with the most recent authentication method first.
+  // Require the current AAL2 session to have been completed using TOTP, not phone MFA.
+  const latestMethod=Array.isArray(claims.amr)?claims.amr[0]?.method:null;
+  if(claims.aal!=='aal2'||latestMethod!=='totp')throw failure(428,'MFA_REQUIRED: Verify your authenticator app code before using Admin.');
  }
 
  const result=await client.rpc('matmove_admin_access',{p_id:auth.data.user.id});
