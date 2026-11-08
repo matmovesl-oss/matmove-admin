@@ -1,12 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAdminAccess, canAccess } from '@/lib/adminAccess';
 import { supabase } from '@/lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
 import { Ticket, Plus, Calendar, MapPin, Search, CheckCircle2, ShieldCheck, Trash2, Edit3, Filter } from 'lucide-react';
 
 export function AdminEventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentTab = searchParams.get('tab') || 'overview';
+  const access = useAdminAccess();
+  const canManageEvents = canAccess(access, 'events.overview');
+  const canReadSales = canAccess(access, 'events.sales');
+  const canCheckIn = canAccess(access, 'events.checkin');
+  const canReadTickets = canReadSales || canCheckIn;
+  const firstTab = canManageEvents ? 'overview' : canReadSales ? 'sales' : 'checkin';
+  const requestedTab = searchParams.get('tab');
+  const requestedTabAllowed =
+    (requestedTab === 'overview' && canManageEvents) ||
+    (requestedTab === 'sales' && canReadSales) ||
+    (requestedTab === 'checkin' && canCheckIn);
+  const currentTab = requestedTabAllowed ? requestedTab! : firstTab;
+
+  useEffect(() => {
+    if (requestedTab !== currentTab) {
+      setSearchParams({ tab: currentTab }, { replace: true });
+    }
+  }, [requestedTab, currentTab, setSearchParams]);
 
   const [events, setEvents] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
@@ -40,9 +58,18 @@ export function AdminEventsPage() {
     if (!hasLoaded.current) setLoading(true);
     setLoadError('');
     try {
+      const eventsPromise = supabase
+        .from('platform_events')
+        .select('*')
+        .order('created_at', { ascending: false });
+      const ticketsPromise = canReadTickets
+        ? supabase.from('event_tickets')
+            .select('*, event:platform_events(title)')
+            .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [], error: null });
       const [eventsResult, ticketsResult] = await Promise.all([
-        supabase.from('platform_events').select('*').order('created_at', { ascending: false }),
-        supabase.from('event_tickets').select('*, event:platform_events(title)').order('created_at', { ascending: false }),
+        eventsPromise,
+        ticketsPromise,
       ]);
       if (eventsResult.error) throw eventsResult.error;
       if (ticketsResult.error) throw ticketsResult.error;
@@ -55,19 +82,21 @@ export function AdminEventsPage() {
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, []);
+  }, [canReadTickets]);
 
   useEffect(() => {
     void fetchEventsAndTickets();
-    const channel = supabase.channel('admin-events-live-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'platform_events' }, () => { void fetchEventsAndTickets(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_tickets' }, () => { void fetchEventsAndTickets(); })
-      .subscribe();
+    let channel = supabase.channel('admin-events-live-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'platform_events' }, () => { void fetchEventsAndTickets(); });
+    if (canReadTickets) {
+      channel = channel.on('postgres_changes', { event: '*', schema: 'public', table: 'event_tickets' }, () => { void fetchEventsAndTickets(); });
+    }
+    channel.subscribe();
     return () => {
       requestVersion.current += 1;
       void supabase.removeChannel(channel);
     };
-  }, [fetchEventsAndTickets]);
+  }, [fetchEventsAndTickets, canReadTickets]);
 
   const handleOpenEdit = (evt: any) => {
     setEditingEvent(evt);
@@ -84,6 +113,10 @@ export function AdminEventsPage() {
 
   const handleCreateOrUpdateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManageEvents) {
+      setActionError('Events overview permission is required to publish or edit events.');
+      return;
+    }
     setBusy(true);
     setActionError('');
     setNotice('');
@@ -172,6 +205,10 @@ export function AdminEventsPage() {
   };
 
   const handleDeleteEvent = async (evt: any) => {
+    if (!canManageEvents) {
+      setActionError('Events overview permission is required to delete events.');
+      return;
+    }
     const confirmed = window.confirm(`Permanently delete "${evt.title}" and its flyer image? This action cannot be undone.`);
     if (!confirmed) return;
 
@@ -199,6 +236,10 @@ export function AdminEventsPage() {
   };
 
   const handleActivateGateTicket = async (ticketId: string) => {
+    if (!canCheckIn) {
+      setActionError('Event check-in permission is required to activate tickets.');
+      return;
+    }
     setBusy(true);
     setNotice('');
     try {
@@ -237,11 +278,14 @@ export function AdminEventsPage() {
         {loadError && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-2xl font-bold">{loadError}</div>}
 
         <div className="flex gap-2 border-b border-slate-200 pb-3">
-          {[
+          {([
             ['overview', 'Events & Flyers'],
             ['sales', 'Ticket Sales Audit'],
             ['checkin', 'Gate Check-In & Activation'],
-          ].map(([tabKey, label]) => (
+          ] as const).filter(([tabKey]) =>
+            tabKey === 'overview' ? canManageEvents :
+            tabKey === 'sales' ? canReadSales : canCheckIn
+          ).map(([tabKey, label]) => (
             <button
               key={tabKey}
               onClick={() => setSearchParams({ tab: tabKey })}
@@ -261,12 +305,14 @@ export function AdminEventsPage() {
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-slate-900 text-base">Active & Scheduled Events</h3>
-              <button
-                onClick={() => { setEditingEvent(null); setTitle(''); setDate(''); setVenue(''); setPrice('100'); setDescription(''); setEventStatus('active'); setFlyerFile(null); setShowAddModal(true); }}
-                className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 transition shadow-sm"
-              >
-                <Plus size={16} /> Upload & Post Event
-              </button>
+              {canManageEvents && (
+                <button
+                  onClick={() => { setEditingEvent(null); setTitle(''); setDate(''); setVenue(''); setPrice('100'); setDescription(''); setEventStatus('active'); setFlyerFile(null); setShowAddModal(true); }}
+                  className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 transition shadow-sm"
+                >
+                  <Plus size={16} /> Upload & Post Event
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -295,22 +341,24 @@ export function AdminEventsPage() {
 
                     <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                       <div className="text-base font-black text-sky-600">SLE {Number(evt.ticket_price).toLocaleString()}</div>{evt.ticket_price_usd!=null&&<div className="text-xs font-bold text-emerald-700">USD ${Number(evt.ticket_price_usd).toFixed(2)} display quote</div>}
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(evt)}
-                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-1"
-                        >
-                          <Edit3 size={13} /> Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteEvent(evt)}
-                          className="px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 hover:bg-rose-100 flex items-center gap-1"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
-                      </div>
+                      {canManageEvents && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(evt)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center gap-1"
+                          >
+                            <Edit3 size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEvent(evt)}
+                            className="px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 hover:bg-rose-100 flex items-center gap-1"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -430,7 +478,7 @@ export function AdminEventsPage() {
         )}
 
         {/* Modal: Add or Edit Event */}
-        {(showAddModal || editingEvent) && (
+        {canManageEvents && (showAddModal || editingEvent) && (
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
               <h2 className="text-lg font-bold mb-4">{editingEvent ? 'Edit Event' : 'Post New Event with Flyer'}</h2>
