@@ -1,5 +1,6 @@
 
 
+import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {canAdminAccess,homeFor,validPermissions} from '../shared/admin-permissions.js';
@@ -7,10 +8,10 @@ import {requireAdmin} from '../server/admin-auth.js';
 import {createHandler} from '../api/admin-staff.js';
 const id='33333333-3333-4333-8333-333333333333',ownerId='44444444-4444-4444-8444-444444444444';
 const row={id,is_active:true,is_owner:false,permissions:['games.entries']};
-function authFor(userId,aal='aal2',factors=[{id:'totp-factor',status:'verified',factor_type:'totp'}]){
+function authFor(userId,aal='aal2',factors=[{id:'totp-factor',status:'verified',factor_type:'totp'}],method=aal==='aal2'?'totp':'password'){
  return {
   getUser:async()=>({data:{user:{id:userId}},error:null}),
-  getClaims:async token=>({data:{claims:{sub:userId,aal}},error:null}),
+  getClaims:async token=>({data:{claims:{sub:userId,aal,amr:[{method,timestamp:1}]}},error:null}),
   admin:{mfa:{listFactors:async({userId:requested})=>{assert.equal(requested,userId);return {data:{factors},error:null};}}}
  };
 }
@@ -76,4 +77,18 @@ test('full operational administrator can open every section but cannot invite, u
 test('legacy role label cannot create owner privileges without the verified owner flag',()=>{
  assert.equal(canAdminAccess({...row,role:'super_admin'},'staff'),false);
  assert.equal(canAdminAccess({...row,role:'super_admin'},'games.settings'),false);
+});
+
+test('AAL2 from a verified phone factor does not satisfy the Admin TOTP requirement',async()=>{
+ const phoneOnly={auth:authFor(id,'aal2',[{id:'phone-factor',status:'verified',factor_type:'phone'}]),rpc:async()=>({data:row,error:null})};
+ await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:phoneOnly}),e=>e.status===428&&e.message.includes('MFA_SETUP_REQUIRED'));
+});
+test('an AAL2 session must have most recently authenticated with TOTP',async()=>{
+ const nonTotpAssurance={auth:authFor(id,'aal2',[{id:'totp-factor',status:'verified',factor_type:'totp'}],'otp'),rpc:async()=>({data:row,error:null})};
+ await assert.rejects(requireAdmin({headers:{authorization:'Bearer token'}},['games.entries'],{client:nonTotpAssurance}),e=>e.status===428&&e.message.includes('MFA_REQUIRED'));
+});
+test('database Admin permission migration requires the latest AMR method to be TOTP',async()=>{
+ const migration=await readFile(new URL('../supabase/migrations/20261108123000_matmove_admin_aal2_permission_enforcement_v1.sql',import.meta.url),'utf8');
+ assert.match(migration,/(auth\.jwt\(\)->>'aal'\)\s*=\s*'aal2'/);
+ assert.match(migration,/auth\.jwt\(\)->'amr'->0->>'method'\)\s*=\s*'totp'/);
 });
