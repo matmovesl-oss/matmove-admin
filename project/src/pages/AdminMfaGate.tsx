@@ -31,6 +31,7 @@ export default function AdminMfaGate({ onComplete, onSignOut }: Props) {
         ]);
         if (aal.error) throw aal.error;
         if (factors.error) throw factors.error;
+        if (!live) return;
 
         const verified = (factors.data.totp || []).filter((factor: any) => factor.status === 'verified');
         const pending = (factors.data.totp || []).filter((factor: any) => factor.status !== 'verified');
