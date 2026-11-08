@@ -70,7 +70,7 @@ export default function UsersPage() {
     setLoadedStamp(stamp);
     try{
       // Added 'staff' so we can see users converted to staff
-      const {data,error:queryError}=await supabase.from('profiles').select('id,email,full_name,first_name,last_name,phone,phone_number,role,kyc_status,created_at,is_payroll_staff,customer_onboarding_role,oname_id,address,business_name,business_type,city,country,date_of_birth,driver_license_no,nationality,plate_number,residential_address,tax_id,vehicle_type').in('role',['rider','driver','merchant','staff']).order('created_at',{ascending:false});
+      const {data,error:queryError}=await supabase.from('profiles').select('id,email,full_name,first_name,last_name,phone,phone_number,role,kyc_status,created_at,is_payroll_staff,customer_onboarding_role,address,business_name,business_type,city,country,date_of_birth,driver_license_no,nationality,plate_number,residential_address,tax_id,vehicle_type').in('role',['rider','driver','merchant','staff']).order('created_at',{ascending:false});
       if(queryError)throw queryError;
       if(!Array.isArray(data))throw new Error('The customer response could not be verified.');
       if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setUsers(data);
