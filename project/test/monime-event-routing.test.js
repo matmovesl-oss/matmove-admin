@@ -11,12 +11,8 @@ test('admin Monime allowlist accepts the supported event/object pairs', () => {
     ['financial_account.credited', 'financial_account'],
     ['financial_account.debited', 'financial_account'],
     ['financial_transaction.created', 'financial_transaction'],
-    ['payment.pending', 'payment'],
-    ['payment.processing', 'payment'],
     ['payment.completed', 'payment'],
     ['payment.failed', 'payment'],
-    ['payment.cancelled', 'payment'],
-    ['payment.expired', 'payment'],
   ]) {
     assert.deepEqual(assertSupportedAdminMonimeEvent(event(name, type)), { name, objectType: type });
   }
@@ -28,6 +24,7 @@ test('admin Monime handler rejects unsupported event names for manual review', (
     'checkout_session.completed',
     'payout.reversed',
     'payment.unknown',
+    'payment.pending',
     'unknown.event',
   ]) {
     assert.throws(
