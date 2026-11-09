@@ -76,7 +76,7 @@ async function receiveWebhook(req, res) {
     });
 
     const { error } = await supabase
-      .from('matmove_monime_webhook_events')
+      .from('matmove_admin_monime_webhook_events')
       .upsert({
         event_id: event.id,
         event_type: event.type,
