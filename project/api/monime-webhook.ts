@@ -103,20 +103,57 @@ async function processEvent(client, event) {
   const { type: eventType, data } = event;
 
   if (eventType === 'payout.completed' || eventType === 'payout.failed') {
-    const withdrawalId = data.metadata?.withdrawal_id;
-    if (typeof withdrawalId === 'string' && UUID.test(withdrawalId)) {
-      const status = eventType === 'payout.completed' ? 'completed' : 'failed';
-      const update = await client
-        .from('withdrawal_requests')
-        .update({
-          status,
-          provider_transaction_id: typeof event.object?.id === 'string' ? event.object.id : (typeof data.id === 'string' ? data.id : null),
-          processed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', withdrawalId)
-        .eq('provider', 'monime');
-      if (update.error) throw new Error('Withdrawal status update failed.');
+    const withdrawalId = data.metadata?.withdrawal_id || event.object?.metadata?.withdrawal_id;
+    if (typeof withdrawalId !== 'string' || !UUID.test(withdrawalId)) {
+      throw new Error('Monime payout event is missing a valid MatMove withdrawal reference.');
+    }
+
+    // Bind the provider event to a MatMove Monime withdrawal before calling
+    // the privileged settlement RPC. Never settle another provider's request.
+    const withdrawal = await client
+      .from('withdrawal_requests')
+      .select('id,provider,status,payment_transaction_id')
+      .eq('id', withdrawalId)
+      .maybeSingle();
+
+    if (withdrawal.error || !withdrawal.data || withdrawal.data.provider !== 'monime') {
+      throw new Error('Monime payout does not match a MatMove Monime withdrawal.');
+    }
+
+    const providerTransactionId =
+      typeof event.object?.id === 'string' ? event.object.id :
+      (typeof data.id === 'string' ? data.id : null);
+    const succeeded = eventType === 'payout.completed';
+
+    if (succeeded && !providerTransactionId) {
+      throw new Error('Successful Monime payout is missing its provider transaction ID.');
+    }
+
+    const failureCode = !succeeded
+      ? (typeof data.failure?.code === 'string' ? data.failure.code :
+        (typeof data.failureCode === 'string' ? data.failureCode : null))
+      : null;
+    const failureMessage = !succeeded
+      ? (typeof data.failure?.message === 'string' ? data.failure.message.slice(0, 500) :
+        (typeof data.failureMessage === 'string' ? data.failureMessage.slice(0, 500) : 'Monime payout failed.'))
+      : null;
+
+    const settlement = await client.rpc('settle_wallet_withdrawal', {
+      p_withdrawal_id: withdrawalId,
+      p_success: succeeded,
+      p_provider_transaction_id: providerTransactionId,
+      p_provider_response: {
+        event_id: event.id,
+        event_type: eventType,
+        object_id: event.object?.id || null,
+        object_type: event.object?.type || null,
+      },
+      p_failure_code: failureCode,
+      p_failure_message: failureMessage,
+    });
+
+    if (settlement.error || settlement.data?.success !== true) {
+      throw new Error('MatMove withdrawal settlement failed.');
     }
     return;
   }
