@@ -11,6 +11,40 @@ class ManualReviewError extends Error {
   }
 }
 
+function assertAdminMonimeEnvironment() {
+  const configured = process.env.MONIME_ENVIRONMENT || null;
+  const deploymentMode =
+    process.env.VERCEL_ENV === 'production'
+      ? 'live'
+      : process.env.VERCEL_ENV === 'preview'
+        ? 'test'
+        : null;
+
+  if (configured && !['live', 'test'].includes(configured)) {
+    throw new Error('MONIME_ENVIRONMENT must be live or test.');
+  }
+
+  if (deploymentMode && configured && configured !== deploymentMode) {
+    throw new Error('MONIME_ENVIRONMENT conflicts with the Vercel deployment environment.');
+  }
+
+  const token = process.env.MONIME_API_KEY || '';
+  const actual = token.startsWith('mon_test_')
+    ? 'test'
+    : token.startsWith('mon_')
+      ? 'live'
+      : 'unknown';
+
+  if (actual === 'unknown') {
+    throw new Error('Monime API key must use the documented Live or Test token prefix.');
+  }
+
+  const expected = deploymentMode || configured;
+  if (expected && expected !== actual) {
+    throw new Error('Monime token mode does not match this deployment.');
+  }
+}
+
 function createWorkerClient() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -136,6 +170,8 @@ function isFirstPendingAttempt(row) {
 }
 
 export async function processAdminMonimeWebhookBatch({ db = createWorkerClient(), limit = 10 } = {}) {
+  // Validate Live/Test mode before claiming any durable admin inbox event.
+  assertAdminMonimeEnvironment();
   const batchLimit = Math.max(1, Math.min(25, Number(limit) || 10));
   const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
