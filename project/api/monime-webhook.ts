@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normalizeMonimeEnvelope, readMonimeRawBody, verifyMonimeSignature } from '../server/monime-webhook-security.js';
-import { assertSupportedAdminMonimeEvent } from '../server/monime-event-routing.js';
+import { assertAdminMonimeEventSafeToProcess } from '../server/monime-event-routing.js';
 
 export const config = {
   api: {
@@ -101,7 +101,7 @@ async function refreshWalletBalance(client, monimeAccountId) {
 }
 
 async function processEvent(client, event) {
-  assertSupportedAdminMonimeEvent(event);
+  assertAdminMonimeEventSafeToProcess(event);
   const { type: eventType, data } = event;
 
   if (eventType === 'payout.completed' || eventType === 'payout.failed') {
