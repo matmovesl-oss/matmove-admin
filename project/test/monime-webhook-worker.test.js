@@ -44,7 +44,7 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
     limit(value) { this.maxRows = value; return this; }
     update(values) { this.values = values; return this; }
     rows() {
-      const source = this.table === 'matmove_monime_webhook_events'
+      const source = this.table === 'matmove_admin_monime_webhook_events'
         ? [row]
         : this.table === 'wallets'
           ? [wallet]
