@@ -8,7 +8,8 @@ import {
 import { processAdminMonimeWebhookBatch } from '../server/monime-webhook-worker.js';
 
 export const config = {
-  api: { bodyParser: false }
+  api: { bodyParser: false },
+  maxDuration: 60
 };
 
 function hasValidCronAuthorization(req) {
@@ -26,7 +27,7 @@ async function runWorker(req, res) {
   }
 
   try {
-    const result = await processAdminMonimeWebhookBatch({ limit: 10 });
+    const result = await processAdminMonimeWebhookBatch({ limit: 3 });
     // Failed items are durably quarantined for manual review. The scheduler
     // should see a successful worker invocation, while the response exposes
     // the failed count for alerting.
