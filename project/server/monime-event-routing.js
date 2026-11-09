@@ -37,3 +37,20 @@ export function assertSupportedAdminMonimeEvent(event) {
 
   return { name, objectType };
 }
+
+export function assertAdminMonimeEventSafeToProcess(event) {
+  const { name, objectType } = assertSupportedAdminMonimeEvent(event);
+
+  if (
+    name === 'payout.completed' ||
+    name === 'payout.failed' ||
+    name.startsWith('payment.') ||
+    name === 'financial_transaction.created'
+  ) {
+    throw new Error(
+      'Monime event is stored for manual review until its current provider object and money fields can be verified.'
+    );
+  }
+
+  return { name, objectType };
+}
