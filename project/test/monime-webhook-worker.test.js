@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { processAdminMonimeWebhookBatch } from '../server/monime-webhook-worker.js';
 
-function makeFixture(eventType = 'financial_account.credited', objectType = 'financial_account') {
+function makeFixture(eventType = 'financial_account.credited', objectType = 'financial_account', walletCount = 1) {
   const row = {
     event_id: 'wke-admin-worker-test',
     event_type: eventType,
@@ -21,12 +21,13 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
     last_error: null,
     processed_at: null
   };
-  const wallet = {
-    id: 'wallet-admin-test',
+  const wallets = Array.from({ length: walletCount }, (_, index) => ({
+    id: `wallet-admin-test-${index + 1}`,
     monime_account_id: 'fac-admin-test',
     currency: 'SLE',
     balance: 10
-  };
+  }));
+  const wallet = wallets[0] || null;
 
   class Query {
     constructor(table) {
@@ -189,4 +190,28 @@ test('admin worker retains a transient provider failure for retry', async () => 
     if (previousSpace === undefined) delete process.env.MONIME_SPACE_ID;
     else process.env.MONIME_SPACE_ID = previousSpace;
   }
+});
+
+
+test('admin worker quarantines a financial-account event when no MatMove wallet matches', async t => {
+  const { row, db } = makeFixture('financial_account.credited', 'financial_account', 0);
+  await withTestProvider(t, async fetchCalls => {
+    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
+    assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
+    assert.equal(fetchCalls(), 1);
+    assert.equal(row.status, 'failed');
+    assert.match(row.last_error, /does not map to exactly one MatMove wallet/i);
+  });
+});
+
+test('admin worker quarantines duplicate MatMove account mappings instead of updating multiple wallets', async t => {
+  const { row, wallets, db } = makeFixture('financial_account.credited', 'financial_account', 2);
+  await withTestProvider(t, async fetchCalls => {
+    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
+    assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
+    assert.equal(fetchCalls(), 1);
+    assert.equal(row.status, 'failed');
+    assert.ok(wallets.every(wallet => wallet.balance === 10));
+    assert.match(row.last_error, /does not map to exactly one MatMove wallet/i);
+  });
 });
