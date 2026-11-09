@@ -117,12 +117,12 @@ export async function processAdminMonimeWebhookBatch({ db = createWorkerClient()
   const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
   const [pendingResult, staleResult] = await Promise.all([
-    db.from('matmove_monime_webhook_events')
+    db.from('matmove_admin_monime_webhook_events')
       .select('event_id,event_type,status,attempts,updated_at,received_at,last_error,payload,object_id,object_type,signature_verified')
       .eq('status', 'pending')
       .order('received_at', { ascending: true })
       .limit(batchLimit),
-    db.from('matmove_monime_webhook_events')
+    db.from('matmove_admin_monime_webhook_events')
       .select('event_id,event_type,status,attempts,updated_at,received_at,last_error,payload,object_id,object_type,signature_verified')
       .eq('status', 'processing')
       .lt('updated_at', staleCutoff)
@@ -147,7 +147,7 @@ export async function processAdminMonimeWebhookBatch({ db = createWorkerClient()
     const attempts = Math.max(1, Number(row.attempts) || 1);
     const nextAttempt = isFirstPendingAttempt(row) ? attempts : attempts + 1;
 
-    let claim = db.from('matmove_monime_webhook_events')
+    let claim = db.from('matmove_admin_monime_webhook_events')
       .update({
         status: 'processing',
         attempts: nextAttempt,
@@ -170,7 +170,7 @@ export async function processAdminMonimeWebhookBatch({ db = createWorkerClient()
 
     try {
       await processAdminEvent(db, row);
-      const { error } = await db.from('matmove_monime_webhook_events')
+      const { error } = await db.from('matmove_admin_monime_webhook_events')
         .update({
           status: 'processed',
           processed_at: new Date().toISOString(),
@@ -187,7 +187,7 @@ export async function processAdminMonimeWebhookBatch({ db = createWorkerClient()
       const exhausted = nextAttempt >= MAX_ATTEMPTS;
       const nextStatus = permanent || exhausted ? 'failed' : 'pending';
       const safeMessage = String(error?.message || 'Monime event processing failed.').slice(0, 900);
-      const { error: persistError } = await db.from('matmove_monime_webhook_events')
+      const { error: persistError } = await db.from('matmove_admin_monime_webhook_events')
         .update({
           status: nextStatus,
           updated_at: new Date().toISOString(),
