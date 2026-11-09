@@ -80,7 +80,7 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
   }
 
   const db = { from: table => new Query(table) };
-  return { row, wallet, db };
+  return { row, wallet, wallets, db };
 }
 
 async function withTestProvider(t, run) {
