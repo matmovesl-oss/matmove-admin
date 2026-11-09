@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertSupportedAdminMonimeEvent } from '../server/monime-event-routing.js';
+import { assertAdminMonimeEventSafeToProcess, assertSupportedAdminMonimeEvent } from '../server/monime-event-routing.js';
 
 const event = (name, type) => ({ type: name, object: { id: 'object-test', type } });
 
@@ -44,4 +44,25 @@ test('admin Monime handler rejects an event whose object type does not match its
 test('admin Monime handler rejects incomplete event metadata', () => {
   assert.throws(() => assertSupportedAdminMonimeEvent(null), /missing its event or object type/i);
   assert.throws(() => assertSupportedAdminMonimeEvent({ type: 'payout.completed', object: {} }), /missing its event or object type/i);
+});
+
+
+test('admin event processor only acts on financial-account events with a current-balance refresh path', () => {
+  assert.doesNotThrow(() => assertAdminMonimeEventSafeToProcess(event('financial_account.credited', 'financial_account')));
+  assert.doesNotThrow(() => assertAdminMonimeEventSafeToProcess(event('financial_account.debited', 'financial_account')));
+});
+
+test('admin event processor blocks payout, payment and raw financial-transaction settlement until provider state is verified', () => {
+  for (const [name, type] of [
+    ['payout.completed', 'payout'],
+    ['payout.failed', 'payout'],
+    ['payment.completed', 'payment'],
+    ['payment.failed', 'payment'],
+    ['financial_transaction.created', 'financial_transaction'],
+  ]) {
+    assert.throws(
+      () => assertAdminMonimeEventSafeToProcess(event(name, type)),
+      /manual review until its current provider object/i
+    );
+  }
 });
