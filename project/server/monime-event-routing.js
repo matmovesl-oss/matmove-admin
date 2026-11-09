@@ -1,11 +1,6 @@
-const PAYMENT_STATUSES = new Set([
-  'pending',
-  'processing',
-  'completed',
-  'failed',
-  'cancelled',
-  'expired',
-]);
+// Only terminal payment results are consumed by this webhook. Non-terminal
+// provider notifications are not needed for settlement and remain unhandled.
+const PAYMENT_STATUSES = new Set(['completed', 'failed']);
 
 export function assertSupportedAdminMonimeEvent(event) {
   const name = event?.type;
