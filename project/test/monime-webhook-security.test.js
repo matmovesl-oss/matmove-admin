@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { readFile } from 'node:fs/promises';
 import {
   normalizeMonimeEnvelope,
   readMonimeRawBody,
@@ -81,4 +82,14 @@ test('reads raw request bytes without JSON re-serialization', async () => {
 
 test('rejects an oversized body', async () => {
   await assert.rejects(readMonimeRawBody(Readable.from([Buffer.alloc(8)]), 7), /too large/i);
+});
+
+
+test('admin webhook worker has an explicit runtime cap and bounded batch size', async () => {
+  const source = await readFile(
+    new URL('../api/monime-webhook.ts', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /maxDuration:\s*60/);
+  assert.match(source, /processAdminMonimeWebhookBatch\(\{\s*limit:\s*3\s*\}\)/);
 });
