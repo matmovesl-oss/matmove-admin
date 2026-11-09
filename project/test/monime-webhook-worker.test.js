@@ -86,11 +86,15 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
 async function withTestProvider(t, run) {
   const previous = {
     key: process.env.MONIME_API_KEY,
-    space: process.env.MONIME_SPACE_ID
+    space: process.env.MONIME_SPACE_ID,
+    mode: process.env.MONIME_ENVIRONMENT,
+    vercel: process.env.VERCEL_ENV
   };
   const originalFetch = globalThis.fetch;
   process.env.MONIME_API_KEY = 'mon_test_admin_worker_validation';
   process.env.MONIME_SPACE_ID = 'spc-admin-test';
+  process.env.MONIME_ENVIRONMENT = 'test';
+  process.env.VERCEL_ENV = 'preview';
   let calls = 0;
 
   globalThis.fetch = async (url, options) => {
@@ -118,6 +122,10 @@ async function withTestProvider(t, run) {
     else process.env.MONIME_API_KEY = previous.key;
     if (previous.space === undefined) delete process.env.MONIME_SPACE_ID;
     else process.env.MONIME_SPACE_ID = previous.space;
+    if (previous.mode === undefined) delete process.env.MONIME_ENVIRONMENT;
+    else process.env.MONIME_ENVIRONMENT = previous.mode;
+    if (previous.vercel === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previous.vercel;
   }
 }
 
@@ -214,4 +222,38 @@ test('admin worker quarantines duplicate MatMove account mappings instead of upd
     assert.ok(wallets.every(wallet => wallet.balance === 10));
     assert.match(row.last_error, /does not map to exactly one MatMove wallet/i);
   });
+});
+
+
+test('admin webhook worker refuses to claim inbox rows with a Test token in Production', async () => {
+  const { row, db } = makeFixture();
+  const previous = {
+    key: process.env.MONIME_API_KEY,
+    space: process.env.MONIME_SPACE_ID,
+    mode: process.env.MONIME_ENVIRONMENT,
+    vercel: process.env.VERCEL_ENV
+  };
+  process.env.MONIME_API_KEY = 'mon_test_not-a-real-secret';
+  process.env.MONIME_SPACE_ID = 'spc-admin-test';
+  process.env.MONIME_ENVIRONMENT = 'test';
+  process.env.VERCEL_ENV = 'production';
+
+  try {
+    await assert.rejects(
+      processAdminMonimeWebhookBatch({ db, limit: 10 }),
+      /conflicts with the Vercel deployment environment/i
+    );
+    assert.equal(row.status, 'pending');
+    assert.equal(row.attempts, 1);
+  } finally {
+    for (const [key, value] of [
+      ['MONIME_API_KEY', previous.key],
+      ['MONIME_SPACE_ID', previous.space],
+      ['MONIME_ENVIRONMENT', previous.mode],
+      ['VERCEL_ENV', previous.vercel]
+    ]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
