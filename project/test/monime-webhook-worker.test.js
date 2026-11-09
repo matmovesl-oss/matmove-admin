@@ -142,38 +142,28 @@ test('admin worker refreshes a wallet from the current Monime financial-account 
   });
 });
 
-test('admin worker quarantines payout events instead of settling from the event label', async () => {
+test('admin worker quarantines payout events instead of settling from the event label', async t => {
   const { row, wallet, db } = makeFixture('payout.completed', 'payout');
-  let fetchCalls = 0;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => { fetchCalls++; throw new Error('must not call provider for an unverified payout'); };
-  try {
+  await withTestProvider(t, async fetchCalls => {
     const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
     assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
-    assert.equal(fetchCalls, 0);
+    assert.equal(fetchCalls(), 0);
     assert.equal(wallet.balance, 10);
     assert.equal(row.status, 'failed');
     assert.match(row.last_error, /manual review until its current provider object/i);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  });
 });
 
-test('admin worker does not refresh account balances for unverified inbox content', async () => {
+test('admin worker does not refresh account balances for unverified inbox content', async t => {
   const { row, wallet, db } = makeFixture();
   row.signature_verified = false;
-  const originalFetch = globalThis.fetch;
-  let fetchCalls = 0;
-  globalThis.fetch = async () => { fetchCalls++; throw new Error('must not call provider for unsigned content'); };
-  try {
+  await withTestProvider(t, async fetchCalls => {
     const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
     assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
-    assert.equal(fetchCalls, 0);
+    assert.equal(fetchCalls(), 0);
     assert.equal(wallet.balance, 10);
     assert.equal(row.status, 'failed');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  });
 });
 
 test('admin worker retains a transient provider failure for retry', async () => {
