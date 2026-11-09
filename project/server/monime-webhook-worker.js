@@ -169,7 +169,7 @@ function isFirstPendingAttempt(row) {
   return row.status === 'pending' && !row.last_error && Number(row.attempts) === 1;
 }
 
-export async function processAdminMonimeWebhookBatch({ db = createWorkerClient(), limit = 10 } = {}) {
+export async function processAdminMonimeWebhookBatch({ db = createWorkerClient(), limit = 3 } = {}) {
   // Validate Live/Test mode before claiming any durable admin inbox event.
   assertAdminMonimeEnvironment();
   const batchLimit = Math.max(1, Math.min(25, Number(limit) || 10));
