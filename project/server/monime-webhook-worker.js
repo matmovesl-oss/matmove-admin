@@ -99,13 +99,36 @@ async function processAdminEvent(db, row) {
   }
 
   const current = await getCurrentFinancialAccount(accountId);
-  const { error } = await db
+  const lookup = await db
     .from('wallets')
-    .update({ balance: current.balance })
+    .select('id,monime_account_id,currency')
     .eq('monime_account_id', accountId)
     .eq('currency', current.currency);
 
-  if (error) throw new Error('MatMove wallet balance refresh failed.');
+  if (lookup.error) throw new Error('MatMove wallet lookup failed.');
+  if (!Array.isArray(lookup.data) || lookup.data.length !== 1) {
+    throw new ManualReviewError(
+      'Monime financial account does not map to exactly one MatMove wallet.'
+    );
+  }
+
+  const wallet = lookup.data[0];
+  if (wallet.monime_account_id !== accountId || wallet.currency !== current.currency) {
+    throw new ManualReviewError('MatMove wallet account mapping does not match the provider account.');
+  }
+
+  const updated = await db
+    .from('wallets')
+    .update({ balance: current.balance })
+    .eq('id', wallet.id)
+    .eq('monime_account_id', accountId)
+    .eq('currency', current.currency)
+    .select('id')
+    .maybeSingle();
+
+  if (updated.error || !updated.data?.id) {
+    throw new Error('MatMove wallet balance refresh could not be confirmed.');
+  }
 }
 
 function isFirstPendingAttempt(row) {
