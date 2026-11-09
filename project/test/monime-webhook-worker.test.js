@@ -48,7 +48,7 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
       const source = this.table === 'matmove_admin_monime_webhook_events'
         ? [row]
         : this.table === 'wallets'
-          ? [wallet]
+          ? wallets
           : [];
       let rows = source.filter(item => this.filters.every(([op, key, value]) => {
         if (op === 'eq') return item[key] === value;
