@@ -104,9 +104,9 @@ test('rejects unbounded or unsafe event and provider-object identifiers', () => 
 
   for (const envelope of [
     { ...valid, event: { ...valid.event, name: 'x'.repeat(200) } },
-    { ...valid, event: { ...valid.event, name: 'payment.completed\\nprivate-data' } },
+    { ...valid, event: { ...valid.event, name: 'payment.completed\nprivate-data' } },
     { ...valid, object: { ...valid.object, id: 'fac-' + 'x'.repeat(200) } },
-    { ...valid, object: { ...valid.object, id: 'fac-test\\nprivate-data' } },
+    { ...valid, object: { ...valid.object, id: 'fac-test\nprivate-data' } },
     { ...valid, object: { ...valid.object, type: 'financial-account' } }
   ]) {
     assert.throws(() => normalizeMonimeEnvelope(envelope), /invalid monime webhook envelope/i);
@@ -118,7 +118,7 @@ test('webhook route logs fixed diagnostic codes instead of raw exception message
     new URL('../api/monime-webhook.ts', import.meta.url),
     'utf8'
   );
-  assert.match(source, /failure:\\s*'worker_unavailable'/);
-  assert.match(source, /failure:\\s*'inbox_unavailable'/);
-  assert.doesNotMatch(source, /console\\.error\\([^\\n]*error\\?\\.message/);
+  assert.match(source, /failure:\s*'worker_unavailable'/);
+  assert.match(source, /failure:\s*'inbox_unavailable'/);
+  assert.doesNotMatch(source, /console\.error\\([^\n]*error\?\\.message/);
 });
