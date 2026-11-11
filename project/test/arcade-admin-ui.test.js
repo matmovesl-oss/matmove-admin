@@ -8,6 +8,7 @@ import {pathToFileURL} from 'node:url';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {defaultArcadeSettings} from '../shared/arcade-payment-rules.js';
+import {defaultBundleTiers} from '../shared/bundle-spin-rules.js';
 const staff={id:'11111111-1111-4111-8111-111111111111',is_active:true,is_owner:false,permissions:['games.settings']};
 const gameId='22222222-2222-4222-8222-222222222222';
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -24,11 +25,11 @@ async function bundle(controlled=false){const dir=await mkdtemp(join(process.cwd
   b.onLoad({filter:/.*/,namespace:'fixture'},a=>({contents:a.path==='db'?'export const supabase={rpc:(...args)=>globalThis.__adminGameRpc(...args)};':a.path==='access'?`export const useAdminAccess=()=>globalThis.__adminGameAccess;export const canAccess=(a,k)=>!!a&&a.is_active===true&&(a.is_owner===true||a.permissions.includes(k)||a.permissions.includes('games'));`:a.path==='fetch'?'export const adminFetch=()=>{throw Error("Unexpected wallet request");};':a.path==='layout'?'export default function Layout({children}){return children;}':a.path==='router'?`import {jsx} from 'react/jsx-runtime';export const useSearchParams=()=>[new URLSearchParams(globalThis.__adminGameQuery||'')];export const Link=({to,children,...props})=>jsx('a',{...props,href:to,children});`:'export const {useState,useRef,useEffect,useCallback}=globalThis.__adminGameHooks;'}));
  }}]});return {module:await import(pathToFileURL(out)),close:()=>rm(dir,{recursive:true,force:true})};
 }catch(e){await rm(dir,{recursive:true,force:true});throw e;}}
-async function withControls(component,props,handler,fn){
+async function withControls(component,props,handler,fn,query='tab=settings&game=dice'){
  const saved={setInterval:globalThis.setInterval,clearInterval:globalThis.clearInterval,document:globalThis.document};
  const slots=[],effects=[],timers=new Map(),calls=[];let index=0,dirty=true,tree,id=0;
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,i)=>!Object.is(v,b[i]));
- globalThis.__adminGameAccess=staff;globalThis.__adminGameQuery='tab=settings&game=dice';
+ globalThis.__adminGameAccess=staff;globalThis.__adminGameQuery=query;
  globalThis.__adminGameHooks={useState(initial){const i=index++;if(!(i in slots))slots[i]={value:typeof initial==='function'?initial():initial};return [slots[i].value,v=>{const next=typeof v==='function'?v(slots[i].value):v;if(!Object.is(next,slots[i].value)){slots[i].value=next;dirty=true;}}];},useRef(v){const i=index++;if(!(i in slots))slots[i]={current:v};return slots[i];},useCallback(fn,deps){const i=index++;if(!(i in slots)||changed(slots[i].deps,deps))slots[i]={fn,deps};return slots[i].fn;},useEffect(fn,deps){const i=index++,old=slots[i];if(!old||changed(old.deps,deps)){const record={deps,cleanup:old?.cleanup};slots[i]=record;effects.push(()=>{record.cleanup?.();record.cleanup=fn();});}}};
  globalThis.__adminGameRpc=async(name,args)=>{calls.push({name,args:clone(args)});return handler(name,args);};
  globalThis.document={hidden:false};globalThis.setInterval=(cb,ms)=>{const n=++id;timers.set(n,{cb,ms});return n;};globalThis.clearInterval=n=>timers.delete(n);
@@ -47,6 +48,21 @@ test('game tabs keep the selected game and customer while hiding unassigned sect
  const b=await bundle();globalThis.__adminGameAccess={...staff,permissions:['games.entries','games.winnings']};globalThis.__adminGameQuery=`tab=entries&game=fruity&player=${gameId}`;
  try{const html=renderToStaticMarkup(React.createElement(b.module.GamesPage));assert.match(html,/tab=winnings&amp;game=fruity&amp;player=/);assert.doesNotMatch(html,/>Settings &amp; access</);assert.match(html,/Fruity Flue/);assert.match(html,/CRANKLING/);}finally{await b.close();delete globalThis.__adminGameAccess;delete globalThis.__adminGameQuery;}
 });
+test('Spin settings-only staff do not receive entries, winnings or reserve summaries',()=>{
+ return withControls('GamesPage',{},async(name)=>{
+  assert.equal(name,'matmove_spin_admin_snapshot');
+  return {data:{
+   config:{id:7,enabled:true,bundle_tiers:defaultBundleTiers()},
+   entryReceivedMinor:90000,winsPaidMinor:20000,winsOwedMinor:5000,reservedMinor:30000,
+   rounds:[{user_id:gameId}],receipts:[{provider_id:'trn-private'}],access:[{user_id:gameId}],
+  },error:null};
+ },async h=>{
+  assert.match(h.text,/Fees and prizes/);
+  assert.doesNotMatch(h.text,/Wheel entries received|Wheel winnings credited|Wheel prizes still owed|Wheel reserved capacity/);
+  assert.equal(h.calls.length,1);
+ },'tab=settings&game=spin');
+});
+
 test('publishing uses the loaded version, keeps unedited games and prevents duplicate save clicks',()=>{
  let config={id:7,settings:defaultArcadeSettings()},writes=0,release;
  return withControls('ArcadeSettingsPanel',{game:'dice'},async(name,args)=>{
