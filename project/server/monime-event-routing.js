@@ -1,5 +1,7 @@
-// Only terminal payment results are consumed by this webhook. Non-terminal
-// provider notifications are not needed for settlement and remain unhandled.
+// Validate the event/object pair, but do not mutate MatMove money records from
+// webhook notifications alone. Manual review is required until the provider
+// object, exact amount/currency, destination and MatMove ledger posting are
+// reconciled and idempotently recorded.
 const PAYMENT_STATUSES = new Set(['completed', 'failed']);
 
 export function assertSupportedAdminMonimeEvent(event) {
@@ -39,18 +41,9 @@ export function assertSupportedAdminMonimeEvent(event) {
 }
 
 export function assertAdminMonimeEventSafeToProcess(event) {
-  const { name, objectType } = assertSupportedAdminMonimeEvent(event);
+  const { name } = assertSupportedAdminMonimeEvent(event);
 
-  if (
-    name === 'payout.completed' ||
-    name === 'payout.failed' ||
-    name.startsWith('payment.') ||
-    name === 'financial_transaction.created'
-  ) {
-    throw new Error(
-      'Monime event is stored for manual review until its current provider object and money fields can be verified.'
-    );
-  }
-
-  return { name, objectType };
+  throw new Error(
+    `Monime ${name} event is retained for manual review. Automatic wallet, payout and payment updates are disabled until the current provider object is reconciled with the exact MatMove ledger entry.`
+  );
 }
