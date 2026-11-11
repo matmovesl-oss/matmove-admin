@@ -2,15 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { processAdminMonimeWebhookBatch } from '../server/monime-webhook-worker.js';
 
-function makeFixture(eventType = 'financial_account.credited', objectType = 'financial_account', walletCount = 1) {
+function makeRow(overrides = {}) {
   const row = {
     event_id: 'wke-admin-worker-test',
-    event_type: eventType,
+    event_type: 'financial_account.credited',
     object_id: 'fac-admin-test',
-    object_type: objectType,
+    object_type: 'financial_account',
     payload: {
-      event: { id: 'wke-admin-worker-test', name: eventType, timestamp: '2026-11-09T10:00:00Z' },
-      object: { id: 'fac-admin-test', type: objectType },
+      event: { id: 'wke-admin-worker-test', name: 'financial_account.credited', timestamp: '2026-11-09T10:00:00Z' },
+      object: { id: 'fac-admin-test', type: 'financial_account' },
       data: {}
     },
     signature_verified: true,
@@ -19,15 +19,14 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
     received_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     last_error: null,
-    processed_at: null
+    processed_at: null,
+    ...overrides
   };
-  const wallets = Array.from({ length: walletCount }, (_, index) => ({
-    id: `wallet-admin-test-${index + 1}`,
-    monime_account_id: 'fac-admin-test',
-    currency: 'SLE',
-    balance: 10
-  }));
-  const wallet = wallets[0] || null;
+  return row;
+}
+
+function makeDb(rows) {
+  const touchedTables = new Set();
 
   class Query {
     constructor(table) {
@@ -44,22 +43,20 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
     order(key, options = {}) { this.sort = [key, options.ascending !== false]; return this; }
     limit(value) { this.maxRows = value; return this; }
     update(values) { this.values = values; return this; }
-    rows() {
-      const source = this.table === 'matmove_admin_monime_webhook_events'
-        ? [row]
-        : this.table === 'wallets'
-          ? wallets
-          : [];
-      let rows = source.filter(item => this.filters.every(([op, key, value]) => {
+    matched() {
+      let result = this.table === 'matmove_admin_monime_webhook_events' ? rows : [];
+      result = result.filter(item => this.filters.every(([op, key, value]) => {
         if (op === 'eq') return item[key] === value;
         return String(item[key]) < String(value);
       }));
       if (this.sort) {
         const [key, ascending] = this.sort;
-        rows = rows.sort((a, b) => String(a[key]).localeCompare(String(b[key])) * (ascending ? 1 : -1));
+        result = [...result].sort((a, b) =>
+          String(a[key]).localeCompare(String(b[key])) * (ascending ? 1 : -1)
+        );
       }
-      if (this.maxRows !== null) rows = rows.slice(0, this.maxRows);
-      return rows;
+      if (this.maxRows !== null) result = result.slice(0, this.maxRows);
+      return result;
     }
     project(item) {
       if (!item) return null;
@@ -67,183 +64,109 @@ function makeFixture(eventType = 'financial_account.credited', objectType = 'fin
       return Object.fromEntries(this.columns.split(',').map(key => [key, item[key]]));
     }
     async execute(single = false) {
-      const rows = this.rows();
+      touchedTables.add(this.table);
+      const matches = this.matched();
       if (this.values) {
-        for (const item of rows) Object.assign(item, this.values);
-        return { data: single ? this.project(rows[0]) : null, error: null };
+        for (const item of matches) Object.assign(item, this.values);
+        return { data: single ? this.project(matches[0]) : null, error: null };
       }
-      return { data: single ? this.project(rows[0]) : rows.map(item => this.project(item)), error: null };
+      return {
+        data: single ? this.project(matches[0]) : matches.map(item => this.project(item)),
+        error: null
+      };
     }
     maybeSingle() { return this.execute(true); }
     single() { return this.execute(true); }
     then(resolve, reject) { return this.execute(false).then(resolve, reject); }
   }
 
-  const db = { from: table => new Query(table) };
-  return { row, wallet, wallets, db };
+  return { from: table => new Query(table), touchedTables };
 }
 
-async function withTestProvider(t, run) {
-  const previous = {
-    key: process.env.MONIME_API_KEY,
-    space: process.env.MONIME_SPACE_ID,
-    mode: process.env.MONIME_ENVIRONMENT,
-    vercel: process.env.VERCEL_ENV
-  };
-  const originalFetch = globalThis.fetch;
-  process.env.MONIME_API_KEY = 'mon_test_admin_worker_validation';
-  process.env.MONIME_SPACE_ID = 'spc-admin-test';
-  process.env.MONIME_ENVIRONMENT = 'test';
-  process.env.VERCEL_ENV = 'preview';
-  let calls = 0;
+test('admin worker quarantines signed financial-account events without overwriting the local wallet ledger', async () => {
+  const row = makeRow();
+  const { db, touchedTables } = makeDb([row]);
+  const localWallet = { id: 'wallet-1', balance: 10, reserved_balance: 4, currency: 'SLE' };
 
-  globalThis.fetch = async (url, options) => {
-    calls++;
-    assert.match(String(url), /\/v1\/financial-accounts\/fac-admin-test\?withBalance=true$/);
-    assert.equal(options.method, 'GET');
-    assert.equal(options.headers['Monime-Space-Id'], 'spc-admin-test');
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        result: {
-          id: 'fac-admin-test',
-          balance: { available: { currency: 'SLE', value: 12345 } }
-        }
-      })
-    };
-  };
+  const result = await processAdminMonimeWebhookBatch({ db, limit: 3 });
 
-  try {
-    await run(() => calls);
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (previous.key === undefined) delete process.env.MONIME_API_KEY;
-    else process.env.MONIME_API_KEY = previous.key;
-    if (previous.space === undefined) delete process.env.MONIME_SPACE_ID;
-    else process.env.MONIME_SPACE_ID = previous.space;
-    if (previous.mode === undefined) delete process.env.MONIME_ENVIRONMENT;
-    else process.env.MONIME_ENVIRONMENT = previous.mode;
-    if (previous.vercel === undefined) delete process.env.VERCEL_ENV;
-    else process.env.VERCEL_ENV = previous.vercel;
-  }
-}
-
-test('admin worker refreshes a wallet from the current Monime financial-account balance', async t => {
-  const { row, wallet, db } = makeFixture();
-  await withTestProvider(t, async fetchCalls => {
-    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
-    assert.deepEqual(result, { checked: 1, processed: 1, retrying: 0, failed: 0 });
-    assert.equal(fetchCalls(), 1);
-    assert.equal(wallet.balance, 123.45);
-    assert.equal(row.status, 'processed');
-    assert.equal(row.attempts, 1);
-    assert.equal(row.signature_verified, true);
-  });
+  assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
+  assert.equal(row.status, 'failed');
+  assert.equal(row.attempts, 1);
+  assert.match(row.last_error, /manual review/i);
+  assert.equal(localWallet.balance, 10);
+  assert.equal(localWallet.reserved_balance, 4);
+  assert.deepEqual([...touchedTables], ['matmove_admin_monime_webhook_events']);
 });
 
-test('admin worker quarantines payout events instead of settling from the event label', async t => {
-  const { row, wallet, db } = makeFixture('payout.completed', 'payout');
-  await withTestProvider(t, async fetchCalls => {
-    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
+test('admin worker quarantines payout/payment events instead of settling from event labels', async () => {
+  for (const [eventType, objectType] of [
+    ['payout.completed', 'payout'],
+    ['payout.failed', 'payout'],
+    ['payment.completed', 'payment'],
+    ['payment.failed', 'payment'],
+    ['financial_transaction.created', 'financial_transaction']
+  ]) {
+    const row = makeRow({
+      event_type: eventType,
+      object_type: objectType,
+      object_id: 'provider-object-1',
+      payload: {
+        event: { id: 'wke-admin-worker-test', name: eventType, timestamp: '2026-11-09T10:00:00Z' },
+        object: { id: 'provider-object-1', type: objectType },
+        data: {}
+      }
+    });
+    const { db } = makeDb([row]);
+    const result = await processAdminMonimeWebhookBatch({ db, limit: 3 });
     assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
-    assert.equal(fetchCalls(), 0);
-    assert.equal(wallet.balance, 10);
     assert.equal(row.status, 'failed');
-    assert.match(row.last_error, /manual review until its current provider object/i);
-  });
-});
-
-test('admin worker does not refresh account balances for unverified inbox content', async t => {
-  const { row, wallet, db } = makeFixture();
-  row.signature_verified = false;
-  await withTestProvider(t, async fetchCalls => {
-    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
-    assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
-    assert.equal(fetchCalls(), 0);
-    assert.equal(wallet.balance, 10);
-    assert.equal(row.status, 'failed');
-  });
-});
-
-test('admin worker retains a transient provider failure for retry', async () => {
-  const { row, wallet, db } = makeFixture();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({ ok: false, status: 503, json: async () => null });
-  const previousKey = process.env.MONIME_API_KEY;
-  const previousSpace = process.env.MONIME_SPACE_ID;
-  process.env.MONIME_API_KEY = 'mon_test_admin_worker_validation';
-  process.env.MONIME_SPACE_ID = 'spc-admin-test';
-
-  try {
-    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
-    assert.deepEqual(result, { checked: 1, processed: 0, retrying: 1, failed: 0 });
-    assert.equal(row.status, 'pending');
-    assert.equal(row.attempts, 1);
-    assert.equal(wallet.balance, 10);
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (previousKey === undefined) delete process.env.MONIME_API_KEY;
-    else process.env.MONIME_API_KEY = previousKey;
-    if (previousSpace === undefined) delete process.env.MONIME_SPACE_ID;
-    else process.env.MONIME_SPACE_ID = previousSpace;
+    assert.match(row.last_error, /manual review/i);
   }
 });
 
+test('admin worker rejects unverified or altered inbox payloads', async () => {
+  const unverified = makeRow({ signature_verified: false });
+  const altered = makeRow();
+  altered.payload.event.id = 'wke-other-event';
 
-test('admin worker quarantines a financial-account event when no MatMove wallet matches', async t => {
-  const { row, db } = makeFixture('financial_account.credited', 'financial_account', 0);
-  await withTestProvider(t, async fetchCalls => {
-    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
+  for (const row of [unverified, altered]) {
+    const { db } = makeDb([row]);
+    const result = await processAdminMonimeWebhookBatch({ db, limit: 3 });
     assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
-    assert.equal(fetchCalls(), 1);
     assert.equal(row.status, 'failed');
-    assert.match(row.last_error, /does not map to exactly one MatMove wallet/i);
-  });
+  }
 });
 
-test('admin worker quarantines duplicate MatMove account mappings instead of updating multiple wallets', async t => {
-  const { row, wallets, db } = makeFixture('financial_account.credited', 'financial_account', 2);
-  await withTestProvider(t, async fetchCalls => {
-    const result = await processAdminMonimeWebhookBatch({ db, limit: 10 });
-    assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
-    assert.equal(fetchCalls(), 1);
-    assert.equal(row.status, 'failed');
-    assert.ok(wallets.every(wallet => wallet.balance === 10));
-    assert.match(row.last_error, /does not map to exactly one MatMove wallet/i);
-  });
-});
-
-
-test('admin webhook worker refuses to claim inbox rows with a Test token in Production', async () => {
-  const { row, db } = makeFixture();
-  const previous = {
-    key: process.env.MONIME_API_KEY,
-    space: process.env.MONIME_SPACE_ID,
-    mode: process.env.MONIME_ENVIRONMENT,
-    vercel: process.env.VERCEL_ENV
-  };
-  process.env.MONIME_API_KEY = 'mon_test_not-a-real-secret';
-  process.env.MONIME_SPACE_ID = 'spc-admin-test';
-  process.env.MONIME_ENVIRONMENT = 'test';
-  process.env.VERCEL_ENV = 'production';
-
-  try {
-    await assert.rejects(
-      processAdminMonimeWebhookBatch({ db, limit: 10 }),
-      /conflicts with the Vercel deployment environment/i
-    );
-    assert.equal(row.status, 'pending');
-    assert.equal(row.attempts, 1);
-  } finally {
-    for (const [key, value] of [
-      ['MONIME_API_KEY', previous.key],
-      ['MONIME_SPACE_ID', previous.space],
-      ['MONIME_ENVIRONMENT', previous.mode],
-      ['VERCEL_ENV', previous.vercel]
-    ]) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
+test('admin worker limits each invocation and leaves the remaining inbox rows pending', async () => {
+  const rows = Array.from({ length: 5 }, (_, index) => makeRow({
+    event_id: `wke-admin-worker-${index + 1}`,
+    received_at: new Date(Date.now() + index).toISOString(),
+    payload: {
+      event: { id: `wke-admin-worker-${index + 1}`, name: 'financial_account.credited', timestamp: '2026-11-09T10:00:00Z' },
+      object: { id: 'fac-admin-test', type: 'financial_account' },
+      data: {}
     }
-  }
+  }));
+  const { db } = makeDb(rows);
+  const result = await processAdminMonimeWebhookBatch({ db, limit: 3 });
+
+  assert.equal(result.checked, 3);
+  assert.equal(result.failed, 3);
+  assert.equal(rows.filter(row => row.status === 'pending').length, 2);
+});
+
+test('admin worker recovers a stale processing claim and records the attempt', async () => {
+  const stale = makeRow({
+    status: 'processing',
+    attempts: 2,
+    updated_at: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  });
+  const { db } = makeDb([stale]);
+  const result = await processAdminMonimeWebhookBatch({ db, limit: 3 });
+
+  assert.deepEqual(result, { checked: 1, processed: 0, retrying: 0, failed: 1 });
+  assert.equal(stale.status, 'failed');
+  assert.equal(stale.attempts, 3);
+  assert.match(stale.last_error, /manual review/i);
 });
