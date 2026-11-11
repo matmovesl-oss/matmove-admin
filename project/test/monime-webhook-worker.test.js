@@ -80,7 +80,7 @@ function makeDb(rows) {
     then(resolve, reject) { return this.execute(false).then(resolve, reject); }
   }
 
-  return { from: table => new Query(table), touchedTables };
+  return { db: { from: table => new Query(table) }, touchedTables };
 }
 
 test('admin worker quarantines signed financial-account events without overwriting the local wallet ledger', async () => {
