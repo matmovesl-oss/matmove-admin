@@ -11,8 +11,9 @@ import { supabase } from '@/lib/supabase';
 import { validateArcadeSettings, type ArcadeSettings, type ArcadeGame } from '../../shared/arcade-payment-rules.js';
 import { validateBundleTiers, bundleEconomics, bundleLabel, type BundleTier } from '../../shared/bundle-spin-rules.js';
 const money=(n:number)=>`SLE ${(n/100).toFixed(2)}`;
-type Snapshot={config:{id:number;enabled:boolean;bundle_tiers:BundleTier[]|null};reservedMinor:number;entryReceivedMinor:number;winsPaidMinor:number;winsOwedMinor:number};
+type Snapshot={config:{id:number;enabled:boolean;bundle_tiers:BundleTier[]|null};reservedMinor:number|null;entryReceivedMinor:number|null;winsPaidMinor:number|null;winsOwedMinor:number|null};
 function GameSettings({selectedPlayer}: {selectedPlayer:string}){
+  const access=useAdminAccess();
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [tiers,setTiers]=useState<BundleTier[]>([]);
   const [selected,setSelected]=useState('0');
@@ -44,7 +45,11 @@ function GameSettings({selectedPlayer}: {selectedPlayer:string}){
     {notice&&<p role="status" className="mb-4 rounded-xl bg-emerald-50 p-4 text-emerald-700">{notice}</p>}
     <button disabled={busy} onClick={()=>void execute(refresh)} className="mb-5 rounded-xl border bg-white px-5 py-3 font-bold">Refresh settings and balance</button>
     {!snapshot?<p>Loading settings…</p>:<div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[['Wheel entries received',snapshot.entryReceivedMinor],['Wheel winnings credited',snapshot.winsPaidMinor],['Wheel prizes still owed',snapshot.winsOwedMinor],['Wheel reserved capacity',snapshot.reservedMinor]].map(([label,value])=><div key={String(label)} className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{money(Number(value))}</p></div>)}</div>
+      {(canAccess(access,'games.entries')||canAccess(access,'games.winnings')||canAccess(access,'games.overview'))&&<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {canAccess(access,'games.entries')&&<div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Wheel entries received</p><p className="mt-2 text-2xl font-bold">{money(Number(snapshot.entryReceivedMinor))}</p></div>}
+        {canAccess(access,'games.winnings')&&<><div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Wheel winnings credited</p><p className="mt-2 text-2xl font-bold">{money(Number(snapshot.winsPaidMinor))}</p></div><div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Wheel prizes still owed</p><p className="mt-2 text-2xl font-bold">{money(Number(snapshot.winsOwedMinor))}</p></div></>}
+        {(canAccess(access,'games.overview')||canAccess(access,'games.winnings'))&&<div className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">Wheel reserved capacity</p><p className="mt-2 text-2xl font-bold">{money(Number(snapshot.reservedMinor))}</p></div>}
+      </div>}
       <div className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Dedicated Spin Account</h2>{account?<><p className="mt-2 break-all font-mono text-sm">{account.id}</p><p className="mt-2">Available: <b>{money(account.balance)}</b></p></>:<p className="mt-2 text-red-700">{accountError}</p>}<p className="mt-3 text-sm text-slate-600">The dedicated Spin Account serves all four games. Shared backend checks reserve the maximum remaining prize capacity across the wheel and the three other games. These summary figures cover the wheel only. New wheel packages reserve the maximum cash prize multiplied by their paid spin count. Wheel 1 has one paid spin and one possible free final spin; wheels 2 and 3 have one paid spin each. Older purchased games retain their original rules. Entry payments go from customer to Spin Account; prizes go from Spin Account to that customer, without a winnings fee.</p></div>
       <div className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Fees and prizes</h2>
         <label className="my-4 flex gap-3"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>Allow new entries (Customer MATMOVE_SPIN_ENABLED must also be true)</label>
