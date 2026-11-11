@@ -3,10 +3,14 @@ import { requireAdmin } from '../server/admin-auth.js';
 const EVENT_ID = /^wke-[A-Za-z0-9_-]{1,120}$/;
 
 function missingReviewQueue(error) {
+  const message = String(error?.message || '');
   return error?.code === '42P01' ||
+    error?.code === '42703' ||
+    error?.code === 'PGRST204' ||
     error?.code === 'PGRST205' ||
     error?.status === 404 ||
-    /matmove_admin_monime_webhook_events.*(not found|does not exist)/i.test(String(error?.message || ''));
+    /matmove_admin_monime_webhook_events.*(not found|does not exist)/i.test(message) ||
+    /(?:column|field).*review_state.*(?:not found|does not exist|schema cache)/i.test(message);
 }
 
 export function createHandler({
