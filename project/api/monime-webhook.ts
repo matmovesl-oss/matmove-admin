@@ -33,7 +33,7 @@ async function runWorker(req, res) {
     // the failed count for alerting.
     return res.status(200).json(result);
   } catch (error) {
-    console.error('Monime webhook worker failed', { message: error?.message });
+    console.error('Monime webhook worker failed', { failure: 'worker_unavailable' });
     return res.status(503).json({ error: 'Webhook worker unavailable.' });
   }
 }
@@ -107,7 +107,7 @@ async function receiveWebhook(req, res) {
     // Acknowledge only after the signed event is durably stored.
     return res.status(200).json({ received: true });
   } catch (error) {
-    console.error('Monime webhook inbox unavailable', { message: error?.message });
+    console.error('Monime webhook inbox unavailable', { failure: 'inbox_unavailable' });
     return res.status(503).json({ error: 'Webhook storage unavailable.' });
   }
 }
