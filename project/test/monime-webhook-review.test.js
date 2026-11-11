@@ -184,6 +184,28 @@ test('GET tolerates a not-yet-installed private queue without granting direct br
   assert.match(res.body.webhookReviewError, /migration is not installed/i);
 });
 
+test('GET tolerates review columns missing from the API schema cache', async () => {
+  const { client, calls } = mockClient({
+    reviewError: {
+      code: 'PGRST204',
+      message: "Could not find the 'review_state' column of 'matmove_admin_monime_webhook_events' in the schema cache."
+    }
+  });
+  const handler = createHandler({
+    requireAdminFn: adminStub(client, calls),
+    fetcher: providerStub(),
+    env: testEnv
+  });
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: {} }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.transactions.length, 1);
+  assert.equal(res.body.webhookReviewAvailable, false);
+  assert.deepEqual(res.body.webhookReviewEvents, []);
+  assert.match(res.body.webhookReviewError, /migration is not installed/i);
+});
+
 test('Admin review migration keeps the queue private and the review RPC service-role-only', async () => {
   const migration = await readFile(
     new URL('../supabase/migrations/20261111140000_matmove_admin_monime_manual_review.sql', import.meta.url),
