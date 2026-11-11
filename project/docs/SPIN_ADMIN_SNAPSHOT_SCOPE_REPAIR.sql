@@ -28,9 +28,6 @@ declare
  v_snapshot jsonb;
 begin
  if auth.uid() is null then
-  if coalesce(auth.jwt()->>'role','')='service_role' then
-   return public.matmove_spin_admin_snapshot_staff_base();
-  end if;
   raise exception 'AUTH: Sign in to Admin.';
  end if;
 
@@ -105,15 +102,14 @@ begin
 end;
 $report$;
 
-revoke all on function public.matmove_spin_admin_snapshot_staff_base() from public,anon,authenticated;
-grant execute on function public.matmove_spin_admin_snapshot_staff_base() to service_role;
-revoke all on function public.matmove_spin_admin_snapshot() from public,anon;
-grant execute on function public.matmove_spin_admin_snapshot() to authenticated,service_role;
+revoke all on function public.matmove_spin_admin_snapshot_staff_base() from public,anon,authenticated,service_role;
+revoke all on function public.matmove_spin_admin_report_staff_base(text,integer,text,text,uuid) from public,anon,authenticated,service_role;
 
-revoke all on function public.matmove_spin_admin_report_staff_base(text,integer,text,text,uuid) from public,anon,authenticated;
-grant execute on function public.matmove_spin_admin_report_staff_base(text,integer,text,text,uuid) to service_role;
+revoke all on function public.matmove_spin_admin_snapshot() from public,anon;
+grant execute on function public.matmove_spin_admin_snapshot() to authenticated;
+
 revoke all on function public.matmove_spin_admin_report(text,integer,text,text,uuid) from public,anon;
-grant execute on function public.matmove_spin_admin_report(text,integer,text,text,uuid) to authenticated,service_role;
+grant execute on function public.matmove_spin_admin_report(text,integer,text,text,uuid) to authenticated;
 
 notify pgrst, 'reload schema';
 commit;
