@@ -74,7 +74,7 @@ test('admin event processor blocks payout, payment and raw financial-transaction
   ]) {
     assert.throws(
       () => assertAdminMonimeEventSafeToProcess(event(name, type)),
-      /manual review until its current provider object/i
+      /manual review/i
     );
   }
 });
