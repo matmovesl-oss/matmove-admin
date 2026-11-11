@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { assertAdminMonimeEventSafeToProcess } from './monime-event-routing.js';
+import {
+  assertAdminMonimeEventSafeToProcess,
+  assertSupportedAdminMonimeEvent
+} from './monime-event-routing.js';
 
 const MAX_ATTEMPTS = 12;
 
@@ -8,40 +11,6 @@ class ManualReviewError extends Error {
     super(message);
     this.name = 'ManualReviewError';
     this.permanent = true;
-  }
-}
-
-function assertAdminMonimeEnvironment() {
-  const configured = process.env.MONIME_ENVIRONMENT || null;
-  const deploymentMode =
-    process.env.VERCEL_ENV === 'production'
-      ? 'live'
-      : process.env.VERCEL_ENV === 'preview'
-        ? 'test'
-        : null;
-
-  if (configured && !['live', 'test'].includes(configured)) {
-    throw new Error('MONIME_ENVIRONMENT must be live or test.');
-  }
-
-  if (deploymentMode && configured && configured !== deploymentMode) {
-    throw new Error('MONIME_ENVIRONMENT conflicts with the Vercel deployment environment.');
-  }
-
-  const token = process.env.MONIME_API_KEY || '';
-  const actual = token.startsWith('mon_test_')
-    ? 'test'
-    : token.startsWith('mon_')
-      ? 'live'
-      : 'unknown';
-
-  if (actual === 'unknown') {
-    throw new Error('Monime API key must use the documented Live or Test token prefix.');
-  }
-
-  const expected = deploymentMode || configured;
-  if (expected && expected !== actual) {
-    throw new Error('Monime token mode does not match this deployment.');
   }
 }
 
@@ -54,43 +23,7 @@ function createWorkerClient() {
   });
 }
 
-async function getCurrentFinancialAccount(accountId) {
-  const token = process.env.MONIME_API_KEY;
-  const spaceId = process.env.MONIME_SPACE_ID;
-  if (!token || !spaceId) throw new Error('Monime account refresh is not configured.');
-
-  const response = await fetch(
-    `https://api.monime.io/v1/financial-accounts/${encodeURIComponent(accountId)}?withBalance=true`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Monime-Space-Id': spaceId,
-        'Monime-Version': 'caph.2025-08-23',
-        Accept: 'application/json'
-      },
-      signal: AbortSignal.timeout(12000)
-    }
-  );
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.result) {
-    throw new Error(`Monime financial-account lookup failed (HTTP ${response.status}).`);
-  }
-
-  const account = payload.result;
-  const balance = account?.balance?.available;
-  if (
-    account.id !== accountId ||
-    !balance ||
-    !['SLE', 'USD'].includes(balance.currency) ||
-    !Number.isSafeInteger(balance.value) ||
-    balance.value < 0
-  ) throw new ManualReviewError('Monime returned a financial account with invalid balance details.');
-
-  return { currency: balance.currency, balance: balance.value / 100 };
-}
-
-async function processAdminEvent(db, row) {
+async function processAdminEvent(row) {
   if (row.signature_verified !== true) {
     throw new ManualReviewError('Webhook event was not verified at ingress; manual review required.');
   }
@@ -102,7 +35,9 @@ async function processAdminEvent(db, row) {
     envelope.event?.name !== row.event_type ||
     envelope.object?.id !== row.object_id ||
     envelope.object?.type !== row.object_type
-  ) throw new ManualReviewError('Stored webhook payload failed its inbox identity check.');
+  ) {
+    throw new ManualReviewError('Stored webhook payload failed its inbox identity check.');
+  }
 
   const event = {
     id: envelope.event.id,
@@ -112,57 +47,16 @@ async function processAdminEvent(db, row) {
   };
 
   try {
+    assertSupportedAdminMonimeEvent(event);
     assertAdminMonimeEventSafeToProcess(event);
   } catch (error) {
     throw new ManualReviewError(error?.message || 'Monime event requires manual review.');
   }
 
-  // At present the only event family safe to process automatically is a
-  // financial-account credit/debit notification, because we re-read the
-  // current provider balance before updating MatMove's cached wallet value.
-  // Payouts, payins, and raw financial transactions remain quarantined until
-  // their current provider objects can be fetched and fully reconciled.
-  if (
-    event.type !== 'financial_account.credited' &&
-    event.type !== 'financial_account.debited'
-  ) throw new ManualReviewError('Monime event is not enabled for automatic processing.');
-
-  const accountId = event.object.id;
-  if (typeof accountId !== 'string' || accountId.length < 3 || accountId.length > 128) {
-    throw new ManualReviewError('Financial-account event has an invalid account identifier.');
-  }
-
-  const current = await getCurrentFinancialAccount(accountId);
-  const lookup = await db
-    .from('wallets')
-    .select('id,monime_account_id,currency')
-    .eq('monime_account_id', accountId)
-    .eq('currency', current.currency);
-
-  if (lookup.error) throw new Error('MatMove wallet lookup failed.');
-  if (!Array.isArray(lookup.data) || lookup.data.length !== 1) {
-    throw new ManualReviewError(
-      'Monime financial account does not map to exactly one MatMove wallet.'
-    );
-  }
-
-  const wallet = lookup.data[0];
-  if (wallet.monime_account_id !== accountId || wallet.currency !== current.currency) {
-    throw new ManualReviewError('MatMove wallet account mapping does not match the provider account.');
-  }
-
-  const updated = await db
-    .from('wallets')
-    .update({ balance: current.balance })
-    .eq('id', wallet.id)
-    .eq('monime_account_id', accountId)
-    .eq('currency', current.currency)
-    .select('id')
-    .maybeSingle();
-
-  if (updated.error || !updated.data?.id) {
-    throw new Error('MatMove wallet balance refresh could not be confirmed.');
-  }
+  // Deliberately unreachable: no webhook event is allowed to update local
+  // wallet balances or payout/payment records without a separately verified,
+  // idempotent ledger-posting path.
+  throw new ManualReviewError('Monime event requires manual review.');
 }
 
 function isFirstPendingAttempt(row) {
@@ -170,9 +64,7 @@ function isFirstPendingAttempt(row) {
 }
 
 export async function processAdminMonimeWebhookBatch({ db = createWorkerClient(), limit = 3 } = {}) {
-  // Validate Live/Test mode before claiming any durable admin inbox event.
-  assertAdminMonimeEnvironment();
-  const batchLimit = Math.max(1, Math.min(25, Number(limit) || 10));
+  const batchLimit = Math.max(1, Math.min(25, Number(limit) || 3));
   const staleCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
   const [pendingResult, staleResult] = await Promise.all([
@@ -228,7 +120,7 @@ export async function processAdminMonimeWebhookBatch({ db = createWorkerClient()
     if (!claimed) continue;
 
     try {
-      await processAdminEvent(db, row);
+      await processAdminEvent(row);
       const { error } = await db.from('matmove_admin_monime_webhook_events')
         .update({
           status: 'processed',
