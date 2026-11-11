@@ -31,7 +31,7 @@ async function withControls(component,props,handler,fn){
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,i)=>!Object.is(v,b[i]));
  globalThis.__adminGameAccess=staff;globalThis.__adminGameQuery='tab=settings&game=dice';
  globalThis.__adminGameHooks={useState(initial){const i=index++;if(!(i in slots))slots[i]={value:typeof initial==='function'?initial():initial};return [slots[i].value,v=>{const next=typeof v==='function'?v(slots[i].value):v;if(!Object.is(next,slots[i].value)){slots[i].value=next;dirty=true;}}];},useRef(v){const i=index++;if(!(i in slots))slots[i]={current:v};return slots[i];},useCallback(fn,deps){const i=index++;if(!(i in slots)||changed(slots[i].deps,deps))slots[i]={fn,deps};return slots[i].fn;},useEffect(fn,deps){const i=index++,old=slots[i];if(!old||changed(old.deps,deps)){const record={deps,cleanup:old?.cleanup};slots[i]=record;effects.push(()=>{record.cleanup?.();record.cleanup=fn();});}}};
- globalThis.__adminGameRpc=async(name,args)=>{calls.push({name,args:clone(args)});return handler(name,args);};
+ globalThis.__adminGameRpc=async(name,args)=>{calls.push({name,args:args===undefined?null:clone(args)});return handler(name,args);};
  globalThis.document={hidden:false};globalThis.setInterval=(cb,ms)=>{const n=++id;timers.set(n,{cb,ms});return n;};globalThis.clearInterval=n=>timers.delete(n);
  const b=await bundle(true);
  function render(){index=0;dirty=false;tree=b.module[component](props);while(effects.length)effects.shift()();}
