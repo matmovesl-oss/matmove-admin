@@ -2,6 +2,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export const MONIME_WEBHOOK_MAX_BYTES = 1024 * 1024;
 const EVENT_ID = /^wke-[A-Za-z0-9_-]{1,120}$/;
+const EVENT_TYPE = /^[a-z][a-z0-9_]{0,48}(?:\\.[a-z][a-z0-9_]{0,48}){1,3}$/;
+const OBJECT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const OBJECT_TYPE = /^[a-z][a-z0-9_]{0,63}$/;
 
 export function verifyMonimeSignature(rawBody, signatureHeader, secret, nowSeconds = Math.floor(Date.now() / 1000)) {
   if (!Buffer.isBuffer(rawBody) || typeof secret !== 'string' || secret.length < 32 || secret.length > 256) return false;
@@ -41,10 +44,12 @@ export function normalizeMonimeEnvelope(envelope) {
     typeof envelope !== 'object' ||
     !EVENT_ID.test(normalized.id || '') ||
     typeof normalized.type !== 'string' ||
-    !normalized.type ||
+    !EVENT_TYPE.test(normalized.type) ||
     !object ||
     typeof object.id !== 'string' ||
+    !OBJECT_ID.test(object.id) ||
     typeof object.type !== 'string' ||
+    !OBJECT_TYPE.test(object.type) ||
     !normalized.data ||
     typeof normalized.data !== 'object' ||
     Array.isArray(normalized.data)
