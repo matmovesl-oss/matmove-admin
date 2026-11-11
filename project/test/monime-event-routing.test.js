@@ -47,9 +47,21 @@ test('admin Monime handler rejects incomplete event metadata', () => {
 });
 
 
-test('admin event processor only acts on financial-account events with a current-balance refresh path', () => {
-  assert.doesNotThrow(() => assertAdminMonimeEventSafeToProcess(event('financial_account.credited', 'financial_account')));
-  assert.doesNotThrow(() => assertAdminMonimeEventSafeToProcess(event('financial_account.debited', 'financial_account')));
+test('admin event processor quarantines all recognized Monime events until ledger posting is verified', () => {
+  for (const [name, type] of [
+    ['financial_account.credited', 'financial_account'],
+    ['financial_account.debited', 'financial_account'],
+    ['payout.completed', 'payout'],
+    ['payout.failed', 'payout'],
+    ['payment.completed', 'payment'],
+    ['payment.failed', 'payment'],
+    ['financial_transaction.created', 'financial_transaction'],
+  ]) {
+    assert.throws(
+      () => assertAdminMonimeEventSafeToProcess(event(name, type)),
+      /manual review/i
+    );
+  }
 });
 
 test('admin event processor blocks payout, payment and raw financial-transaction settlement until provider state is verified', () => {
