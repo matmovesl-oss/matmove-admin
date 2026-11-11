@@ -4,7 +4,7 @@ export const MONIME_WEBHOOK_MAX_BYTES = 1024 * 1024;
 // Constrain identifiers before persisting them or exposing derived diagnostics.
 // The signed payload remains stored privately for future manual provider reconciliation.
 const EVENT_ID = /^wke-[A-Za-z0-9_-]{1,120}$/;
-const EVENT_TYPE = /^[a-z][a-z0-9_]{0,48}(?:\\.[a-z][a-z0-9_]{0,48}){1,3}$/;
+const EVENT_TYPE = /^[a-z][a-z0-9_]{0,48}(?:\.[a-z][a-z0-9_]{0,48}){1,3}$/;
 const OBJECT_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const OBJECT_TYPE = /^[a-z][a-z0-9_]{0,63}$/;
 
