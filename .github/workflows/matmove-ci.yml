@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/matmove-admin-customer-ops-enhancements
+      - security/monime-webhook-signature-lockdown-20261108
   pull_request:
     branches:
       - main
