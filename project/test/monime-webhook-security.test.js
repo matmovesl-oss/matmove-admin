@@ -93,3 +93,32 @@ test('admin webhook worker has an explicit runtime cap and bounded batch size', 
   assert.match(source, /maxDuration:\s*60/);
   assert.match(source, /processAdminMonimeWebhookBatch\(\{\s*limit:\s*3\s*\}\)/);
 });
+
+test('rejects unbounded or unsafe event and provider-object identifiers', () => {
+  const valid = {
+    event: { id: 'wke-bounded-id', name: 'financial_account.credited' },
+    object: { id: 'fac-provider_123', type: 'financial_account' },
+    data: {}
+  };
+  assert.equal(normalizeMonimeEnvelope(valid).type, 'financial_account.credited');
+
+  for (const envelope of [
+    { ...valid, event: { ...valid.event, name: 'x'.repeat(200) } },
+    { ...valid, event: { ...valid.event, name: 'payment.completed\\nprivate-data' } },
+    { ...valid, object: { ...valid.object, id: 'fac-' + 'x'.repeat(200) } },
+    { ...valid, object: { ...valid.object, id: 'fac-test\\nprivate-data' } },
+    { ...valid, object: { ...valid.object, type: 'financial-account' } }
+  ]) {
+    assert.throws(() => normalizeMonimeEnvelope(envelope), /invalid monime webhook envelope/i);
+  }
+});
+
+test('webhook route logs fixed diagnostic codes instead of raw exception messages', async () => {
+  const source = await readFile(
+    new URL('../api/monime-webhook.ts', import.meta.url),
+    'utf8'
+  );
+  assert.match(source, /failure:\\s*'worker_unavailable'/);
+  assert.match(source, /failure:\\s*'inbox_unavailable'/);
+  assert.doesNotMatch(source, /console\\.error\\([^\\n]*error\\?\\.message/);
+});
