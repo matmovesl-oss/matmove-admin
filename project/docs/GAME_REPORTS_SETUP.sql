@@ -10,7 +10,7 @@ create or replace function public.matmove_spin_admin_report(
 ) returns jsonb language plpgsql security definer set search_path=pg_catalog,public as $report$
 declare stats jsonb; rows_json jsonb; total bigint; needle text:=lower(trim(coalesce(p_search,''))); page_size integer:=100;
 begin
- if not public.matmove_spin_admin_allowed() then raise exception 'FORBIDDEN: Game administrator permission required.'; end if;
+ if auth.uid() is null or not public.matmove_admin_can(case p_view when 'rounds' then 'games.overview' when 'players' then 'games.players' when 'entries' then 'games.entries' when 'winnings' then 'games.winnings' else 'invalid' end) then raise exception 'FORBIDDEN: Access denied for this assignment.';end if;
  if p_view is null or p_view not in ('rounds','players','entries','winnings') or p_page is null or p_page not between 1 and 1000000 or length(needle)>100 or p_status is null then raise exception 'INVALID: Invalid report request.'; end if;
  if p_view in ('entries','winnings') and p_status not in ('all','pending','processing','completed','failed','review_required') then raise exception 'INVALID: Invalid payment filter.'; end if;
  if p_view='rounds' and p_status not in ('all','entry_pending','active','win_pending','completed','failed','review_required') then raise exception 'INVALID: Invalid round filter.'; end if;
@@ -106,6 +106,7 @@ begin
     (select * from filtered order by last_activity_at desc nulls last,user_id limit page_size offset (p_page-1)::bigint*page_size) x),'[]'::jsonb)
   into total,rows_json;
  end if;
+ if not public.matmove_admin_any(ARRAY['games.overview','games.winnings']::text[]) then stats:=stats-'reservedMinor';end if;
  return jsonb_build_object('view',p_view,'page',p_page,'pageSize',page_size,'total',total,'rows',rows_json,'stats',stats,'asOf',clock_timestamp());
 end;
 $report$;
