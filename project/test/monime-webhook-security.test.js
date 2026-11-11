@@ -120,5 +120,5 @@ test('webhook route logs fixed diagnostic codes instead of raw exception message
   );
   assert.match(source, /failure:\s*'worker_unavailable'/);
   assert.match(source, /failure:\s*'inbox_unavailable'/);
-  assert.doesNotMatch(source, /console\.error\\([^\n]*error\?\\.message/);
+  assert.equal(source.includes('error?.message'), false);
 });
