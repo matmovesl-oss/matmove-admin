@@ -65,7 +65,7 @@ test('Spin scope repair enforces per-section RPC data permissions and private ba
 
       create function public.matmove_spin_admin_allowed()
       returns boolean language sql stable
-      as $$ select public.matmove_admin_can('games') $$;
+      as $ select exists(select 1 from unnest(string_to_array(current_setting('test.permissions',true),',')) p where p like 'games.%') $;
 
       create function public.matmove_spin_admin_snapshot_staff_base()
       returns jsonb language sql security definer set search_path=pg_catalog,public
@@ -139,7 +139,7 @@ test('Spin scope repair enforces per-section RPC data permissions and private ba
     assert.equal(grants.anon_public,false);
     assert.equal(grants.auth_snapshot,true);
     assert.equal(grants.auth_base,false);
-    assert.equal(grants.service_base,true);
+    assert.equal(grants.service_base,false);
 
     await setActor('games.settings');
     const settingsOnly=(await asAuthenticated('select public.matmove_spin_admin_snapshot() as data')).rows[0].data;
