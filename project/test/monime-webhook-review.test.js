@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { PGlite } from '@electric-sql/pglite';
 import { createHandler } from '../api/get-all-transactions.js';
 
 const actorId = '11111111-1111-4111-8111-111111111111';
@@ -202,4 +203,118 @@ test('Transactions screen explains that review notes never move funds', async ()
   assert.match(source, /Mark reviewed \(no funds moved\)/);
   assert.match(source, /does not credit a wallet, issue a refund, or settle a payout/i);
   assert.match(source, /matmove_admin_monime_webhook_mark_reviewed|mark-webhook-reviewed/);
+});
+
+
+test('admin webhook review SQL installs idempotently, keeps the inbox private, and audits review without settlement', async () => {
+  const pg = new PGlite();
+  try {
+    await pg.exec(`
+      create role anon;
+      create role authenticated;
+      create role service_role;
+      create schema auth;
+      create function auth.jwt() returns jsonb language sql stable
+      as $fn$ select coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb,'{}'::jsonb) $fn$;
+      create table public.matmove_staff_access(
+        id uuid primary key,
+        is_active boolean not null,
+        removed_at timestamptz,
+        is_owner boolean not null default false,
+        permissions jsonb not null default '[]'::jsonb
+      );
+      insert into public.matmove_staff_access(id,is_active,is_owner,permissions)
+      values
+        ('11111111-1111-4111-8111-111111111111',true,false,'["transactions"]'::jsonb),
+        ('22222222-2222-4222-8222-222222222222',true,false,'["financials"]'::jsonb),
+        ('33333333-3333-4333-8333-333333333333',false,false,'["transactions"]'::jsonb);
+      grant usage on schema auth,public to anon,authenticated,service_role;
+    `);
+
+    const inboxSql = await readFile(
+      new URL('../supabase/migrations/20261109002000_matmove_monime_webhook_durable_queue.sql', import.meta.url),
+      'utf8'
+    );
+    const reviewSql = await readFile(
+      new URL('../supabase/migrations/20261111140000_matmove_admin_monime_manual_review.sql', import.meta.url),
+      'utf8'
+    );
+
+    await pg.exec(inboxSql);
+    await pg.exec(reviewSql.replace(/notify\\s+pgrst\\s*,\\s*'reload schema'\\s*;/ig,''));
+    await pg.exec(reviewSql.replace(/notify\\s+pgrst\\s*,\\s*'reload schema'\\s*;/ig,''));
+
+    await pg.query(`
+      insert into public.matmove_admin_monime_webhook_events(
+        event_id,event_type,object_id,object_type,payload,signature_verified,status,attempts
+      ) values (
+        'wke-pglite-review-1','payout.completed','pay-provider-test','payout',
+        '{"event":{"id":"wke-pglite-review-1"},"object":{"id":"pay-provider-test","type":"payout"},"data":{}}'::jsonb,
+        true,'failed',1
+      )
+    `);
+
+    await pg.exec('set role authenticated');
+    await assert.rejects(
+      pg.query('select * from public.matmove_admin_monime_webhook_events'),
+      /permission denied/i
+    );
+    await assert.rejects(
+      pg.query(`select public.matmove_admin_monime_webhook_mark_reviewed('wke-pglite-review-1','11111111-1111-4111-8111-111111111111','Reviewed')`),
+      /permission denied/i
+    );
+    await pg.exec('reset role');
+
+    await pg.query(
+      "select set_config('request.jwt.claims',$1,false)",
+      [JSON.stringify({ role: 'service_role' })]
+    );
+    await pg.exec('set role service_role');
+
+    await assert.rejects(
+      pg.query(`select public.matmove_admin_monime_webhook_mark_reviewed('wke-pglite-review-1','22222222-2222-4222-8222-222222222222','No transactions permission')`),
+      /active staff assignment with Transactions access/i
+    );
+    await assert.rejects(
+      pg.query(`select public.matmove_admin_monime_webhook_mark_reviewed('wke-pglite-review-1','33333333-3333-4333-8333-333333333333','Inactive staff')`),
+      /active staff assignment with Transactions access/i
+    );
+
+    const result = await pg.query(
+      `select public.matmove_admin_monime_webhook_mark_reviewed(
+        'wke-pglite-review-1',
+        '11111111-1111-4111-8111-111111111111',
+        'Provider event investigated; financial settlement remains disabled.'
+      ) result`
+    );
+    assert.equal(result.rows[0].result.reviewed, true);
+    assert.equal(result.rows[0].result.reviewState, 'reviewed');
+
+    await assert.rejects(
+      pg.query(`select public.matmove_admin_monime_webhook_mark_reviewed('wke-pglite-review-1','11111111-1111-4111-8111-111111111111','Second review')`),
+      /unreviewed failed event was not found/i
+    );
+
+    await pg.exec('reset role');
+    const stored = await pg.query(`
+      select review_state,reviewed_by,review_note,status
+      from public.matmove_admin_monime_webhook_events
+      where event_id='wke-pglite-review-1'
+    `);
+    assert.equal(stored.rows[0].review_state, 'reviewed');
+    assert.equal(stored.rows[0].reviewed_by, '11111111-1111-4111-8111-111111111111');
+    assert.equal(stored.rows[0].status, 'failed');
+    assert.match(stored.rows[0].review_note, /financial settlement remains disabled/);
+
+    const accounts = await pg.query(`
+      select count(*)::int as count
+      from information_schema.role_table_grants
+      where table_schema='public'
+        and table_name='matmove_admin_monime_webhook_events'
+        and grantee in ('anon','authenticated')
+    `);
+    assert.equal(accounts.rows[0].count, 0);
+  } finally {
+    await pg.close();
+  }
 });
