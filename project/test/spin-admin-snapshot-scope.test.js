@@ -65,7 +65,7 @@ test('Spin scope repair enforces per-section RPC data permissions and private ba
 
       create function public.matmove_spin_admin_allowed()
       returns boolean language sql stable
-      as $ select exists(select 1 from unnest(string_to_array(current_setting('test.permissions',true),',')) p where p like 'games.%') $;
+      as $$ select exists(select 1 from unnest(string_to_array(current_setting('test.permissions',true),',')) p where p like 'games.%') $$;
 
       create function public.matmove_spin_admin_snapshot_staff_base()
       returns jsonb language sql security definer set search_path=pg_catalog,public
