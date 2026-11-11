@@ -12,7 +12,7 @@ import { validateArcadeSettings, type ArcadeSettings, type ArcadeGame } from '..
 import { validateBundleTiers, bundleEconomics, bundleLabel, type BundleTier } from '../../shared/bundle-spin-rules.js';
 const money=(n:number)=>`SLE ${(n/100).toFixed(2)}`;
 type Snapshot={config:{id:number;enabled:boolean;bundle_tiers:BundleTier[]|null};reservedMinor:number|null;entryReceivedMinor:number|null;winsPaidMinor:number|null;winsOwedMinor:number|null};
-function GameSettings({selectedPlayer}: {selectedPlayer:string}){
+export function GameSettings({selectedPlayer}: {selectedPlayer:string}){
   const access=useAdminAccess();
   const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
   const [tiers,setTiers]=useState<BundleTier[]>([]);
