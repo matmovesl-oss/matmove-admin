@@ -27,6 +27,27 @@ revoke all on function public.matmove_admin_require_aal2()
 grant execute on function public.matmove_admin_require_aal2()
   to authenticated;
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'pg_catalog', 'public'
+as $function$
+  select coalesce(auth.jwt()->>'aal', 'aal1') = 'aal2'
+    and exists (
+      select 1
+      from public.matmove_staff_access a
+      where a.id = auth.uid()
+        and a.is_active
+        and a.removed_at is null
+        and (
+          a.is_owner
+          or exists(select 1 from public.admins legacy where legacy.id = a.id)
+        )
+    );
+$function$;
+
 create or replace function public.matmove_admin_can(p_section text)
 returns boolean
 language sql
