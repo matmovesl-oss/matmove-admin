@@ -97,7 +97,7 @@ export function createHandler({
           return {
             id: profile.id,
             name: String(name).slice(0, 120),
-            phoneLastFour: phone ? String(phone).replace(/\\D/g, '').slice(-4) || null : null
+            phoneLastFour: phone ? String(phone).replace(/\D/g, '').slice(-4) || null : null
           };
         };
         let auditEvents = [];
