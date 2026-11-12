@@ -42,6 +42,7 @@ test('AAL2 database migration protects both permission helpers and owner-only RP
   );
   assert.match(sql, /auth\.jwt\(\)->>'aal'.*'aal2'/s);
   for (const name of [
+    'is_admin',
     'matmove_admin_can',
     'matmove_notification_sender',
     'matmove_admin_account_deletion_requests',
