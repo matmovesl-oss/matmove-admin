@@ -96,6 +96,7 @@ export default function CashPaymentsPreview() {
               {row.kind === 'cash_ride' ? <>
                 <div><p className="text-slate-500">Cash due to driver</p><p className="mt-0.5 font-semibold text-emerald-700">{money(row.driverCashMinor)}</p></div>
                 <div><p className="text-slate-500">MatMove fee</p><p className="mt-0.5 font-semibold text-blue-700">{money(row.feeMinor)} · {row.feeState}</p></div>
+                <div className="col-span-2 sm:col-span-4"><p className="text-slate-500">Physical cash confirmation</p><p className="mt-0.5 font-semibold">{row.cashState}</p></div>
               </> : <div className="col-span-2"><p className="text-slate-500">Provider confirmation</p><p className="mt-0.5 font-semibold">{row.feeState}</p></div>}
             </div>
             <p className="mt-2 text-xs leading-5 text-slate-600">{row.note}</p>
