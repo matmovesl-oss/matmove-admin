@@ -15,4 +15,11 @@ test('all routes receive baseline browser security headers', async () => {
   assert.match(actual['content-security-policy'], /frame-ancestors 'none'/);
   assert.match(actual['content-security-policy'], /object-src 'none'/);
   assert.equal(actual['permissions-policy'], 'geolocation=(self), camera=(self), microphone=()');
+
+  const apiRoute = config.headers.find(item => item.source === '/api/(.*)');
+  assert.ok(apiRoute, 'API responses must have an explicit no-store rule');
+  const apiHeaders = Object.fromEntries(apiRoute.headers.map(({ key, value }) => [key.toLowerCase(), value]));
+  assert.equal(apiHeaders['cache-control'], 'no-store');
+  assert.equal(apiHeaders['pragma'], 'no-cache');
+  assert.equal(apiHeaders['vary'], 'Authorization');
 });
