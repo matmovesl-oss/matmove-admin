@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { hasVerifiedAal2Token } from '../server/admin-auth.js';
+import { hasVerifiedAal2Token, requireAdmin } from '../server/admin-auth.js';
 
 function token(claims) {
   return 'header.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.signature';
@@ -14,6 +14,67 @@ test('Admin server authorization accepts only a verified AAL2 authenticated user
   assert.equal(hasVerifiedAal2Token(token({ sub: '22222222-2222-4222-8222-222222222222', role: 'authenticated', aal: 'aal2' }), userId), false);
   assert.equal(hasVerifiedAal2Token(token({ sub: userId, role: 'service_role', aal: 'aal2' }), userId), false);
   assert.equal(hasVerifiedAal2Token('not-a-jwt', userId), false);
+});
+
+
+function request(accessToken) {
+  return { headers: { authorization: `Bearer ${accessToken}` } };
+}
+
+test('requireAdmin validates the Supabase session and rejects AAL1 before querying staff permissions', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const aal1 = token({ sub: userId, role: 'authenticated', aal: 'aal1' });
+  let permissionCalls = 0;
+  const client = {
+    auth: { getUser: async () => ({ data: { user: { id: userId } }, error: null }) },
+    rpc: async () => { permissionCalls += 1; return { data: null, error: null }; },
+  };
+
+  await assert.rejects(
+    requireAdmin(request(aal1), ['financials'], { client }),
+    error => error.status === 403
+  );
+  assert.equal(permissionCalls, 0);
+});
+
+test('requireAdmin rejects an unvalidated AAL2-looking token before permission lookup', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const forged = token({ sub: userId, role: 'authenticated', aal: 'aal2' });
+  let permissionCalls = 0;
+  const client = {
+    auth: { getUser: async () => ({ data: { user: null }, error: new Error('Invalid token signature') }) },
+    rpc: async () => { permissionCalls += 1; return { data: null, error: null }; },
+  };
+
+  await assert.rejects(
+    requireAdmin(request(forged), ['financials'], { client }),
+    error => error.status === 401
+  );
+  assert.equal(permissionCalls, 0);
+});
+
+test('requireAdmin checks staff permissions only after Supabase validates an AAL2 user token', async () => {
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const aal2 = token({ sub: userId, role: 'authenticated', aal: 'aal2' });
+  let verifiedToken = '';
+  let permissionCalls = 0;
+  const client = {
+    auth: { getUser: async accessToken => {
+      verifiedToken = accessToken;
+      return { data: { user: { id: userId } }, error: null };
+    } },
+    rpc: async (name, args) => {
+      permissionCalls += 1;
+      assert.equal(name, 'matmove_admin_access');
+      assert.deepEqual(args, { p_id: userId });
+      return { data: { id: userId, is_active: true, is_owner: true, permissions: [] }, error: null };
+    },
+  };
+
+  const result = await requireAdmin(request(aal2), ['financials'], { client });
+  assert.equal(verifiedToken, aal2);
+  assert.equal(permissionCalls, 1);
+  assert.equal(result.user.id, userId);
 });
 
 test('Admin UI gates active staff behind TOTP enrollment or challenge', async () => {
