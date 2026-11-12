@@ -16,6 +16,13 @@ function response() {
 function emptyClient() {
   return {
     from(table) {
+      if (table === 'matmove_cash_ride_settings') {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          maybeSingle() { return Promise.resolve({data:{enabled:false,provider_environment:'test'},error:null}); }
+        };
+      }
       assert.equal(table,'matmove_cash_ride_payments');
       return {
         select() { return this; },
@@ -39,17 +46,24 @@ test('cash collections endpoint requires the Financials assignment', async () =>
   assert.equal(res.body.available,true);
   assert.deepEqual(res.body.records,[]);
   assert.equal(res.body.summary.recordCount,0);
+  assert.equal(res.body.cashEnabled,false);
+  assert.equal(res.body.providerEnvironment,'test');
 });
 
 test('cash collections endpoint fails closed when its production schema is absent', async () => {
   const handler=createHandler({
     requireAdminFn:async()=>({
       client:{
-        from(){return{
-          select(){return this;},
-          order(){return this;},
-          limit(){return Promise.resolve({data:null,error:{code:'42P01'}});}
-        };}
+        from(table){
+          if(table==='matmove_cash_ride_settings')return{
+            select(){return this;},eq(){return this;},
+            maybeSingle(){return Promise.resolve({data:{enabled:false,provider_environment:'test'},error:null});}
+          };
+          return{
+            select(){return this;},order(){return this;},
+            limit(){return Promise.resolve({data:null,error:{code:'42P01'}});}
+          };
+        }
       },
       user:{id:'staff-1'}
     }),
