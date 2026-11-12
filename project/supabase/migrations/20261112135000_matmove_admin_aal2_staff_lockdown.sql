@@ -106,6 +106,27 @@ begin
 end;
 $function$;
 
+create or replace function public.matmove_dispatch_actor()
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path to 'pg_catalog', 'public'
+as $function$
+begin
+  perform public.matmove_admin_require_aal2();
+  if auth.uid() is null
+     or not public.matmove_admin_can('dispatch')
+     or not exists (
+       select 1 from public.matmove_staff_access
+       where id=auth.uid() and is_active=true and removed_at is null
+     ) then
+    raise exception 'FORBIDDEN: Active Dispatch assignment required.';
+  end if;
+  return auth.uid();
+end;
+$function$;
+
 create or replace function public.matmove_admin_account_deletion_requests(
   p_action text default 'list',
   p_user_id uuid default null,
