@@ -42,6 +42,19 @@ export function createHandler({
       );
 
       if (view === 'cash-collections') {
+        const settings = await client
+          .from('matmove_cash_ride_settings')
+          .select('enabled,provider_environment')
+          .eq('singleton', true)
+          .maybeSingle();
+
+        if (settings.error) {
+          return res.status(503).json({
+            available: false,
+            error: 'Cash collection settings are not installed or are temporarily unavailable.'
+          });
+        }
+
         const payments = await client
           .from('matmove_cash_ride_payments')
           .select('booking_id,rider_id,driver_id,fare_minor,driver_cash_minor,matmove_fee_minor,currency,status,driver_cash_confirmed_at,rider_cash_confirmed_at,created_at,updated_at')
@@ -138,6 +151,8 @@ export function createHandler({
 
         return res.status(200).json({
           available: true,
+          cashEnabled: settings.data?.enabled === true,
+          providerEnvironment: settings.data?.provider_environment || null,
           source: 'matmove_cash_ride_payments',
           limit: 100,
           records,
