@@ -7,6 +7,23 @@
   ],
   "headers": [
     {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Vary",
+          "value": "Authorization"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
