@@ -230,7 +230,7 @@ export default function StaffMfaGate({
           </div>
         )}
 
-        <p className="mt-6 border-t pt-4 text-xs leading-5 text-slate-500">This protection applies to Admin and staff access only. Customer sign-in is unchanged. No staff member can skip this step or access another staff member's account.</p>
+        <p className="mt-6 border-t pt-4 text-xs leading-5 text-slate-500">This protection applies to Admin and staff access only. Customer sign-in is unchanged. Staff access remains unavailable until this verification step is complete.</p>
       </section>
     </main>
   );
