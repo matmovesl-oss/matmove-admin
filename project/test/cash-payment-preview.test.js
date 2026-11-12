@@ -15,8 +15,8 @@ test('Admin cash and USSD preview remains clearly isolated from live finance API
   assert.ok(!source.includes(".from('wallets"));
 });
 
-test('Financials page mounts the separate cash collection preview behind existing permission gate', async () => {
+test('Financials page does not mount the seeded cash/USSD prototype in the live finance UI', async () => {
   const source = await readFile(new URL('../src/pages/FinancialsPage.tsx', import.meta.url), 'utf8');
   assert.ok(source.includes("canAccess(access,'financials')"));
-  assert.ok(source.includes('<CashPaymentsPreview />'));
+  assert.ok(!source.includes('CashPaymentsPreview'));
 });
