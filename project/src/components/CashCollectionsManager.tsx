@@ -61,7 +61,7 @@ function State({value}:{value:string}) {
     : value === 'review_required' || value === 'failed'
       ? 'bg-red-50 text-red-800'
       : 'bg-amber-50 text-amber-800';
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{value.replaceAll('_',' ')}</span>;
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{value.replace(/_/g,' ')}</span>;
 }
 
 export default function CashCollectionsManager() {
