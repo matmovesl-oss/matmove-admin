@@ -120,3 +120,15 @@ test('AAL2 database migration protects both permission helpers and owner-only RP
   assert.match(sql, /matmove_admin_me\(\)/);
   assert.match(sql, /after the Admin MFA UI has been deployed and all active staff have/);
 });
+
+
+test('dispatch SECURITY DEFINER RPC actor helper explicitly requires AAL2', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/20261112135000_matmove_admin_aal2_staff_lockdown.sql', import.meta.url), 'utf8');
+  const dispatch = migration.slice(
+    migration.indexOf('create or replace function public.matmove_dispatch_actor'),
+    migration.indexOf('create or replace function public.matmove_admin_account_deletion_requests')
+  );
+  assert.match(dispatch, /matmove_admin_require_aal2\(\)/);
+  assert.match(dispatch, /matmove_admin_can\('dispatch'\)/);
+  assert.match(dispatch, /removed_at is null/);
+});
