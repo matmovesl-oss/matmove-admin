@@ -70,6 +70,8 @@ export default function CashCollectionsManager() {
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
   const [available,setAvailable] = useState(false);
+  const [cashEnabled,setCashEnabled] = useState(false);
+  const [providerEnvironment,setProviderEnvironment] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,10 +94,14 @@ export default function CashCollectionsManager() {
       }
       setRecords(result.records);
       setSummary(result.summary);
+      setCashEnabled(result.cashEnabled === true);
+      setProviderEnvironment(typeof result.providerEnvironment === 'string' ? result.providerEnvironment : null);
       setAvailable(true);
     } catch (err) {
       setRecords([]);
       setSummary(emptySummary);
+      setCashEnabled(false);
+      setProviderEnvironment(null);
       setAvailable(false);
       setError(err instanceof Error ? err.message : 'Cash collection report is unavailable.');
     } finally {
@@ -120,6 +126,9 @@ export default function CashCollectionsManager() {
       {error && <p role="alert" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
 
       {available && <>
+        <p className={cashEnabled ? "mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" : "mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"}>
+          {cashEnabled ? 'Cash collection is enabled in the configured ' + (providerEnvironment || 'Monime') + ' environment.' : 'Cash collection is disabled. No new physical-cash rides should be dispatched.'}
+        </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Confirmed cash rides</p><p className="mt-1 text-xl font-bold">{summary.settledCount}</p></div>
           <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Physical cash confirmed to drivers</p><p className="mt-1 text-lg font-bold">{money(summary.confirmedDriverCashMinor)}</p></div>
