@@ -90,12 +90,17 @@ export default function StaffMfaGate({
       setFactorId(enrolled.data.id);
       setQrCode(enrolled.data.totp.qr_code);
       setSecret(enrolled.data.totp.secret);
-      const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
-      if (challenge.error || !challenge.data?.id) {
-        throw new Error('Authenticator setup started, but verification could not be prepared. Refresh this page and continue.');
-      }
-      setChallengeId(challenge.data.id);
+      setChallengeId('');
       setStage('setup');
+      try {
+        const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
+        if (challenge.error || !challenge.data?.id) throw new Error('Challenge unavailable.');
+        setChallengeId(challenge.data.id);
+      } catch {
+        // Keep the QR/setup key visible and let the user retry the challenge.
+        // Do not send them through enrollment again after a factor was created.
+        setError('Your authenticator setup has started, but the verification challenge could not be prepared. Keep this page open and retry the challenge below.');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Authenticator setup failed.');
     } finally {
@@ -201,26 +206,34 @@ export default function StaffMfaGate({
         )}
 
         {stage === 'setup' || stage === 'challenge' ? (
-          <form onSubmit={verifyCode} className="mt-5 space-y-3">
-            <label className="block text-sm font-semibold text-slate-700">
-              Authenticator code
-              <input
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                required
-                value={code}
-                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="mt-2 min-h-12 w-full rounded-xl border px-4 text-center text-2xl tracking-[0.35em]"
-                placeholder="000000"
-              />
-            </label>
-            <button type="submit" disabled={busy || code.length !== 6} className="min-h-11 w-full rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-60">
-              {busy ? 'Verifying…' : 'Verify and open Admin'}
+          challengeId ? (
+            <>
+              <form onSubmit={verifyCode} className="mt-5 space-y-3">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Authenticator code
+                  <input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    required
+                    value={code}
+                    onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="mt-2 min-h-12 w-full rounded-xl border px-4 text-center text-2xl tracking-[0.35em]"
+                    placeholder="000000"
+                  />
+                </label>
+                <button type="submit" disabled={busy || code.length !== 6} className="min-h-11 w-full rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-60">
+                  {busy ? 'Verifying…' : 'Verify and open Admin'}
+                </button>
+              </form>
+              <button type="button" disabled={busy} onClick={refreshChallenge} className="mt-3 min-h-10 w-full rounded-xl border px-4 py-2 text-sm font-semibold text-slate-700">Request a new code challenge</button>
+            </>
+          ) : (
+            <button type="button" disabled={busy || !factorId} onClick={refreshChallenge} className="mt-5 min-h-11 w-full rounded-xl border px-4 py-3 font-semibold text-slate-700 disabled:opacity-60">
+              {busy ? 'Preparing challenge…' : 'Prepare verification challenge'}
             </button>
-            {stage === 'challenge' && <button type="button" disabled={busy} onClick={refreshChallenge} className="min-h-10 w-full rounded-xl border px-4 py-2 text-sm font-semibold text-slate-700">Request a new code challenge</button>}
-          </form>
+          )
         ) : null}
 
         {stage === 'blocked' && (
