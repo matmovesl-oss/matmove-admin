@@ -8,8 +8,14 @@ type Leg = {
   errorCode: string | null;
 };
 
+type Person = { id: string; name: string; phoneLastFour: string | null };
+type AuditEvent = { eventType: string; actorType: string; actorName: string; createdAt: string; reasonCode: string | null; legKind: string | null };
+
 type CashRecord = {
   bookingReference: string;
+  rider: Person | null;
+  driver: Person | null;
+  auditEvents: AuditEvent[];
   fareMinor: number;
   driverCashMinor: number;
   feeMinor: number;
@@ -116,7 +122,7 @@ export default function CashCollectionsManager() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-950">Physical Cash Collection Manager</h2>
-          <p className="mt-1 text-xs text-slate-500">Live ledger report · SLE cash rides only · Read-only reconciliation view</p>
+          <p className="mt-1 text-xs text-slate-500">Latest 100 SLE cash rides · Participant details and audit trail · Read-only reconciliation view</p>
         </div>
         <button type="button" onClick={()=>void load()} disabled={loading} className="min-h-10 rounded-lg border px-3 text-sm font-semibold disabled:opacity-50">
           {loading ? 'Refreshing…' : 'Refresh collections'}
@@ -142,21 +148,34 @@ export default function CashCollectionsManager() {
           <span>Confirmed fare total: {money(summary.settledFareMinor)}</span>
         </div>
         <div className="mt-4 overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[1250px] text-left text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
               <tr>
                 <th className="p-3">Booking reference</th>
+                <th className="p-3">Rider</th>
+                <th className="p-3">Driver</th>
                 <th className="p-3">Fare</th>
                 <th className="p-3">Driver cash</th>
                 <th className="p-3">MatMove fee</th>
                 <th className="p-3">Ledger state</th>
                 <th className="p-3">Reserve / capture / refund</th>
                 <th className="p-3">Cash confirmations</th>
+                <th className="p-3">Recent audit events</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {records.map(row=><tr key={row.bookingReference}>
                 <td className="p-3 font-mono text-xs">{row.bookingReference.slice(0,8)}…</td>
+                <td className="p-3 text-xs">
+                  <div className="font-semibold">{row.rider?.name || 'Unavailable'}</div>
+                  <div className="text-slate-500">ID: {row.rider?.id ? row.rider.id.slice(0,8) + '…' : '—'}</div>
+                  {row.rider?.phoneLastFour && <div className="text-slate-500">Phone ending {row.rider.phoneLastFour}</div>}
+                </td>
+                <td className="p-3 text-xs">
+                  <div className="font-semibold">{row.driver?.name || 'Not assigned'}</div>
+                  <div className="text-slate-500">ID: {row.driver?.id ? row.driver.id.slice(0,8) + '…' : '—'}</div>
+                  {row.driver?.phoneLastFour && <div className="text-slate-500">Phone ending {row.driver.phoneLastFour}</div>}
+                </td>
                 <td className="p-3 font-semibold">{money(row.fareMinor)}</td>
                 <td className="p-3">{money(row.driverCashMinor)}</td>
                 <td className="p-3">{money(row.feeMinor)}</td>
@@ -173,8 +192,15 @@ export default function CashCollectionsManager() {
                   <div>Driver: {time(row.driverCashConfirmedAt)}</div>
                   <div>Rider: {time(row.riderCashConfirmedAt)}</div>
                 </td>
+                <td className="p-3 text-xs">
+                  {row.auditEvents.length ? row.auditEvents.slice(0,4).map((event,index)=><div key={event.eventType + event.createdAt + index} className="mb-1 last:mb-0">
+                    <span className="font-semibold">{event.eventType.replace(/_/g,' ')}</span>
+                    <span className="text-slate-500"> · {event.actorName} · {time(event.createdAt)}</span>
+                    {event.reasonCode && <span className="block text-rose-700">Reason: {event.reasonCode}</span>}
+                  </div>) : <span className="text-slate-500">No audit events</span>}
+                </td>
               </tr>)}
-              {!records.length && <tr><td colSpan={7} className="p-6 text-center text-slate-500">No cash collection records have been recorded.</td></tr>}
+              {!records.length && <tr><td colSpan={10} className="p-6 text-center text-slate-500">No cash collection records have been recorded.</td></tr>}
             </tbody>
           </table>
         </div>
