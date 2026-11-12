@@ -28,7 +28,122 @@ export function createHandler({
     }
 
     try {
-      const { client, user } = await requireAdminFn(req, ['transactions']);
+      const view = typeof req.query?.view === 'string' ? req.query.view : '';
+      if (view && view !== 'cash-collections') {
+        return res.status(400).json({ error: 'Choose a supported transaction view.' });
+      }
+      if (view === 'cash-collections' && req.method !== 'GET') {
+        return res.status(405).json({ error: 'Method Not Allowed' });
+      }
+
+      const { client, user } = await requireAdminFn(
+        req,
+        view === 'cash-collections' ? ['financials'] : ['transactions']
+      );
+
+      if (view === 'cash-collections') {
+        const payments = await client
+          .from('matmove_cash_ride_payments')
+          .select('booking_id,rider_id,driver_id,fare_minor,driver_cash_minor,matmove_fee_minor,currency,status,driver_cash_confirmed_at,rider_cash_confirmed_at,created_at,updated_at')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (payments.error) {
+          return res.status(503).json({
+            available: false,
+            error: 'Cash collection records are not installed or are temporarily unavailable. Production cash collection remains disabled.'
+          });
+        }
+
+        const rows = Array.isArray(payments.data) ? payments.data : [];
+        const bookingIds = rows.map(row => row.booking_id);
+        let legs = [];
+        if (bookingIds.length) {
+          const legResult = await client
+            .from('matmove_cash_ride_legs')
+            .select('booking_id,leg_kind,amount_minor,currency,status,provider_transfer_id,verified_at,error_code')
+            .in('booking_id', bookingIds);
+          if (legResult.error) {
+            return res.status(503).json({
+              available: false,
+              error: 'Cash transfer reconciliation records are temporarily unavailable.'
+            });
+          }
+          legs = Array.isArray(legResult.data) ? legResult.data : [];
+        }
+
+        const legMap = new Map();
+        for (const leg of legs) {
+          const current = legMap.get(leg.booking_id) || {};
+          current[leg.leg_kind] = leg;
+          legMap.set(leg.booking_id, current);
+        }
+
+        const records = rows.map(row => {
+          const paymentLegs = legMap.get(row.booking_id) || {};
+          const reserve = paymentLegs.reserve || null;
+          const capture = paymentLegs.capture || null;
+          const refund = paymentLegs.refund || null;
+          return {
+            bookingReference: row.booking_id,
+            fareMinor: Number(row.fare_minor),
+            driverCashMinor: Number(row.driver_cash_minor),
+            feeMinor: Number(row.matmove_fee_minor),
+            currency: row.currency,
+            status: row.status,
+            driverCashConfirmedAt: row.driver_cash_confirmed_at,
+            riderCashConfirmedAt: row.rider_cash_confirmed_at,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            reserve: reserve ? {
+              status: reserve.status,
+              transferId: reserve.provider_transfer_id,
+              verifiedAt: reserve.verified_at,
+              errorCode: reserve.error_code
+            } : null,
+            capture: capture ? {
+              status: capture.status,
+              transferId: capture.provider_transfer_id,
+              verifiedAt: capture.verified_at,
+              errorCode: capture.error_code
+            } : null,
+            refund: refund ? {
+              status: refund.status,
+              transferId: refund.provider_transfer_id,
+              verifiedAt: refund.verified_at,
+              errorCode: refund.error_code
+            } : null
+          };
+        });
+
+        const sum = predicate => records.reduce(
+          (total, row) => total + (predicate(row) ? row.feeMinor : 0),
+          0
+        );
+        const settled = records.filter(row => row.status === 'settled');
+        const summary = {
+          recordCount: records.length,
+          settledCount: settled.length,
+          reviewCount: records.filter(row => row.status === 'review_required' ||
+            [row.reserve,row.capture,row.refund].some(leg => leg?.status === 'review_required')).length,
+          settledFareMinor: settled.reduce((total,row) => total + row.fareMinor,0),
+          confirmedDriverCashMinor: settled.reduce((total,row) => total + row.driverCashMinor,0),
+          reservedFeeMinor: records.reduce((total,row) =>
+            total + (row.reserve?.status === 'completed' &&
+              row.capture?.status !== 'completed' &&
+              row.refund?.status !== 'completed' ? row.feeMinor : 0),0),
+          capturedFeeMinor: sum(row => row.capture?.status === 'completed'),
+          refundedFeeMinor: sum(row => row.refund?.status === 'completed')
+        };
+
+        return res.status(200).json({
+          available: true,
+          source: 'matmove_cash_ride_payments',
+          limit: 100,
+          records,
+          summary
+        });
+      }
 
       if (req.method === 'POST') {
         const action = req.body?.action;
