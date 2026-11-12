@@ -70,6 +70,68 @@ export function createHandler({
 
         const rows = Array.isArray(payments.data) ? payments.data : [];
         const bookingIds = rows.map(row => row.booking_id);
+        const profileIds = [...new Set(rows.flatMap(row => [row.rider_id, row.driver_id]).filter(Boolean))];
+        let profiles = [];
+        if (profileIds.length) {
+          const profileResult = await client
+            .from('profiles')
+            .select('id,first_name,last_name,full_name,phone,phone_number,role')
+            .in('id', profileIds);
+          if (profileResult.error) {
+            return res.status(503).json({
+              available: false,
+              error: 'Cash collection participant details are temporarily unavailable.'
+            });
+          }
+          profiles = Array.isArray(profileResult.data) ? profileResult.data : [];
+        }
+        const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
+        const person = id => {
+          if (!id) return null;
+          const profile = profileMap.get(id);
+          if (!profile) return { id, name: 'Profile unavailable', phoneLastFour: null };
+          const name = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+            || profile.full_name
+            || 'Name unavailable';
+          const phone = profile.phone || profile.phone_number || '';
+          return {
+            id: profile.id,
+            name: String(name).slice(0, 120),
+            phoneLastFour: phone ? String(phone).replace(/\\D/g, '').slice(-4) || null : null
+          };
+        };
+        let auditEvents = [];
+        if (bookingIds.length) {
+          const auditResult = await client
+            .from('matmove_cash_ride_audit_events')
+            .select('booking_id,event_type,actor_type,actor_profile_id,details,created_at')
+            .in('booking_id', bookingIds)
+            .order('created_at', { ascending: false })
+            .limit(500);
+          if (auditResult.error) {
+            return res.status(503).json({
+              available: false,
+              error: 'Cash collection audit history is temporarily unavailable.'
+            });
+          }
+          auditEvents = Array.isArray(auditResult.data) ? auditResult.data : [];
+        }
+        const auditByBooking = new Map();
+        for (const event of auditEvents) {
+          const list = auditByBooking.get(event.booking_id) || [];
+          if (list.length < 8) {
+            const details = event.details && typeof event.details === 'object' ? event.details : {};
+            list.push({
+              eventType: String(event.event_type || '').slice(0, 64),
+              actorType: String(event.actor_type || 'system').slice(0, 16),
+              actorName: event.actor_profile_id ? (person(event.actor_profile_id)?.name || 'Profile unavailable') : 'System',
+              createdAt: event.created_at,
+              reasonCode: typeof details.reasonCode === 'string' ? details.reasonCode.slice(0, 64) : null,
+              legKind: typeof details.legKind === 'string' ? details.legKind.slice(0, 16) : null
+            });
+            auditByBooking.set(event.booking_id, list);
+          }
+        }
         let legs = [];
         if (bookingIds.length) {
           const legResult = await client
@@ -99,6 +161,9 @@ export function createHandler({
           const refund = paymentLegs.refund || null;
           return {
             bookingReference: row.booking_id,
+            rider: person(row.rider_id),
+            driver: person(row.driver_id),
+            auditEvents: auditByBooking.get(row.booking_id) || [],
             fareMinor: Number(row.fare_minor),
             driverCashMinor: Number(row.driver_cash_minor),
             feeMinor: Number(row.matmove_fee_minor),
