@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
+import CashPaymentsPreview from '@/components/CashPaymentsPreview';
 
 type Row = {
   id: string;
@@ -364,6 +365,7 @@ export function FinancialsPage() {
       subtitle="Platform escrow, live customer balances and wallet freeze controls"
     >
       
+      <CashPaymentsPreview />
       <div className="mt-6 space-y-5">
         <div className="flex flex-wrap gap-3">
           <input
