@@ -15,6 +15,7 @@ export default function StaffMfaGate({
 }) {
   const [stage, setStage] = useState<Stage>('checking');
   const [factorId, setFactorId] = useState('');
+  const [canReplaceSetup, setCanReplaceSetup] = useState(false);
   const [challengeId, setChallengeId] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [secret, setSecret] = useState('');
@@ -49,13 +50,20 @@ export default function StaffMfaGate({
       const totp = factors.data?.totp || [];
       const verified = totp.find((factor: Factor) => factor.status === 'verified');
       if (verified) {
+        setCanReplaceSetup(false);
         await issueChallenge(verified.id);
         setStage('challenge');
         return;
       }
-      if (totp.some((factor: Factor) => factor.status === 'unverified')) {
+      const unfinished = totp.find((factor: Factor) => factor.status === 'unverified');
+      if (unfinished) {
+        setFactorId(unfinished.id);
+        setCanReplaceSetup(true);
+        setQrCode('');
+        setSecret('');
+        setChallengeId('');
         setStage('blocked');
-        setError('An unfinished authenticator setup already exists for this account. Contact the MatMove owner to reset that unfinished setup before trying again.');
+        setError('An unfinished authenticator setup exists for this account. If its QR code or setup key was exposed, replace that unfinished setup here before enrolling again.');
         return;
       }
       setStage('enroll');
@@ -71,38 +79,75 @@ export default function StaffMfaGate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  async function createEnrollment() {
+    const enrolled = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName: 'MatMove Admin',
+    });
+    if (
+      enrolled.error ||
+      !enrolled.data?.id ||
+      !enrolled.data.totp?.qr_code ||
+      !enrolled.data.totp?.secret
+    ) {
+      throw new Error('Authenticator setup could not be started. Try again.');
+    }
+    setFactorId(enrolled.data.id);
+    setCanReplaceSetup(true);
+    setQrCode(enrolled.data.totp.qr_code);
+    setSecret(enrolled.data.totp.secret);
+    setChallengeId('');
+    setCode('');
+    setStage('setup');
+    try {
+      const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
+      if (challenge.error || !challenge.data?.id) throw new Error('Challenge unavailable.');
+      setChallengeId(challenge.data.id);
+    } catch {
+      // Keep this newly generated QR/setup key visible and let the user retry
+      // the challenge; retrying a challenge does not change the setup secret.
+      setError('Your new authenticator setup has started, but the verification challenge could not be prepared. Keep this page open and retry the challenge below.');
+    }
+  }
+
   async function beginEnrollment() {
     setBusy(true);
     setError('');
     try {
-      const enrolled = await supabase.auth.mfa.enroll({
-        factorType: 'totp',
-        friendlyName: 'MatMove Admin',
-      });
-      if (
-        enrolled.error ||
-        !enrolled.data?.id ||
-        !enrolled.data.totp?.qr_code ||
-        !enrolled.data.totp?.secret
-      ) {
-        throw new Error('Authenticator setup could not be started. Try again.');
-      }
-      setFactorId(enrolled.data.id);
-      setQrCode(enrolled.data.totp.qr_code);
-      setSecret(enrolled.data.totp.secret);
-      setChallengeId('');
-      setStage('setup');
-      try {
-        const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
-        if (challenge.error || !challenge.data?.id) throw new Error('Challenge unavailable.');
-        setChallengeId(challenge.data.id);
-      } catch {
-        // Keep the QR/setup key visible and let the user retry the challenge.
-        // Do not send them through enrollment again after a factor was created.
-        setError('Your authenticator setup has started, but the verification challenge could not be prepared. Keep this page open and retry the challenge below.');
-      }
+      await createEnrollment();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Authenticator setup failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function replaceUnverifiedSetup() {
+    if (!factorId || !canReplaceSetup) return;
+    setBusy(true);
+    setError('');
+    // Hide the exposed secret immediately. Only an unverified factor belonging
+    // to the currently signed-in staff account may be removed by this action.
+    setQrCode('');
+    setSecret('');
+    setCode('');
+    setChallengeId('');
+    try {
+      const listed = await supabase.auth.mfa.listFactors();
+      if (listed.error) throw new Error('Could not verify the pending authenticator status. Nothing was changed.');
+      const pending = (listed.data?.totp || []).find((factor: Factor) => factor.id === factorId);
+      if (!pending || pending.status !== 'unverified') {
+        throw new Error('This action can only replace an unfinished, unverified authenticator setup.');
+      }
+      const removed = await supabase.auth.mfa.unenroll({ factorId });
+      if (removed.error) throw new Error('The unfinished authenticator setup could not be removed. Contact the MatMove owner for staff recovery.');
+      setFactorId('');
+      setCanReplaceSetup(false);
+      setStage('enroll');
+      await createEnrollment();
+    } catch (e) {
+      setStage('blocked');
+      setError(e instanceof Error ? e.message : 'The unfinished authenticator setup could not be safely replaced.');
     } finally {
       setBusy(false);
     }
@@ -146,6 +191,7 @@ export default function StaffMfaGate({
       ) {
         throw new Error('The second factor was not confirmed. Admin access remains blocked.');
       }
+      setCanReplaceSetup(false);
       await onVerified();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Authenticator verification failed.');
@@ -195,7 +241,7 @@ export default function StaffMfaGate({
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Manual setup key</p>
               <code className="mt-1 block break-all text-sm font-bold text-slate-900">{secret}</code>
             </div>
-            <p className="text-xs leading-5 text-slate-500">Keep this key private. MatMove staff will never be asked to send an authenticator code or setup key to support.</p>
+            <p className="text-xs leading-5 text-slate-500">Keep this key private. MatMove staff will never be asked to send an authenticator code or setup key to support. A new code challenge does not replace this setup key.</p>
           </div>
         )}
 
@@ -227,7 +273,12 @@ export default function StaffMfaGate({
                   {busy ? 'Verifying…' : 'Verify and open Admin'}
                 </button>
               </form>
-              <button type="button" disabled={busy} onClick={refreshChallenge} className="mt-3 min-h-10 w-full rounded-xl border px-4 py-2 text-sm font-semibold text-slate-700">Request a new code challenge</button>
+              <button type="button" disabled={busy} onClick={refreshChallenge} className="mt-3 min-h-10 w-full rounded-xl border px-4 py-2 text-sm font-semibold text-slate-700">{stage === 'setup' ? 'Retry verification challenge (keep this key)' : 'Request a new code challenge'}</button>
+              {stage === 'setup' && canReplaceSetup && (
+                <button type="button" disabled={busy} onClick={replaceUnverifiedSetup} className="min-h-10 w-full rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-60">
+                  {busy ? 'Replacing unfinished setup…' : 'Cancel this setup and generate a fresh key'}
+                </button>
+              )}
             </>
           ) : (
             <button type="button" disabled={busy || !factorId} onClick={refreshChallenge} className="mt-5 min-h-11 w-full rounded-xl border px-4 py-3 font-semibold text-slate-700 disabled:opacity-60">
@@ -239,7 +290,15 @@ export default function StaffMfaGate({
         {stage === 'blocked' && (
           <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <div className="flex items-center gap-2 font-bold"><ShieldAlert size={18}/> Admin access is blocked</div>
-            <p className="mt-2 leading-6">If you have lost your authenticator, contact the MatMove owner through the verified staff support process. The owner must verify your identity and reset the factor securely. Password recovery alone does not bypass MFA.</p>
+            <p className="mt-2 leading-6">If you have lost your authenticator, contact the MatMove owner through the verified staff support process. Password recovery alone does not bypass MFA.</p>
+            {canReplaceSetup && (
+              <div className="mt-4 space-y-2">
+                <p className="leading-6">This account has an unfinished setup that has not been verified. You can safely remove only that pending setup and create a new private QR code.</p>
+                <button type="button" disabled={busy} onClick={replaceUnverifiedSetup} className="min-h-11 w-full rounded-xl border border-red-300 bg-white px-4 py-3 font-bold text-red-700 disabled:opacity-60">
+                  {busy ? 'Replacing unfinished setup…' : 'Replace unfinished setup and generate a fresh key'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
