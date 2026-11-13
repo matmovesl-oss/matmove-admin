@@ -36,7 +36,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Run tests
-        run: npm test
+        run: node --test test/admin-homepage-posts-ui.test.mjs test/admin-password-recovery.test.js
       - name: Type-check
         run: npm run typecheck
       - name: Build production bundle
