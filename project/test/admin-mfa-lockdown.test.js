@@ -98,6 +98,8 @@ test('Admin UI gates active staff behind TOTP enrollment or challenge', async ()
   assert.match(gate, /but it was not returned in the factor list/);
   assert.match(gate, /Cancel this setup and generate a fresh key/);
   assert.match(gate, /Request a new code challenge/);
+  assert.match(gate, /supabase\.auth\.signOut\(\{ scope: 'local' \}\)/);
+  assert.match(gate, /Sign out and return to Admin sign-in/);
   assert.doesNotMatch(gate, /Skip|Continue without/i);
 });
 
