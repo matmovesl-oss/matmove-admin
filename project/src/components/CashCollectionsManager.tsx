@@ -78,6 +78,9 @@ export default function CashCollectionsManager() {
   const [available,setAvailable] = useState(false);
   const [cashEnabled,setCashEnabled] = useState(false);
   const [providerEnvironment,setProviderEnvironment] = useState<string | null>(null);
+  const [feeAccounts,setFeeAccounts] = useState<{holdingAccount:string|null;revenueAccount:string|null;revenueMatchesDeployment:boolean}>({
+    holdingAccount:null,revenueAccount:null,revenueMatchesDeployment:false
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,12 +105,19 @@ export default function CashCollectionsManager() {
       setSummary(result.summary);
       setCashEnabled(result.cashEnabled === true);
       setProviderEnvironment(typeof result.providerEnvironment === 'string' ? result.providerEnvironment : null);
+      const configured = result.feeAccounts;
+      setFeeAccounts({
+        holdingAccount: typeof configured?.holdingAccount === 'string' ? configured.holdingAccount : null,
+        revenueAccount: typeof configured?.revenueAccount === 'string' ? configured.revenueAccount : null,
+        revenueMatchesDeployment: configured?.revenueMatchesDeployment === true
+      });
       setAvailable(true);
     } catch (err) {
       setRecords([]);
       setSummary(emptySummary);
       setCashEnabled(false);
       setProviderEnvironment(null);
+      setFeeAccounts({holdingAccount:null,revenueAccount:null,revenueMatchesDeployment:false});
       setAvailable(false);
       setError(err instanceof Error ? err.message : 'Cash collection report is unavailable.');
     } finally {
@@ -133,8 +143,24 @@ export default function CashCollectionsManager() {
 
       {available && <>
         <p className={cashEnabled ? "mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" : "mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"}>
-          {cashEnabled ? 'Cash collection is enabled in the configured ' + (providerEnvironment || 'Monime') + ' environment.' : 'Cash collection is disabled. No new physical-cash rides should be dispatched.'}
+          {cashEnabled ? 'Cash collection is enabled and the Admin deployment matches the shared fee-account configuration in ' + (providerEnvironment || 'Monime') + '.' : 'Cash collection is disabled or its fee-account configuration does not match. No new physical-cash rides should be dispatched.'}
         </p>
+        <div className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
+          <div className="rounded-lg border p-3">
+            <p className="text-slate-500">Restricted holding account</p>
+            <p className="mt-1 break-all font-mono font-semibold">{feeAccounts.holdingAccount || 'Not configured'}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-slate-500">Final MatMove fee account</p>
+            <p className="mt-1 break-all font-mono font-semibold">{feeAccounts.revenueAccount || 'Not configured'}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-slate-500">Admin / deployment match</p>
+            <p className={feeAccounts.revenueMatchesDeployment ? 'mt-1 font-semibold text-emerald-700' : 'mt-1 font-semibold text-amber-800'}>
+              {feeAccounts.revenueMatchesDeployment ? 'Confirmed' : 'Not confirmed'}
+            </p>
+          </div>
+        </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Confirmed cash rides</p><p className="mt-1 text-xl font-bold">{summary.settledCount}</p></div>
           <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Physical cash confirmed to drivers</p><p className="mt-1 text-lg font-bold">{money(summary.confirmedDriverCashMinor)}</p></div>
