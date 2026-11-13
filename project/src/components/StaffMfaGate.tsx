@@ -212,8 +212,10 @@ export default function StaffMfaGate({
     try {
       const result = await supabase.auth.signOut({ scope: 'local' });
       if (result.error) throw result.error;
-      // The app auth listener returns the now-signed-out user to the normal
-      // Admin sign-in screen. Do not clear any other browser/device sessions.
+      // Always return to the canonical Admin origin. Auth logs showed that
+      // the current browser was actually running on the Customer app origin.
+      // Do not leave the user on a stale/wrong-origin MFA gate.
+      window.location.assign('https://matmove-admin.vercel.app');
     } catch {
       setError('Could not sign out safely. Refresh this page and try again, or open the Admin address in a private browser window.');
     } finally {
