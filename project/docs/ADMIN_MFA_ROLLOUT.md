@@ -14,7 +14,8 @@
 2. Each person signs in with their own existing MatMove staff email and password. Do not create shared accounts.
 3. A staff member without a verified TOTP factor selects **Set up authenticator**, scans the QR code with an authenticator application, and enters the six-digit one-time code.
 4. Each staff member must complete the enrollment and reach the Admin workspace. The owner must not collect or request anyone's QR setup key, password, or one-time code.
-5. If an account has an unfinished/unverified factor and is blocked, the owner must resolve it through the verified staff recovery procedure. Do not bypass MFA or delete a verified factor merely to get access.
+5. If a QR code or setup key was exposed before verification, do not scan or use it. On the Admin gate, choose **Cancel this setup and generate a fresh key** (or **Replace unfinished setup and generate a fresh key** after reloading). This removes only the current signed-in user's own factor after the app confirms it is still `unverified`, then creates a new factor and QR code. The ordinary **Request a new code challenge** action does not rotate the setup secret.
+6. If a factor is already verified, the pending-setup replacement action is not offered. Use the owner's verified staff recovery procedure instead; never delete a verified factor as a shortcut around MFA.
 
 The Preview uses the same Supabase Auth project as MatMove, so verified factors are retained on the existing staff Auth accounts. Preview access is only a path to the sign-in screen; Supabase staff authorization and MFA are still required.
 
