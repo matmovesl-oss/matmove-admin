@@ -34,7 +34,7 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
     query=kind==='payroll'?query.eq('is_payroll_staff',true).in('role',['rider','driver','merchant']):query.in('role',['rider','driver','merchant']).or('is_payroll_staff.is.null,is_payroll_staff.eq.false');
     if(kind==='refund'){
      const staff=await db.from('matmove_staff_access').select('id').eq('is_active',true).is('removed_at',null).limit(1001);
-     if(staff.error||!Array.isArray(staff.data)||staff.data.length>1000||staff.data.some((row:any)=>!UUID.test(row.id||'')))throw failure(503,'Customer directory could not be confirmed. Reload before retrying.');
+     if(staff.error||!Array.isArray(staff.data)||staff.data.length>1000||staff.data.some(row=>!UUID.test(row.id||'')))throw failure(503,'Customer directory could not be confirmed. Reload before retrying.');
      const staffIds=staff.data.map((row:any)=>row.id);
      if(staffIds.length)query=query.not('id','in',`(${staffIds.join(',')})`);
     }
