@@ -21,7 +21,42 @@ async function fixture(){
  `);
  await pg.exec(await readFile('supabase/migrations/20261104000100_admin_money_ledgers.sql','utf8'));
  const migration=await readFile('supabase/migrations/20261104000200_admin_money_claims.sql','utf8');await pg.exec(migration);
- const db={rpc:async(name,args)=>{try{assert.match(name,/^matmove_admin_money_(prepare|claim|record|review)$/);const result=await pg.query(`select public.${name}(${Object.keys(args).map((_,i)=>'
+ const db={rpc:async(name,args)=>{
+  try{
+   assert.match(name,/^matmove_admin_money_(prepare|claim|record|review)$/);
+   const placeholders=Object.keys(args).map((_,i)=>"$"+(i+1)).join(",");
+   const sql="select public."+name+"("+placeholders+") value";
+   const result=await pg.query(sql,Object.values(args));
+   return {data:result.rows[0].value,error:null};
+  }catch(e){return {data:null,error:{message:e.message}};}
+ },from(table){
+  assert.ok(tables.has(table));
+  const filters=[];let limit=50;
+  const q={
+   select(){return q;},
+   eq(k,v){filters.push({k,op:"=",v});return q;},
+   is(k,v){filters.push({k,op:v===null?"IS NULL":"=",v});return q;},
+   not(k,op,v){if(op!=="in")throw Error("Unsupported test filter");filters.push({k,op:"NOT IN",raw:v});return q;},
+   order(){return q;},
+   limit(n){limit=n;return q;},
+   async run(single=false){
+    try{
+     const values=[];
+     const clauses=filters.map(f=>{
+      if(f.op==="IS NULL")return ident(f.k)+" IS NULL";
+      if(f.op==="NOT IN")return ident(f.k)+" NOT IN "+f.raw;
+      values.push(f.v);return ident(f.k)+"=$"+values.length;
+     });
+     const sql="select * from public."+ident(table)+" "+(clauses.length?"where "+clauses.join(" and "):"")+" limit "+limit;
+     const result=await pg.query(sql,values);
+     return {data:single?result.rows[0]||null:result.rows,error:null};
+    }catch(e){return {data:null,error:{message:e.message}};}
+   },
+   maybeSingle(){return q.run(true);},
+   then(a,b){return q.run().then(a,b);}
+  };
+  return q;
+ }};
  const env={MONIME_STAFF_PAYROLL_ACCOUNT_ID:'fac-payroll',MONIME_REFUND_ACCOUNT_ID:'fac-refund',MONIME_API_KEY:'mon_test_fixture',MONIME_ENVIRONMENT:'test',MONIME_SPACE_ID:'spc-fixture',MATMOVE_ADMIN_MONEY_ENABLED:'true'};
  let mode='completed';const calls=[];const receipts=new Map();let claimedCount=0;
  const fetcher=async(url,options)=>{calls.push({url,options});if(url.includes('/financial-accounts/')){const id=url.split('/financial-accounts/')[1].split('?')[0];return {ok:true,json:async()=>({result:{id,currency:'SLE',balance:{available:{currency:'SLE',value:500000}}}})};}
