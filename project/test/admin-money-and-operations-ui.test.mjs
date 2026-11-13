@@ -73,3 +73,33 @@ test('Audit screen reads the unified database audit feed', async () => {
   assert.match(ui, /matmove_admin_audit_feed/);
   assert.match(ui, /limit:500/);
 });
+
+
+test('customer refund interface never exposes payroll roster labels or controls',async()=>{
+ const ui=await read('src/components/AdminMoneyOperations.tsx');
+ const refund=ui.slice(ui.indexOf("return <AdminLayout"),ui.indexOf("</AdminLayout>;",ui.indexOf("return <AdminLayout"))+15);
+ assert.match(ui,/kind==='payroll'\?'Staff member':'Customer'/);
+ assert.match(ui,/kind==='payroll'&&<button/);
+  assert.match(ui,/Load staff directory \(up to 500\)/);
+ assert.match(ui,/kind==='payroll'&&<div className="flex flex-wrap gap-2"/);
+ assert.match(ui,/Issue refunds to Riders, Drivers and Merchants/);
+ assert.doesNotMatch(refund,/Staff salaries are handled separately/);
+});
+test('refund recipient API excludes payroll-flagged profiles but retains ordinary customer profiles',async()=>{
+ const api=await read('server/admin-money.js');
+ assert.match(api,/query\.in\('role',\['rider','driver','merchant'\]\)\.or\('is_payroll_staff\.is\.null,is_payroll_staff\.eq\.false'\)/);
+ assert.match(api,/query\.eq\('is_payroll_staff',true\)\.in\('role',\['rider','driver','merchant'\]\)/);
+});
+
+
+test('Concierge SLE and USD quote validation accepts ordinary whole and decimal prices',async()=>{
+ const migration=await read('supabase/migrations/20261113220055_matmove_concierge_price_validation_regex_fix.sql');
+ assert.match(migration,/!~'\^\[0-9\]\{1,12\}/);
+ assert.match(migration,/price_sle/);
+ assert.match(migration,/price_usd/);
+ assert.doesNotMatch(migration,/!~'\\\\d/);
+ const ui=await read('src/pages/ConciergePage.tsx');
+ assert.match(ui,/Price in SLE/);
+ assert.match(ui,/Price in USD/);
+ assert.match(ui,/price_sle,price_usd/);
+});
