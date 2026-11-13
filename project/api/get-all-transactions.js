@@ -44,7 +44,7 @@ export function createHandler({
       if (view === 'cash-collections') {
         const settings = await client
           .from('matmove_cash_ride_settings')
-          .select('enabled,provider_environment')
+          .select('enabled,provider_environment,fee_hold_account_id,fee_revenue_account_id')
           .eq('singleton', true)
           .maybeSingle();
 
@@ -214,10 +214,31 @@ export function createHandler({
           refundedFeeMinor: sum(row => row.refund?.status === 'completed')
         };
 
+        const holdAccountId = settings.data?.fee_hold_account_id;
+        const revenueAccountId = settings.data?.fee_revenue_account_id;
+        const deploymentFeeAccountId = env.MONIME_PLATFORM_FEE_ACCOUNT_ID;
+        const validAccountId = value => typeof value === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(value);
+        const revenueMatchesDeployment = validAccountId(revenueAccountId) &&
+          validAccountId(deploymentFeeAccountId) &&
+          revenueAccountId === deploymentFeeAccountId &&
+          validAccountId(holdAccountId) &&
+          holdAccountId !== revenueAccountId;
+        const maskAccountId = value => validAccountId(value)
+          ? value.slice(0, 6) + '…' + value.slice(-4)
+          : null;
+
         return res.status(200).json({
           available: true,
-          cashEnabled: settings.data?.enabled === true,
+          // Report cash as operational only when the Admin deployment agrees
+          // with the shared Supabase revenue destination and separate hold account.
+          cashEnabled: settings.data?.enabled === true && revenueMatchesDeployment,
+          configuredEnabled: settings.data?.enabled === true,
           providerEnvironment: settings.data?.provider_environment || null,
+          feeAccounts: {
+            holdingAccount: maskAccountId(holdAccountId),
+            revenueAccount: maskAccountId(revenueAccountId),
+            revenueMatchesDeployment
+          },
           source: 'matmove_cash_ride_payments',
           limit: 100,
           records,
