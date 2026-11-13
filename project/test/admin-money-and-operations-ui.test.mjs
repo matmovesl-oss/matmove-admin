@@ -89,3 +89,16 @@ test('refund recipient API excludes payroll-flagged profiles but retains ordinar
  assert.match(api,/query\.in\('role',\['rider','driver','merchant'\]\)\.or\('is_payroll_staff\.is\.null,is_payroll_staff\.eq\.false'\)/);
  assert.match(api,/query\.eq\('is_payroll_staff',true\)\.in\('role',\['rider','driver','merchant'\]\)/);
 });
+
+
+test('Concierge SLE and USD quote validation accepts ordinary whole and decimal prices',async()=>{
+ const migration=await read('supabase/migrations/20261113220055_matmove_concierge_price_validation_regex_fix.sql');
+ assert.match(migration,/!~'\^\[0-9\]\{1,12\}/);
+ assert.match(migration,/price_sle/);
+ assert.match(migration,/price_usd/);
+ assert.doesNotMatch(migration,/!~'\\\\d/);
+ const ui=await read('src/pages/ConciergePage.tsx');
+ assert.match(ui,/Price in SLE/);
+ assert.match(ui,/Price in USD/);
+ assert.match(ui,/price_sle,price_usd/);
+});
