@@ -92,6 +92,10 @@ test('Admin UI gates active staff behind TOTP enrollment or challenge', async ()
   assert.match(gate, /currentLevel === 'aal2'/);
   assert.match(gate, /mfa\.unenroll\(\{ factorId \}\)/);
   assert.match(gate, /pending\.status !== 'unverified'/);
+  assert.match(gate, /mfa_factor_name_conflict/);
+  assert.match(gate, /showExistingUnverifiedFactor/);
+  assert.match(gate, /Recheck first so a stale pending factor is never met with a second/);
+  assert.match(gate, /but it was not returned in the factor list/);
   assert.match(gate, /Cancel this setup and generate a fresh key/);
   assert.match(gate, /Request a new code challenge/);
   assert.doesNotMatch(gate, /Skip|Continue without/i);
