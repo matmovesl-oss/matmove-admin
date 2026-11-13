@@ -206,6 +206,21 @@ export default function StaffMfaGate({
     }
   }
 
+  async function signOutToAdminLogin() {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await supabase.auth.signOut({ scope: 'local' });
+      if (result.error) throw result.error;
+      // The app auth listener returns the now-signed-out user to the normal
+      // Admin sign-in screen. Do not clear any other browser/device sessions.
+    } catch {
+      setError('Could not sign out safely. Refresh this page and try again, or open the Admin address in a private browser window.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function refreshChallenge() {
     if (!factorId) return;
     setBusy(true);
@@ -359,7 +374,17 @@ export default function StaffMfaGate({
           </div>
         )}
 
-        <p className="mt-6 border-t pt-4 text-xs leading-5 text-slate-500">This protection applies to Admin and staff access only. Customer sign-in is unchanged. Staff access remains unavailable until this verification step is complete.</p>
+        <div className="mt-6 border-t pt-4">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={signOutToAdminLogin}
+            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? 'Signing out…' : 'Sign out and return to Admin sign-in'}
+          </button>
+          <p className="mt-3 text-xs leading-5 text-slate-500">This protection applies to Admin and staff access only. Customer sign-in is unchanged. Staff access remains unavailable until this verification step is complete.</p>
+        </div>
       </section>
     </main>
   );
