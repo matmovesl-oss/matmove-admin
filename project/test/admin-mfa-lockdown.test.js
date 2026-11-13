@@ -90,6 +90,10 @@ test('Admin UI gates active staff behind TOTP enrollment or challenge', async ()
   assert.match(gate, /setChallengeId\(''\);\s*setStage\('setup'\);/);
   assert.match(gate, /challengeId \?/);
   assert.match(gate, /currentLevel === 'aal2'/);
+  assert.match(gate, /mfa\.unenroll\(\{ factorId \}\)/);
+  assert.match(gate, /pending\.status !== 'unverified'/);
+  assert.match(gate, /Cancel this setup and generate a fresh key/);
+  assert.match(gate, /Request a new code challenge/);
   assert.doesNotMatch(gate, /Skip|Continue without/i);
 });
 
