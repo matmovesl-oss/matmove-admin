@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Megaphone,
   Settings,
   Send,
   ShieldCheck,
@@ -37,6 +38,7 @@ interface AdminLayoutProps {
 const navItems = [
   { key: 'dashboard', name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
   { key: 'notifications', name: 'Customer Messages', path: '/notifications', icon: Send },
+  { key: 'notifications', name: 'Homepage Posts', path: '/homepage-posts', icon: Megaphone },
   { key: 'concierge', name: 'Concierge', path: '/concierge', icon: ClipboardCheck },
   { key: 'dispatch', name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
   { key: 'travel', name: 'Travel on Bus', path: '/travel', icon: Bus },
