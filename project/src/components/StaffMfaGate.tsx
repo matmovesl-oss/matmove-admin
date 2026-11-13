@@ -84,13 +84,13 @@ export default function StaffMfaGate({
       factorType: 'totp',
       friendlyName: 'MatMove Admin',
     });
+    if (enrolled.error) throw enrolled.error;
     if (
-      enrolled.error ||
       !enrolled.data?.id ||
       !enrolled.data.totp?.qr_code ||
       !enrolled.data.totp?.secret
     ) {
-      throw new Error('Authenticator setup could not be started. Try again.');
+      throw new Error('Supabase did not return the new authenticator QR code and secret. No setup was displayed.');
     }
     setFactorId(enrolled.data.id);
     setCanReplaceSetup(true);
@@ -110,13 +110,66 @@ export default function StaffMfaGate({
     }
   }
 
+  async function showExistingUnverifiedFactor(message: string) {
+    const listed = await supabase.auth.mfa.listFactors();
+    if (listed.error) throw new Error('Supabase reports an existing authenticator, but its status could not be rechecked. Refresh Admin and try the recovery action again.');
+    const pending = (listed.data?.totp || []).find((factor: Factor) => factor.status === 'unverified');
+    if (!pending) return false;
+    setFactorId(pending.id);
+    setCanReplaceSetup(true);
+    setQrCode('');
+    setSecret('');
+    setChallengeId('');
+    setCode('');
+    setStage('blocked');
+    setError(message);
+    return true;
+  }
+
   async function beginEnrollment() {
     setBusy(true);
     setError('');
     try {
+      // Recheck first so a stale pending factor is never met with a second
+      // enrollment request using the same friendly name.
+      const listed = await supabase.auth.mfa.listFactors();
+      if (listed.error) throw new Error('Could not check your existing authenticator setup. Access remains blocked; refresh and retry.');
+      const verified = (listed.data?.totp || []).find((factor: Factor) => factor.status === 'verified');
+      if (verified) {
+        setCanReplaceSetup(false);
+        await issueChallenge(verified.id);
+        setStage('challenge');
+        return;
+      }
+      const pending = (listed.data?.totp || []).find((factor: Factor) => factor.status === 'unverified');
+      if (pending) {
+        setFactorId(pending.id);
+        setCanReplaceSetup(true);
+        setQrCode('');
+        setSecret('');
+        setChallengeId('');
+        setStage('blocked');
+        setError('An unfinished MatMove Admin authenticator already exists. Replace that pending setup to generate a fresh QR code; do not start another enrollment.');
+        return;
+      }
       await createEnrollment();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Authenticator setup failed.');
+    } catch (e: any) {
+      const message = e instanceof Error ? e.message : 'Authenticator setup failed.';
+      const code = String(e?.code || e?.error || '');
+      if (code === 'mfa_factor_name_conflict' || /factor.*friendly name.*already exists/i.test(message)) {
+        try {
+          const shown = await showExistingUnverifiedFactor('Supabase found an unfinished MatMove Admin authenticator for this account. Replace that pending setup below to generate a fresh QR code.');
+          if (shown) return;
+        } catch (recheckError) {
+          setStage('blocked');
+          setError(recheckError instanceof Error ? recheckError.message : 'An existing authenticator needs recovery. Do not retry enrollment.');
+          return;
+        }
+        setStage('blocked');
+        setError('Supabase says a MatMove Admin authenticator with this name already exists, but it was not returned in the factor list. Do not keep retrying. Sign out, sign in again at matmove-admin.vercel.app, and contact the MatMove owner if the conflict remains.');
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }
