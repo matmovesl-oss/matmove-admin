@@ -67,7 +67,9 @@ export function validPermissions(value) {
 }
 
 export function canAdminAccess(a, key) {
-  if (!a || a.is_active !== true) return false;
+  // A removed or inactive assignment must never authorize an API request,
+  // even if its old permission array is still present.
+  if (!a || a.is_active !== true || a.removed_at != null) return false;
   if (a.is_owner === true) return true;
   const p = Array.isArray(a.permissions) ? a.permissions : [];
   if (key === 'games') return p.includes('games') || p.some(x => typeof x === 'string' && x.startsWith('games.'));

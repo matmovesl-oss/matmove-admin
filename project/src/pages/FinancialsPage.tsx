@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
+import CashCollectionsManager from '@/components/CashCollectionsManager';
 
 type Row = {
   id: string;
@@ -365,6 +366,7 @@ export function FinancialsPage() {
     >
       
       <div className="mt-6 space-y-5">
+        <CashCollectionsManager />
         <div className="flex flex-wrap gap-3">
           <input
             value={search}

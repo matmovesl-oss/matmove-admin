@@ -653,6 +653,55 @@ begin
  end loop;
 end;
 $wrap$;
+-- Least-privilege Spin settings snapshot. The legacy helper returns player and receipt
+-- rows for internal service reconciliation; browser callers receive only the
+-- settings record and separately authorized summary fields.
+create or replace function public.matmove_spin_admin_snapshot()
+returns jsonb
+language plpgsql
+security definer
+set search_path=pg_catalog,public
+as $snapshot$
+declare
+ v_snapshot jsonb;
+begin
+ if auth.uid() is null then
+  if coalesce(auth.jwt()->>'role','')='service_role' then
+   return public.matmove_spin_admin_snapshot_staff_base();
+  end if;
+  raise exception 'AUTH: Sign in to Admin.';
+ end if;
+
+ if not public.matmove_admin_can('games.settings') then
+  raise exception 'FORBIDDEN: Game settings permission required.';
+ end if;
+
+ v_snapshot:=public.matmove_spin_admin_snapshot_staff_base();
+
+ return jsonb_build_object(
+  'config',v_snapshot->'config',
+  'entryReceivedMinor',case
+   when public.matmove_admin_can('games.entries') then v_snapshot->'entryReceivedMinor'
+   else null end,
+  'winsPaidMinor',case
+   when public.matmove_admin_can('games.winnings') then v_snapshot->'winsPaidMinor'
+   else null end,
+  'winsOwedMinor',case
+   when public.matmove_admin_can('games.winnings') then v_snapshot->'winsOwedMinor'
+   else null end,
+  'reservedMinor',case
+   when public.matmove_admin_any(ARRAY['games.overview','games.winnings']::text[])
+    then v_snapshot->'reservedMinor'
+   else null end
+ );
+end;
+$snapshot$;
+
+revoke all on function public.matmove_spin_admin_snapshot_staff_base() from public,anon,authenticated;
+grant execute on function public.matmove_spin_admin_snapshot_staff_base() to service_role;
+revoke all on function public.matmove_spin_admin_snapshot() from public,anon;
+grant execute on function public.matmove_spin_admin_snapshot() to authenticated,service_role;
+
 create or replace function public.matmove_spin_admin_report(p_view text,p_page integer default 1,p_search text default '',p_status text default 'all',p_player uuid default null)
 returns jsonb language plpgsql security definer set search_path=pg_catalog,public as $staff$
 declare r jsonb;summary jsonb;
@@ -661,6 +710,7 @@ begin
  r:=public.matmove_spin_admin_report_staff_base(p_view,p_page,p_search,p_status,p_player);summary:=r->'stats';
  if not public.matmove_admin_any(ARRAY['games.overview','games.players','games.winnings']) then summary:=summary-'winsPaidMinor'-'winsOwedMinor'-'prizesCredited';end if;
  if not public.matmove_admin_any(ARRAY['games.overview','games.players','games.entries']) then summary:=summary-'entryReceivedMinor'-'paidEntries'-'pendingEntries';end if;
+ if not public.matmove_admin_any(ARRAY['games.overview','games.winnings']) then summary:=summary-'reservedMinor';end if;
  return jsonb_set(r,'{stats}',summary);
 end;
 $staff$;

@@ -7,6 +7,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 const uid='2b08533c-30d5-4714-9f8d-a62f2de22a3e';
+const aal2Token='header.'+Buffer.from(JSON.stringify({sub:uid,role:'authenticated',aal:'aal2'})).toString('base64url')+'.signature';
 const access={id:uid,is_active:true,is_owner:true,permissions:[]};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 function nodes(n){if(!n||typeof n!=='object')return[];if(Array.isArray(n))return n.flatMap(nodes);return[n,...nodes(n.props?.children)];}
@@ -61,7 +62,7 @@ function fixture({grants=access,campaign={treasury_account:'fac-pinned'},campaig
  const client={auth:{getUser:async()=>({data:{user:{id:uid}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});assert.equal(name,'matmove_admin_access');return{data:grants,error:null};},from(table){calls.push({kind:'db',table});assert.equal(table,'matmove_referral_campaign');const q={select:()=>q,eq:()=>q,maybeSingle:async()=>({data:campaign,error:campaignError})};return q;}};
  const fetcher=async(url,options)=>{calls.push({kind:'provider',url:String(url),options});return{ok:!providerError,json:async()=>pages[page++]};};
  const handler=createBalances(()=>client,fetcher,settings);
- return{calls,async run(req={method:'GET',headers:{authorization:'Bearer fixture-token'}}){const r=res();await handler(req,r);return r;}};
+ return{calls,async run(req={method:'GET',headers:{authorization:'Bearer '+aal2Token}}){const r=res();await handler(req,r);return r;}};
 }
 test('financial balance response classifies current and pinned referral funds independently of any UI panel',async()=>{
  const f=fixture(),r=await f.run();assert.equal(r.code,200);assert.deepEqual(r.body.businessAccountIds,['fac-escrow','fac-spin','fac-main','fac-referral','fac-pinned']);assert.deepEqual(r.body.platform.referralAccountIds,['fac-referral','fac-pinned']);assert.equal(r.body.platform.referralAccountId,'fac-referral');assert.equal(r.body.platform.mainAccountId,'fac-main');assert.equal(r.headers['Cache-Control'],'no-store');assert.equal(r.headers.Vary,'Authorization');assert.ok(f.calls.filter(c=>c.kind==='rpc').every(c=>c.name==='matmove_admin_access'));assert.equal(f.calls.filter(c=>c.kind==='provider').length,1);const p=f.calls.find(c=>c.kind==='provider');assert.equal(p.options.method,undefined);assert.equal(p.options.headers.Authorization,'Bearer fixture-provider');assert.ok(p.url.startsWith('https://api.monime.io/v1/financial-accounts?'));

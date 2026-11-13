@@ -33,12 +33,13 @@ import { TransactionsPage } from './pages/TransactionsPage';
 import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
 import StaffPasswordPage from './pages/StaffPasswordPage';
+import StaffMfaGate from './components/StaffMfaGate';
 
 function Denied({message='Access denied. This section has not been assigned to your staff account.',retry}:{message?:string;retry?:()=>void}){return <AdminLayout title="Access denied"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">{message}</p>{retry&&<button type="button" onClick={retry} className="mt-4 rounded-xl border bg-white px-5 py-3 font-bold">Retry permission check</button>}</AdminLayout>;}
 function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
 function GameGate({access}:{access:AdminAccess}){const loc=useLocation();const tab=new URLSearchParams(loc.search).get('tab');if(!tab){const first=['overview','players','entries','winnings','settings','recovery'].find(t=>canAccess(access,`games.${t}`));return first?<Navigate to={`/games?tab=${first}`} replace/>:<Denied/>;}if(!['overview','players','entries','winnings','settings','recovery'].includes(tab))return <Denied/>;return <Gate access={access} section={`games.${tab}`}><GamesPage/></Gate>;}
 function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean;onRecoveryDone:()=>void}){
- const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();
+ const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [mfaToken,setMfaToken]=useState('');const loc=useLocation();
  useEffect(()=>{
   let live=true,inFlight=false;
   const refresh=async()=>{
@@ -54,7 +55,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  async function finished(){const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
 
  if(loading)return <p className="p-8">Checking staff assignments…</p>;
- return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
+ return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:mfaToken!==session.access_token?<StaffMfaGate key={session.user.id} userId={session.user.id} onVerified={async()=>{const current=await supabase.auth.getSession();const verifiedSession=current.data.session;if(!current.error&&verifiedSession!==null&&verifiedSession.user.id===session.user.id&&typeof verifiedSession.access_token==='string'&&verifiedSession.access_token.length>0)setMfaToken(verifiedSession.access_token);}}/>:<Routes>
  <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
  <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
  <Route path="/concierge" element={<Gate access={access} section="concierge"><ConciergePage/></Gate>}/>
