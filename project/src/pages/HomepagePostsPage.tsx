@@ -44,8 +44,8 @@ export default function HomepagePostsPage(){
    if(file){
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)throw new Error('Choose a JPG, PNG or WebP image up to 5 MB.');
     const extension=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
-    const path=`${draft.id}/promotion.${extension}`;
-    const result=await supabase.storage.from(BUCKET).upload(path,file,{cacheControl:'3600',upsert:true,contentType:file.type});
+    const path=`${draft.id}/${crypto.randomUUID()}.${extension}`;
+    const result=await supabase.storage.from(BUCKET).upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
     if(result.error)throw result.error;uploaded=path;imagePath=path;
    }
    const data={title:draft.title.trim(),summary:draft.summary.trim(),body:draft.body.trim(),image_path:imagePath,starts_at:draft.starts_at?new Date(draft.starts_at).toISOString():null,expires_at:draft.expires_at?new Date(draft.expires_at).toISOString():null,display_order:draft.display_order};
