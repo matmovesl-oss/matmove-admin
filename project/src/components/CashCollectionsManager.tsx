@@ -78,8 +78,8 @@ export default function CashCollectionsManager() {
   const [available,setAvailable] = useState(false);
   const [cashEnabled,setCashEnabled] = useState(false);
   const [providerEnvironment,setProviderEnvironment] = useState<string | null>(null);
-  const [feeAccounts,setFeeAccounts] = useState<{holdingAccount:string|null;revenueAccount:string|null;revenueMatchesDeployment:boolean}>({
-    holdingAccount:null,revenueAccount:null,revenueMatchesDeployment:false
+  const [feeAccounts,setFeeAccounts] = useState<{holdingAccount:string|null;revenueAccount:string|null;escrowMatchesDeployment:boolean;revenueMatchesDeployment:boolean}>({
+    holdingAccount:null,revenueAccount:null,escrowMatchesDeployment:false,revenueMatchesDeployment:false
   });
 
   const load = useCallback(async () => {
@@ -109,6 +109,7 @@ export default function CashCollectionsManager() {
       setFeeAccounts({
         holdingAccount: typeof configured?.holdingAccount === 'string' ? configured.holdingAccount : null,
         revenueAccount: typeof configured?.revenueAccount === 'string' ? configured.revenueAccount : null,
+        escrowMatchesDeployment: configured?.escrowMatchesDeployment === true,
         revenueMatchesDeployment: configured?.revenueMatchesDeployment === true
       });
       setAvailable(true);
@@ -117,7 +118,7 @@ export default function CashCollectionsManager() {
       setSummary(emptySummary);
       setCashEnabled(false);
       setProviderEnvironment(null);
-      setFeeAccounts({holdingAccount:null,revenueAccount:null,revenueMatchesDeployment:false});
+      setFeeAccounts({holdingAccount:null,revenueAccount:null,escrowMatchesDeployment:false,revenueMatchesDeployment:false});
       setAvailable(false);
       setError(err instanceof Error ? err.message : 'Cash collection report is unavailable.');
     } finally {
@@ -156,8 +157,8 @@ export default function CashCollectionsManager() {
           </div>
           <div className="rounded-lg border p-3">
             <p className="text-slate-500">Admin / deployment match</p>
-            <p className={feeAccounts.revenueMatchesDeployment ? 'mt-1 font-semibold text-emerald-700' : 'mt-1 font-semibold text-amber-800'}>
-              {feeAccounts.revenueMatchesDeployment ? 'Confirmed' : 'Not confirmed'}
+            <p className={feeAccounts.escrowMatchesDeployment && feeAccounts.revenueMatchesDeployment ? 'mt-1 font-semibold text-emerald-700' : 'mt-1 font-semibold text-amber-800'}>
+              {feeAccounts.escrowMatchesDeployment && feeAccounts.revenueMatchesDeployment ? 'Both accounts confirmed' : 'Account mismatch'}
             </p>
           </div>
         </div>

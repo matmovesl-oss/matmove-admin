@@ -216,8 +216,12 @@ export function createHandler({
 
         const holdAccountId = settings.data?.fee_hold_account_id;
         const revenueAccountId = settings.data?.fee_revenue_account_id;
+        const deploymentEscrowAccountId = env.MONIME_ESCROW_ACCOUNT_ID;
         const deploymentFeeAccountId = env.MONIME_PLATFORM_FEE_ACCOUNT_ID;
         const validAccountId = value => typeof value === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(value);
+        const escrowMatchesDeployment = validAccountId(holdAccountId) &&
+          validAccountId(deploymentEscrowAccountId) &&
+          holdAccountId === deploymentEscrowAccountId;
         const revenueMatchesDeployment = validAccountId(revenueAccountId) &&
           validAccountId(deploymentFeeAccountId) &&
           revenueAccountId === deploymentFeeAccountId &&
@@ -231,12 +235,13 @@ export function createHandler({
           available: true,
           // Report cash as operational only when the Admin deployment agrees
           // with the shared Supabase revenue destination and separate hold account.
-          cashEnabled: settings.data?.enabled === true && revenueMatchesDeployment,
+          cashEnabled: settings.data?.enabled === true && escrowMatchesDeployment && revenueMatchesDeployment,
           configuredEnabled: settings.data?.enabled === true,
           providerEnvironment: settings.data?.provider_environment || null,
           feeAccounts: {
             holdingAccount: maskAccountId(holdAccountId),
             revenueAccount: maskAccountId(revenueAccountId),
+            escrowMatchesDeployment,
             revenueMatchesDeployment
           },
           source: 'matmove_cash_ride_payments',
