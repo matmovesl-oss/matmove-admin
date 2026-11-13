@@ -79,7 +79,7 @@ test('customer refund interface never exposes payroll roster labels or controls'
  const ui=await read('src/components/AdminMoneyOperations.tsx');
  const refund=ui.slice(ui.indexOf("return <AdminLayout"),ui.indexOf("</AdminLayout>;",ui.indexOf("return <AdminLayout"))+15);
  assert.match(ui,/kind==='payroll'\?'Staff member':'Customer'/);
- assert.match(ui,/kind==='payroll'&&<button[^>]*Load staff directory/);
+ assert.match(ui,/kind==='payroll'&&<button[^>]*>Load staff directory/);
  assert.match(ui,/kind==='payroll'&&<div className="flex flex-wrap gap-2"/);
  assert.match(ui,/Issue refunds to Riders, Drivers and Merchants/);
  assert.doesNotMatch(refund,/Staff salaries are handled separately/);
