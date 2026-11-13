@@ -71,7 +71,7 @@ export default function HomepagePostsPage(){
      setError(publishError instanceof Error?publishError.message:'The post was saved, but could not be published. Check published slots and retry.');
     }
    }else{
-    setDraft(null);setNotice('Post updated. Your changes are live on the customer homepage.');
+    setDraft(null);setNotice(draft.starts_at&&new Date(draft.starts_at).getTime()>Date.now()?`Post updated and scheduled for ${new Date(draft.starts_at).toLocaleString()}. It will appear on the customer homepage at that time.`:'Post updated. Your changes are live on the customer homepage.');
    }
    await load();
   }catch(err){if(uploaded&&!persisted)void supabase.storage.from(BUCKET).remove([uploaded]);setError(err instanceof Error?err.message:'The post could not be saved.');}
@@ -79,7 +79,7 @@ export default function HomepagePostsPage(){
  }
  async function mutate(action:'publish'|'publish_now'|'unpublish'|'archive'|'status',id:string,version:number,data:any={}){
   if(mutex.current)return;mutex.current=true;setBusy(true);setError('');setNotice('');
-  try{const r=await call(action,id,version,data);if(r?.id!==id||!Number.isSafeInteger(r.version))throw new Error('Change was not confirmed. Refresh before retrying.');setArchiveId(null);setNotice(action==='publish'?'Post published. It will appear on the customer homepage when its start date is reached.':action==='unpublish'?'Post unpublished.':'Change saved.');await load();}
+  try{const r=await call(action,id,version,data);if(r?.id!==id||!Number.isSafeInteger(r.version))throw new Error('Change was not confirmed. Refresh before retrying.');setArchiveId(null);setNotice(action==='publish_now'?'Post published immediately. It is available on the customer homepage now.':action==='publish'?'Post published. It will appear on the customer homepage when its start date is reached.':action==='unpublish'?'Post unpublished.':'Change saved.');await load();}
   catch(err){setError(err instanceof Error?err.message:'Could not update homepage post.');}
   finally{mutex.current=false;setBusy(false);}
  }
