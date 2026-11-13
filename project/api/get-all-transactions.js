@@ -241,6 +241,7 @@ export function createHandler({
           feeAccounts: {
             holdingAccount: maskAccountId(holdAccountId),
             revenueAccount: maskAccountId(revenueAccountId),
+            escrowMatchesDeployment,
             revenueMatchesDeployment
           },
           source: 'matmove_cash_ride_payments',
