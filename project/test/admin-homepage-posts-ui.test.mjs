@@ -28,3 +28,19 @@ test('homepage image storage RLS failures show a specific actionable message',as
  assert.match(page,/not authorized for Homepage Posts artwork/);
  assert.match(page,/remove the image and publish the post without it/);
 });
+
+test('homepage posts save and render optional USD or SLE promotion prices',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/price_amount:priceText\?Number\(priceText\):null/);
+ assert.match(page,/price_currency:priceText\?draft\.price_currency:null/);
+ assert.match(page,/SLE · Sierra Leonean Leone/);
+ assert.match(page,/USD · US Dollar/);
+ assert.match(page,/priceLabel\(post\.price_amount,post\.price_currency\)/);
+});
+test('scheduled homepage posts are distinguished from live posts and can be published immediately',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/const scheduled=posts\.filter/);
+ assert.match(page,/Scheduled to go live:/);
+ assert.match(page,/mutate\('publish_now',post\.id,post\.version\)/);
+ assert.match(page,/const liveNow=posts\.filter/);
+});
