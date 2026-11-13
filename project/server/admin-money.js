@@ -35,7 +35,7 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
     if(kind==='refund'){
      const staff=await db.from('matmove_staff_access').select('id').eq('is_active',true).is('removed_at',null).limit(1001);
      if(staff.error||!Array.isArray(staff.data)||staff.data.length>1000||staff.data.some(row=>!UUID.test(row.id||'')))throw failure(503,'Customer directory could not be confirmed. Reload before retrying.');
-     const staffIds=staff.data.map((row:any)=>row.id);
+     const staffIds=staff.data.map(row=>row.id);
      if(staffIds.length)query=query.not('id','in',`(${staffIds.join(',')})`);
     }
     if(q)query=query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
