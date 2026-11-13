@@ -65,3 +65,4 @@ export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
    </div>
   </section>
  </main>;
+}
