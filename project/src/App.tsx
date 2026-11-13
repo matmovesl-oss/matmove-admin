@@ -1,4 +1,5 @@
 import ConciergePage from './pages/ConciergePage';
+import HomepagePostsPage from './pages/HomepagePostsPage';
 import {SpecialOperationsPage} from './pages/SpecialOperationsPage';
 import {AdministrativePayrollPage} from './pages/AdministrativePayrollPage';
 import {CivitasAdministrativePage} from './pages/CivitasAdministrativePage';
@@ -57,6 +58,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  return <AdminAccessContext.Provider value={access}>{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
  <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
  <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
+ <Route path="/homepage-posts" element={<Gate access={access} section="notifications"><HomepagePostsPage/></Gate>}/>
  <Route path="/concierge" element={<Gate access={access} section="concierge"><ConciergePage/></Gate>}/>
  <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
  <Route path="/reports" element={sections.some(([key])=>canAccess(access,key))?<ReportsPage key={access.id}/>:<Denied/>}/>
