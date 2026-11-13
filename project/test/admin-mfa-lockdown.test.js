@@ -99,6 +99,7 @@ test('Admin UI gates active staff behind TOTP enrollment or challenge', async ()
   assert.match(gate, /Cancel this setup and generate a fresh key/);
   assert.match(gate, /Request a new code challenge/);
   assert.match(gate, /supabase\.auth\.signOut\(\{ scope: 'local' \}\)/);
+  assert.match(gate, /window\.location\.assign\('https:\/\/matmove-admin\.vercel\.app'\)/);
   assert.match(gate, /Sign out and return to Admin sign-in/);
   assert.doesNotMatch(gate, /Skip|Continue without/i);
 });
