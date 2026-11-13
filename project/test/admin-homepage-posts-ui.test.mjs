@@ -13,3 +13,11 @@ test('Admin homepage manager exposes publishing, image upload, scheduling and en
  assert.match(page,/Publish/);assert.match(page,/datetime-local/);assert.match(page,/Customer enquiries/);
  assert.match(app,/homepage-posts/);assert.match(layout,/Homepage Posts/);
 });
+
+test('saving a homepage post publishes it immediately and keeps a saved draft recoverable if publish is blocked',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/call\('publish',draft\.id,result\.version\)/);
+ assert.match(page,/Save & publish/);
+ assert.match(page,/setDraft\(\{\.\.\.draft,version:result\.version,image_path:imagePath\}\)/);
+ assert.match(page,/Post published\. It is live on the customer homepage now/);
+});

@@ -38,7 +38,7 @@ export default function HomepagePostsPage(){
   if(draft.title.trim().length<3||draft.summary.trim().length<10||draft.body.trim().length<10){setError('Add a clear title, short description and full details.');return;}
   if(draft.expires_at&&draft.starts_at&&new Date(draft.expires_at)<=new Date(draft.starts_at)){setError('Expiry must be after the start date.');return;}
   mutex.current=true;setBusy(true);setError('');setNotice('');
-  let uploaded:string|null=null;
+  let uploaded:string|null=null;let persisted=false;
   try{
    let imagePath=draft.image_path;
    if(file){
@@ -51,9 +51,23 @@ export default function HomepagePostsPage(){
    const data={title:draft.title.trim(),summary:draft.summary.trim(),body:draft.body.trim(),image_path:imagePath,starts_at:draft.starts_at?new Date(draft.starts_at).toISOString():null,expires_at:draft.expires_at?new Date(draft.expires_at).toISOString():null,display_order:draft.display_order};
    const result=await call('save',draft.id,draft.version,data);
    if(result?.id!==draft.id||!Number.isSafeInteger(result.version))throw new Error('The save was not confirmed. Reload before retrying.');
+   persisted=true;
    if(draft.image_path&&draft.image_path!==imagePath)void supabase.storage.from(BUCKET).remove([draft.image_path]);
-   setDraft(null);setFile(null);setNotice('Homepage post saved as a draft. Publish it when ready.');await load();
-  }catch(err){if(uploaded)void supabase.storage.from(BUCKET).remove([uploaded]);setError(err instanceof Error?err.message:'The post could not be saved.');}
+   setFile(null);
+   if(result.status!=='published'){
+    try{
+     const publishedResult=await call('publish',draft.id,result.version);
+     if(publishedResult?.id!==draft.id||publishedResult.status!=='published')throw new Error('The post was saved, but publication was not confirmed.');
+     setDraft(null);setNotice('Post published. It is live on the customer homepage now, or at its scheduled start time.');
+    }catch(publishError){
+     setDraft({...draft,version:result.version,image_path:imagePath});
+     setError(publishError instanceof Error?publishError.message:'The post was saved, but could not be published. Check published slots and retry.');
+    }
+   }else{
+    setDraft(null);setNotice('Post updated. Your changes are live on the customer homepage.');
+   }
+   await load();
+  }catch(err){if(uploaded&&!persisted)void supabase.storage.from(BUCKET).remove([uploaded]);setError(err instanceof Error?err.message:'The post could not be saved.');}
   finally{mutex.current=false;setBusy(false);}
  }
  async function mutate(action:'publish'|'unpublish'|'archive'|'status',id:string,version:number,data:any={}){
@@ -64,7 +78,7 @@ export default function HomepagePostsPage(){
  }
  if(!allowed)return <AdminLayout title="Homepage posts"><p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">This section requires the Customer Messages permission.</p></AdminLayout>;
  const published=posts.filter(p=>p.status==='published'&&!p.deleted_at&&(!p.expires_at||new Date(p.expires_at)>new Date())).length;
- return <AdminLayout title="Homepage posts" subtitle="Publish customer-facing announcements and promotions. A maximum of three posts can be published at once.">
+ return <AdminLayout title="Homepage posts" subtitle="Posts publish to the customer homepage as soon as you save. Scheduled posts appear at their start time; up to three posts can be live at once.">
   <div className="space-y-5">
    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4"><div><p className="text-sm font-black text-emerald-950">Published slots</p><p className="mt-1 text-xs text-emerald-800">Only live, non-expired posts appear on the customer homepage.</p></div><p className="text-2xl font-black tabular-nums text-emerald-900">{published}/3</p></div>
    {error&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}{notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
@@ -80,7 +94,7 @@ export default function HomepagePostsPage(){
      <label className="block text-xs font-bold text-slate-700">Expiry date (optional)<input type="datetime-local" value={draft.expires_at} onChange={e=>setDraft({...draft,expires_at:e.target.value})} className="mt-1.5 block min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-normal"/></label>
      <label className="block text-xs font-bold text-slate-700">Display order<input type="number" min={0} max={10000} value={draft.display_order} onChange={e=>setDraft({...draft,display_order:Number(e.target.value)})} className="mt-1.5 block min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-normal"/></label>
     </div>
-    <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white disabled:opacity-50">{busy?'Saving…':'Save draft'}</button><button type="button" disabled={busy} onClick={()=>{setDraft(null);setFile(null);}} className="min-h-11 rounded-xl border px-5 text-sm font-semibold">Cancel</button></div>
+    <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white disabled:opacity-50">{busy?'Publishing…':'Save & publish'}</button><button type="button" disabled={busy} onClick={()=>{setDraft(null);setFile(null);}} className="min-h-11 rounded-xl border px-5 text-sm font-semibold">Cancel</button></div>
    </form>}
    <section className="space-y-3"><div className="flex items-center gap-2"><Megaphone size={18} className="text-emerald-700"/><h2 className="font-black text-slate-900">Posts</h2></div>
     {loading?<p role="status" className="rounded-xl border bg-white p-5 text-sm text-slate-500">Loading posts…</p>:posts.length===0?<p className="rounded-xl border bg-white p-5 text-sm text-slate-500">No homepage posts yet. Create your first announcement or promotion.</p>:<div className="grid gap-3 lg:grid-cols-2">{posts.map(post=><article key={post.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
