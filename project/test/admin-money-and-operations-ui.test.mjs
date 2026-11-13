@@ -103,3 +103,11 @@ test('Concierge SLE and USD quote validation accepts ordinary whole and decimal 
  assert.match(ui,/Price in USD/);
  assert.match(ui,/price_sle,price_usd/);
 });
+
+test('refund recipients and executions exclude active Admin staff even when their profile role looks customer-like',async()=>{
+ const api=await read('server/admin-money.js');
+ assert.match(api,/from\('matmove_staff_access'\)\.select\('id'\)\.eq\('is_active',true\)\.is\('removed_at',null\)\.limit\(1001\)/);
+ assert.match(api,/query\.not\('id','in',/);
+ assert.match(api,/profile\.data\.is_payroll_staff===true\|\|staff\.data/);
+ assert.match(api,/Staff accounts cannot receive customer refunds/);
+});
