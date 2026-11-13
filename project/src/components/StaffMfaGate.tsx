@@ -251,10 +251,10 @@ export default function StaffMfaGate({
           </div>
         )}
 
-        {stage === 'setup' || stage === 'challenge' ? (
-          challengeId ? (
-            <>
-              <form onSubmit={verifyCode} className="mt-5 space-y-3">
+        {(stage === 'setup' || stage === 'challenge') && (
+          <div className="mt-5 space-y-3">
+            {challengeId ? (
+              <form onSubmit={verifyCode} className="space-y-3">
                 <label className="block text-sm font-semibold text-slate-700">
                   Authenticator code
                   <input
@@ -273,19 +273,23 @@ export default function StaffMfaGate({
                   {busy ? 'Verifying…' : 'Verify and open Admin'}
                 </button>
               </form>
-              <button type="button" disabled={busy} onClick={refreshChallenge} className="mt-3 min-h-10 w-full rounded-xl border px-4 py-2 text-sm font-semibold text-slate-700">{stage === 'setup' ? 'Retry verification challenge (keep this key)' : 'Request a new code challenge'}</button>
-              {stage === 'setup' && canReplaceSetup && (
-                <button type="button" disabled={busy} onClick={replaceUnverifiedSetup} className="min-h-10 w-full rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-60">
-                  {busy ? 'Replacing unfinished setup…' : 'Cancel this setup and generate a fresh key'}
-                </button>
-              )}
-            </>
-          ) : (
-            <button type="button" disabled={busy || !factorId} onClick={refreshChallenge} className="mt-5 min-h-11 w-full rounded-xl border px-4 py-3 font-semibold text-slate-700 disabled:opacity-60">
-              {busy ? 'Preparing challenge…' : 'Prepare verification challenge'}
-            </button>
-          )
-        ) : null}
+            ) : (
+              <button type="button" disabled={busy || !factorId} onClick={refreshChallenge} className="min-h-11 w-full rounded-xl border px-4 py-3 font-semibold text-slate-700 disabled:opacity-60">
+                {busy ? 'Preparing challenge…' : 'Prepare verification challenge'}
+              </button>
+            )}
+            {challengeId && (
+              <button type="button" disabled={busy} onClick={refreshChallenge} className="min-h-10 w-full rounded-xl border px-4 py-2 text-sm font-semibold text-slate-700">
+                {stage === 'setup' ? 'Retry verification challenge (keep this key)' : 'Request a new code challenge'}
+              </button>
+            )}
+            {stage === 'setup' && canReplaceSetup && (
+              <button type="button" disabled={busy} onClick={replaceUnverifiedSetup} className="min-h-10 w-full rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-60">
+                {busy ? 'Replacing unfinished setup…' : 'Cancel this setup and generate a fresh key'}
+              </button>
+            )}
+          </div>
+        )}
 
         {stage === 'blocked' && (
           <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
