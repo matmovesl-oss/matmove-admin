@@ -38,7 +38,7 @@ export default function HomepagePostsPage(){
   if(draft.title.trim().length<3||draft.summary.trim().length<10||draft.body.trim().length<10){setError('Add a clear title, short description and full details.');return;}
   if(draft.expires_at&&draft.starts_at&&new Date(draft.expires_at)<=new Date(draft.starts_at)){setError('Expiry must be after the start date.');return;}
   mutex.current=true;setBusy(true);setError('');setNotice('');
-  let uploaded:string|null=null;let persisted=false;
+  let uploaded:string|null=null;let persisted=false;let publishFailure:string|null=null;
   try{
    let imagePath=draft.image_path;
    if(file){
@@ -61,12 +61,13 @@ export default function HomepagePostsPage(){
      setDraft(null);setNotice('Post published. It is live on the customer homepage now, or at its scheduled start time.');
     }catch(publishError){
      setDraft({...draft,version:result.version,image_path:imagePath});
-     setError(publishError instanceof Error?publishError.message:'The post was saved, but could not be published. Check published slots and retry.');
+     publishFailure=publishError instanceof Error?publishError.message:'The post was saved, but could not be published. Check published slots and retry.';
     }
    }else{
     setDraft(null);setNotice('Post updated. Your changes are live on the customer homepage.');
    }
    await load();
+   if(publishFailure)setError(publishFailure);
   }catch(err){if(uploaded&&!persisted)void supabase.storage.from(BUCKET).remove([uploaded]);setError(err instanceof Error?err.message:'The post could not be saved.');}
   finally{mutex.current=false;setBusy(false);}
  }

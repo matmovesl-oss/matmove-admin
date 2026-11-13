@@ -21,3 +21,10 @@ test('saving a homepage post publishes it immediately and keeps a saved draft re
  assert.match(page,/setDraft\(\{\.\.\.draft,version:result\.version,image_path:imagePath\}\)/);
  assert.match(page,/Post published\. It is live on the customer homepage now/);
 });
+
+test('failed auto-publish message survives the post-list refresh',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/let publishFailure:string\|null=null/);
+ assert.match(page,/publishFailure=publishError instanceof Error/);
+ assert.match(page,/await load\(\);\s*if\(publishFailure\)setError\(publishFailure\)/);
+});
