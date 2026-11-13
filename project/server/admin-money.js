@@ -32,6 +32,12 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
     const q=url.searchParams.get('q')||'';if(q&&!/^[\p{L}\p{N}@.+ _'-]{2,80}$/u.test(q))throw failure(400,'Enter 2 to 80 characters using a name, email or phone number.');
     let query=db.from('profiles').select('id,full_name,email,phone,role,is_payroll_staff,wallets(id,currency,monime_account_id,metadata,is_frozen)');
     query=kind==='payroll'?query.eq('is_payroll_staff',true).in('role',['rider','driver','merchant']):query.in('role',['rider','driver','merchant']).or('is_payroll_staff.is.null,is_payroll_staff.eq.false');
+    if(kind==='refund'){
+     const staff=await db.from('matmove_staff_access').select('id').eq('is_active',true).is('removed_at',null).limit(1001);
+     if(staff.error||!Array.isArray(staff.data)||staff.data.length>1000||staff.data.some(row=>!UUID.test(row.id||'')))throw failure(503,'Customer directory could not be confirmed. Reload before retrying.');
+     const staffIds=staff.data.map(row=>row.id);
+     if(staffIds.length)query=query.not('id','in',`(${staffIds.join(',')})`);
+    }
     if(q)query=query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
     const r=await query.order('full_name').limit(500);if(r.error||!Array.isArray(r.data))throw failure(503,'Recipient directory could not be loaded.');return res.status(200).json({actor,rows:r.data});
    }
@@ -49,6 +55,14 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
    else{
     if(env.MATMOVE_ADMIN_MONEY_ENABLED!=='true')throw failure(503,'New payroll and refund payments are paused pending the production release checks.');
     sourceId=source(kind,env);
+    if(kind==='refund'){
+     const [profile,staff]=await Promise.all([
+      db.from('profiles').select('role,is_payroll_staff').eq('id',user).maybeSingle(),
+      db.from('matmove_staff_access').select('id').eq('id',user).eq('is_active',true).is('removed_at',null).maybeSingle()
+     ]);
+     if(profile.error||staff.error)throw failure(503,'Customer eligibility could not be confirmed. No refund was submitted.');
+     if(!profile.data||!['rider','driver','merchant'].includes(profile.data.role)||profile.data.is_payroll_staff===true||staff.data)throw failure(409,'Refunds are only available to Rider, Driver and Merchant customer accounts. Staff accounts cannot receive customer refunds.');
+    }
     const wallets=await db.from('wallets').select('id,user_id,currency,monime_account_id,metadata').eq('user_id',user).eq('currency','SLE');
     if(wallets.error||!Array.isArray(wallets.data)||wallets.data.length!==1)throw failure(409,'Recipient must have exactly one SLE wallet.');
     destination=wallets.data[0].monime_account_id||wallets.data[0].metadata?.monime_account_id;

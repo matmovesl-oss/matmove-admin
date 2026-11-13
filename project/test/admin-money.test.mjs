@@ -5,13 +5,13 @@ import {PGlite} from '@electric-sql/pglite';
 import {createMoneyHandler,moneyMinor} from '../server/admin-money.js';
 const actor='11111111-1111-4111-8111-111111111111',employee='22222222-2222-4222-8222-222222222222',customer='33333333-3333-4333-8333-333333333333',wallet='44444444-4444-4444-8444-444444444444',other='55555555-5555-4555-8555-555555555555';
 const res=()=>({setHeader(){},status(n){this.code=n;return this;},json(v){this.body=v;return this;}});
-const tables=new Set(['profiles','wallets','matmove_admin_payroll','matmove_admin_refunds']);
+const tables=new Set(['profiles','wallets','matmove_staff_access','matmove_admin_payroll','matmove_admin_refunds']);
 const ident=s=>{assert.match(s,/^[a-z_]+$/);return '"'+s+'"';};
 async function fixture(){
  const pg=new PGlite({postgresqlconf:['shared_buffers=16MB','max_connections=10','work_mem=1MB']});
  await pg.exec(`create schema auth;create role anon;create role authenticated;create role service_role bypassrls;
  create table auth.users(id uuid primary key);insert into auth.users values('${actor}'),('${employee}'),('${customer}'),('${other}');
- create table profiles(id uuid primary key,role text,full_name text,email text,phone text,is_wallet_frozen boolean default false,is_active boolean default true);
+ create table profiles(id uuid primary key,role text,full_name text,email text,phone text,is_payroll_staff boolean default false,is_wallet_frozen boolean default false,is_active boolean default true);
  insert into profiles(id,role,full_name) values('${actor}','admin','Owner'),('${employee}','staff','Employee'),('${customer}','rider','Customer'),('${other}','merchant','Other');
  create table wallets(id uuid primary key,user_id uuid,currency text,monime_account_id text,metadata jsonb,is_frozen boolean default false);
  insert into wallets(id,user_id,currency,monime_account_id) values('${wallet}','${employee}','SLE','fac-employee'),(gen_random_uuid(),'${customer}','SLE','fac-customer');
@@ -21,8 +21,42 @@ async function fixture(){
  `);
  await pg.exec(await readFile('supabase/migrations/20261104000100_admin_money_ledgers.sql','utf8'));
  const migration=await readFile('supabase/migrations/20261104000200_admin_money_claims.sql','utf8');await pg.exec(migration);
- const db={rpc:async(name,args)=>{try{assert.match(name,/^matmove_admin_money_(prepare|claim|record|review)$/);const result=await pg.query(`select public.${name}(${Object.keys(args).map((_,i)=>'$'+(i+1)).join(',')}) value`,Object.values(args));return {data:result.rows[0].value,error:null};}catch(e){return {data:null,error:{message:e.message}};}},from(table){assert.ok(tables.has(table));const filters=[];let limit=50;
-  const q={select(){return q;},eq(k,v){filters.push([k,v]);return q;},order(){return q;},limit(n){limit=n;return q;},async run(single=false){try{const values=filters.map(([,v])=>v);const sql=`select * from public.${ident(table)} ${filters.length?'where '+filters.map(([k],i)=>ident(k)+'=$'+(i+1)).join(' and '):''} limit ${limit}`;const r=await pg.query(sql,values);return {data:single?r.rows[0]||null:r.rows,error:null};}catch(e){return {data:null,error:{message:e.message}};}},maybeSingle(){return q.run(true);},then(a,b){return q.run().then(a,b);}};return q;}};
+ const db={rpc:async(name,args)=>{
+  try{
+   assert.match(name,/^matmove_admin_money_(prepare|claim|record|review)$/);
+   const placeholders=Object.keys(args).map((_,i)=>"$"+(i+1)).join(",");
+   const sql="select public."+name+"("+placeholders+") value";
+   const result=await pg.query(sql,Object.values(args));
+   return {data:result.rows[0].value,error:null};
+  }catch(e){return {data:null,error:{message:e.message}};}
+ },from(table){
+  assert.ok(tables.has(table));
+  const filters=[];let limit=50;
+  const q={
+   select(){return q;},
+   eq(k,v){filters.push({k,op:"=",v});return q;},
+   is(k,v){filters.push({k,op:v===null?"IS NULL":"=",v});return q;},
+   not(k,op,v){if(op!=="in")throw Error("Unsupported test filter");filters.push({k,op:"NOT IN",raw:v});return q;},
+   order(){return q;},
+   limit(n){limit=n;return q;},
+   async run(single=false){
+    try{
+     const values=[];
+     const clauses=filters.map(f=>{
+      if(f.op==="IS NULL")return ident(f.k)+" IS NULL";
+      if(f.op==="NOT IN")return ident(f.k)+" NOT IN "+f.raw;
+      values.push(f.v);return ident(f.k)+"=$"+values.length;
+     });
+     const sql="select * from public."+ident(table)+" "+(clauses.length?"where "+clauses.join(" and "):"")+" limit "+limit;
+     const result=await pg.query(sql,values);
+     return {data:single?result.rows[0]||null:result.rows,error:null};
+    }catch(e){return {data:null,error:{message:e.message}};}
+   },
+   maybeSingle(){return q.run(true);},
+   then(a,b){return q.run().then(a,b);}
+  };
+  return q;
+ }};
  const env={MONIME_STAFF_PAYROLL_ACCOUNT_ID:'fac-payroll',MONIME_REFUND_ACCOUNT_ID:'fac-refund',MONIME_API_KEY:'mon_test_fixture',MONIME_ENVIRONMENT:'test',MONIME_SPACE_ID:'spc-fixture',MATMOVE_ADMIN_MONEY_ENABLED:'true'};
  let mode='completed';const calls=[];const receipts=new Map();let claimedCount=0;
  const fetcher=async(url,options)=>{calls.push({url,options});if(url.includes('/financial-accounts/')){const id=url.split('/financial-accounts/')[1].split('?')[0];return {ok:true,json:async()=>({result:{id,currency:'SLE',balance:{available:{currency:'SLE',value:500000}}}})};}
