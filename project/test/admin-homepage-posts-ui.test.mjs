@@ -21,3 +21,10 @@ test('saving a homepage post publishes it immediately and keeps a saved draft re
  assert.match(page,/setDraft\(\{\.\.\.draft,version:result\.version,image_path:imagePath\}\)/);
  assert.match(page,/Post published\. It is live on the customer homepage now/);
 });
+
+test('homepage image storage RLS failures show a specific actionable message',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/row\.level security\|42501/);
+ assert.match(page,/not authorized for Homepage Posts artwork/);
+ assert.match(page,/remove the image and publish the post without it/);
+});
