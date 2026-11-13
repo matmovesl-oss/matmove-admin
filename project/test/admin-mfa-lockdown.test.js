@@ -85,7 +85,7 @@ test('Admin UI gates active staff behind TOTP enrollment or challenge', async ()
   assert.match(gate, /mfa\.enroll/);
   assert.match(gate, /mfa\.challenge/);
   assert.match(gate, /mfa\.verify/);
-  assert.match(gate, /Your authenticator setup has started/);
+  assert.match(gate, /Your new authenticator setup has started/);
   assert.match(gate, /Prepare verification challenge/);
   assert.match(gate, /setChallengeId\(''\);\s*setStage\('setup'\);/);
   assert.match(gate, /challengeId \?/);
