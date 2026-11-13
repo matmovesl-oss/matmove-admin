@@ -1,4 +1,5 @@
 name: MatMove UI validation
+# Re-run checks after the Admin login page markup correction.
 
 on:
   pull_request:
