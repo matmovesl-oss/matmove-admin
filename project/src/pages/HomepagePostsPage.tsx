@@ -46,7 +46,12 @@ export default function HomepagePostsPage(){
     const extension=file.type==='image/png'?'png':file.type==='image/webp'?'webp':'jpg';
     const path=`${draft.id}/${crypto.randomUUID()}.${extension}`;
     const result=await supabase.storage.from(BUCKET).upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
-    if(result.error)throw result.error;uploaded=path;imagePath=path;
+    if(result.error){
+     const detail=String(result.error.message||'');
+     if(/row.level security|42501/i.test(detail))throw new Error('MatMove could not upload this image because the current Admin session is not authorized for Homepage Posts artwork. Refresh your Admin session and try again, or remove the image and publish the post without it.');
+     throw new Error(`Homepage image upload failed: ${detail||'Please choose another image and retry.'}`);
+    }
+    uploaded=path;imagePath=path;
    }
    const data={title:draft.title.trim(),summary:draft.summary.trim(),body:draft.body.trim(),image_path:imagePath,starts_at:draft.starts_at?new Date(draft.starts_at).toISOString():null,expires_at:draft.expires_at?new Date(draft.expires_at).toISOString():null,display_order:draft.display_order};
    const result=await call('save',draft.id,draft.version,data);
