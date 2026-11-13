@@ -1,68 +1,34 @@
-# MatMove Admin MFA rollout
+# MatMove Admin authentication model
 
-## Current state
+## Decision
 
-- The Admin Preview contains TOTP enrollment and challenge screens.
-- Protected Admin server endpoints require a valid Supabase user session with AAL2.
-- The matching database migration is `supabase/migrations/20261112135000_matmove_admin_aal2_staff_lockdown.sql`.
-- That database migration is **not installed in Production**. It was syntax-checked and behavior-tested inside a transaction that was rolled back.
-- Production currently has four active staff accounts and zero verified TOTP factors (last verified 2026-11-12).
+Mandatory authenticator-app (TOTP) enrollment is removed from the normal Admin sign-in flow.
 
-## Staff enrollment
+Staff sign in with their own Supabase email address and password. The application does not display a TOTP QR code, setup key, challenge, or six-digit authenticator prompt.
 
-1. Give each of the four currently active staff members the temporary Admin Preview share link through the owner's approved staff communication channel.
-2. Each person signs in with their own existing MatMove staff email and password. Do not create shared accounts.
-3. A staff member without a verified TOTP factor selects **Set up authenticator**, scans the QR code with an authenticator application, and enters the six-digit one-time code.
-4. Each staff member must complete the enrollment and reach the Admin workspace. The owner must not collect or request anyone's QR setup key, password, or one-time code.
-5. If a QR code or setup key was exposed before verification, do not scan or use it. On the Admin gate, choose **Cancel this setup and generate a fresh key** (or **Replace unfinished setup and generate a fresh key** after reloading). This removes only the current signed-in user's own factor after the app confirms it is still `unverified`, then creates a new factor and QR code. The ordinary **Request a new code challenge** action does not rotate the setup secret.
-6. If a factor is already verified, the pending-setup replacement action is not offered. Use the owner's verified staff recovery procedure instead; never delete a verified factor as a shortcut around MFA.
+Existing Authenticator factors are not deleted by this application change. Any unfinished factor remains dormant and is not required for Admin access. Do not manually edit `auth.mfa_factors` or delete a verified factor as part of this rollout.
 
-The Preview uses the same Supabase Auth project as MatMove, so verified factors are retained on the existing staff Auth accounts. Preview access is only a path to the sign-in screen; Supabase staff authorization and MFA are still required.
+## Required access controls
 
-## Production cutover gate
+Removing the TOTP prompt does not make the Admin workspace public. The following checks remain mandatory:
 
-Do not apply the database migration until all of these checks pass:
+- Supabase validates the user's signed-in bearer token on every protected server API request using `auth.getUser(token)`.
+- The user must have an active row in `matmove_staff_access`.
+- The requested operation must be included in the staff member's assigned permissions; owner-only actions remain owner-only.
+- Removed, inactive, missing, and unassigned staff are denied.
+- Database Row Level Security and existing permission-checking RPCs remain enabled.
+- Financial actions retain their existing provider-side verification, idempotency, audit logging, and approval rules.
+- Password reset is a separate recovery route. It does not create staff membership, restore removed access, or grant permissions.
 
-- All four active staff accounts have at least one `auth.mfa_factors` row with `status = 'verified'`.
-- The Admin PR is approved, non-draft, and its exact head commit has passing regression tests, TypeScript, production build, and Vercel Preview checks.
-- A short Admin maintenance window is arranged. The migration changes the database permission helper used by RLS and many direct RPC paths. Applying it before the MFA-capable Admin UI is served will temporarily deny ordinary AAL1 Admin activity.
-- The Admin Production deployment and rollback target are identified and ready.
+## Production rollout
 
-## Safe cutover order
+1. Run the Admin regression tests, TypeScript check, and production build on the exact reviewed commit.
+2. Deploy the Admin app and updated protected API authorization code together.
+3. Confirm an active staff account can sign in using email/password and reach only assigned sections.
+4. Confirm an invalid/expired token, removed staff member, inactive staff member, and unassigned section are denied.
+5. Confirm owner-only actions remain restricted to the owner.
+6. Do not apply `20261112135000_matmove_admin_aal2_staff_lockdown.sql` in Production. That migration enforces AAL2 and conflicts with the approved password-only Admin sign-in model.
 
-1. Recheck the active staff and verified-factor counts immediately before cutover.
-2. Apply the AAL2 database migration to the MatMove Production Supabase project.
-3. Immediately release the approved Admin commit containing the MFA gate. Until the new Admin UI is live, AAL1 staff requests are intentionally denied by the database.
-4. Have each staff member sign in again and complete an authenticator challenge. Confirm the resulting session is AAL2.
-5. Verify ordinary staff can access only their assigned sections, owner-only actions remain owner-only, and unassigned staff remain denied.
-6. Verify Admin audit, dispatch, financial and notification operations, then monitor errors and webhook queue health.
+## Important
 
-Do not merge or promote just to get the MFA screen live before the database rollout has been scheduled. Conversely, do not apply the database migration without the four verified factors and the release window.
-
-## Read-only readiness query
-
-Run immediately before cutover:
-
-```sql
-select
-  count(*) filter (
-    where s.is_active and s.removed_at is null
-  ) as active_staff,
-  count(distinct s.id) filter (
-    where s.is_active and s.removed_at is null and f.status = 'verified'
-  ) as staff_with_verified_totp,
-  count(*) filter (
-    where s.is_active and s.removed_at is null
-      and (f.id is null or f.status <> 'verified')
-  ) as staff_without_verified_totp
-from public.matmove_staff_access s
-left join auth.mfa_factors f on f.user_id = s.id;
-```
-
-Expected before cutover: `active_staff = 4`, `staff_with_verified_totp = 4`, `staff_without_verified_totp = 0`. Reconcile any legitimate staff-count change before proceeding.
-
-## Recovery and rollback
-
-- Password recovery does not remove or bypass an authenticator factor.
-- Factor resets must follow the verified owner/staff identity recovery process and be audited.
-- If the MFA-capable Admin deployment fails after the database migration, roll forward the reviewed Admin build or restore the previous DB function definitions only under the incident runbook. Do not silently disable MFA or grant broad RPC access as a workaround.
+Password-only access is a deliberate reduction in authentication assurance compared with mandatory MFA. Protect staff passwords, use unique accounts, keep staff permissions least-privilege, and remove staff access promptly when employment or duties change. Consider adding a separate verified email one-time-code step later if the business wants an additional login factor without authenticator apps.
