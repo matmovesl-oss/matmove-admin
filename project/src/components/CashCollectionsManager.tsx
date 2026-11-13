@@ -109,7 +109,8 @@ export default function CashCollectionsManager() {
       setFeeAccounts({
         holdingAccount: typeof configured?.holdingAccount === 'string' ? configured.holdingAccount : null,
         revenueAccount: typeof configured?.revenueAccount === 'string' ? configured.revenueAccount : null,
-        escrowMatchesDeployment: configured?.escrowMatchesDeployment === true,\n        revenueMatchesDeployment: configured?.revenueMatchesDeployment === true
+        escrowMatchesDeployment: configured?.escrowMatchesDeployment === true,
+        revenueMatchesDeployment: configured?.revenueMatchesDeployment === true
       });
       setAvailable(true);
     } catch (err) {
