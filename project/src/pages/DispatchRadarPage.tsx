@@ -221,7 +221,28 @@ export default function DispatchRadarPage() {
       if (valid()) {
         draft.current = null;
         setReview(null);
-        setNotice(payload.action === 'assign' ? 'Driver assigned. The request remains pending until the driver accepts through the payment flow.' : payload.action === 'unassign' ? 'Pending driver assignment removed.' : data.refundStatus === 'refund_pending' ? 'Admin cancellation recorded. Refund is pending provider verification; the request will only show cancelled after the refund receipt is confirmed.' : 'Request cancellation verified. No refund was required.');
+        let finalRefundStatus = data.refundStatus;
+      if (payload.action === 'cancel' && finalRefundStatus === 'refund_pending') {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            const response = await fetch('https://matmoveent.vercel.app/api/accept-ride-escrow?action=admin_reconcile', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ bookingId: payload.booking }),
+            });
+            const reconciliation = await response.json().catch(() => null);
+            if (response.ok && reconciliation?.refundVerified === true) finalRefundStatus = 'refunded';
+          }
+        } catch {
+          // Cancellation is already recorded. Leave the visible state as refund-pending;
+          // the protected scheduled reconciliation worker will retry.
+        }
+      }
+      setNotice(payload.action === 'assign' ? 'Driver assigned. The request remains pending until the driver accepts through the payment flow.' : payload.action === 'unassign' ? 'Pending driver assignment removed.' : finalRefundStatus === 'refunded' ? 'Admin cancellation and provider refund are verified.' : finalRefundStatus === 'refund_pending' ? 'Admin cancellation recorded. Refund is pending provider verification; the request will only show cancelled after the refund receipt is confirmed.' : 'Request cancellation verified. No refund was required.');
         setReload(n => n + 1);
       }
     } catch (e) {
