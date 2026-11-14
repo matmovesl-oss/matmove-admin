@@ -131,7 +131,7 @@ export default function DispatchRadarPage() {
     const days=feedPeriod==='7'?7:30;return created>=Date.now()-days*24*60*60*1000;
   }).slice(0,Number(feedLimit));
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
-  const mutable = !!booking && ['pending', 'pending_admin'].includes(booking.status) && !booking.paymentStarted;
+  const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'accepted'].includes(booking.status);
 
   function pick(id: string) {
     if (locked.current) return;
@@ -147,7 +147,7 @@ export default function DispatchRadarPage() {
   }
 
   async function change() {
-    if (locked.current || loading || !!error || !booking || !review || !access || !mutable || note.trim().length < 3 || note.trim().length > 300 || (review === 'assign' && !eligibleDriver)) return;
+    if (locked.current || loading || !!error || !booking || !review || !access || !(review === 'cancel' ? mutable : mutable && !booking.paymentStarted && ['pending','pending_admin'].includes(booking.status)) || note.trim().length < 3 || note.trim().length > 300 || (review === 'assign' && !eligibleDriver)) return;
     const wanted = { booking: booking.id, version: booking.version, action: review, driver: review === 'assign' ? driver : null, note: note.trim() };
     const previous = draft.current;
     const payload = previous && JSON.stringify({ ...previous, key: undefined }) === JSON.stringify(wanted) ? previous : { key: crypto.randomUUID(), ...wanted };
@@ -162,15 +162,23 @@ export default function DispatchRadarPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || sessionData.session?.user.id !== access.id) throw new Error('Your account changed. Reopen Dispatch.');
       if (!valid()) return;
-      const { data, error } = await supabase.rpc('matmove_admin_dispatch_change', {
-        p_booking_id: payload.booking,
-        p_expected: payload.version,
-        p_action: payload.action,
-        p_driver: payload.driver,
-        p_request_id: payload.key,
-        p_note: payload.note,
-        p_expected_actor: access.id,
-      });
+      const { data, error } = payload.action === 'cancel' && booking.paymentStarted
+        ? await supabase.rpc('matmove_admin_cancel_booking', {
+            p_booking_id: payload.booking,
+            p_expected: payload.version,
+            p_request_id: payload.key,
+            p_note: payload.note,
+            p_expected_actor: access.id,
+          })
+        : await supabase.rpc('matmove_admin_dispatch_change', {
+            p_booking_id: payload.booking,
+            p_expected: payload.version,
+            p_action: payload.action,
+            p_driver: payload.driver,
+            p_request_id: payload.key,
+            p_note: payload.note,
+            p_expected_actor: access.id,
+          });
       if (error) throw error;
       if (data?.actor !== access.id || data?.applied !== true || data.requestId !== payload.key || data.bookingId !== payload.booking || data.action !== payload.action) {
         throw new Error('Dispatch action was not confirmed. Keep this request and retry to check its receipt.');
@@ -178,7 +186,7 @@ export default function DispatchRadarPage() {
       if (valid()) {
         draft.current = null;
         setReview(null);
-        setNotice(payload.action === 'assign' ? 'Driver assigned. The request remains pending until the driver accepts through the payment flow.' : payload.action === 'unassign' ? 'Pending driver assignment removed.' : 'Unfunded pending request cancelled. No refund was required.');
+        setNotice(payload.action === 'assign' ? 'Driver assigned. The request remains pending until the driver accepts through the payment flow.' : payload.action === 'unassign' ? 'Pending driver assignment removed.' : data.refundStatus === 'refund_pending' ? 'Admin cancellation recorded. Refund is pending provider verification; the request will only show cancelled after the refund receipt is confirmed.' : 'Request cancellation verified. No refund was required.');
         setReload(n => n + 1);
       }
     } catch (e) {
@@ -296,13 +304,13 @@ export default function DispatchRadarPage() {
                           <textarea aria-label="Dispatch note" disabled={busy} value={note} onChange={e => { setNote(e.target.value); draft.current = null; }} maxLength={300} className="mt-2 w-full rounded-xl border p-3 text-base" placeholder="Reason for this dispatch action" />
                         </label>
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" disabled={busy || loading || !eligibleDriver || !!booking.driverId || booking.pendingOffers !== '0'} onClick={() => setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>
-                          {booking.driverId && !booking.agreedDriverId && <button type="button" disabled={busy} onClick={() => setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}
-                          <button type="button" disabled={busy} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation</button>
+                          <button type="button" disabled={busy || loading || !eligibleDriver || !!booking.driverId || booking.pendingOffers !== '0' || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>
+                          {booking.driverId && !booking.agreedDriverId && <button type="button" disabled={busy || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}
+                          <button type="button" disabled={busy} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
                         </div>
                         {review && (
                           <div role="group" aria-label="Confirm dispatch action" className="space-y-3 rounded-xl border-2 border-indigo-500 p-3">
-                            <p className="text-sm">Confirm {review === 'assign' ? 'pending assignment' : review === 'unassign' ? 'removing this pending assignment' : 'cancelling this unfunded request'} at the displayed fare?</p>
+                            <p className="text-sm">Confirm {review === 'assign' ? 'pending assignment' : review === 'unassign' ? 'removing this pending assignment' : 'cancelling this request. If money was collected, MatMove will queue a verified refund'} at the displayed fare?</p>
                             <button type="button" disabled={busy || note.trim().length < 3} onClick={() => void change()} className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? 'Confirming…' : 'Confirm dispatch action'}</button>
                             <button type="button" disabled={busy} onClick={() => setReview(null)} className="ml-2 rounded-xl border px-4 py-3 text-sm font-bold">Keep request</button>
                           </div>
