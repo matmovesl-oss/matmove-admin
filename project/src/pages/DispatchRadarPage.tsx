@@ -195,7 +195,7 @@ export default function DispatchRadarPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || sessionData.session?.user.id !== access.id) throw new Error('Your account changed. Reopen Dispatch.');
       if (!valid()) return;
-      const { data, error } = payload.action === 'cancel' && booking.paymentStarted
+      const { data, error } = payload.action === 'cancel' && (booking.paymentStarted || booking.status === 'accepted' || booking.status === 'cash_reserve_pending')
         ? await supabase.rpc('matmove_admin_cancel_booking', {
             p_booking_id: payload.booking,
             p_expected: payload.version,
