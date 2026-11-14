@@ -21,6 +21,7 @@ type Booking = {
   riderLabel: string;
   driverLabel: string | null;
   paymentStarted: boolean;
+  paymentMethod: string;
   pendingOffers: string;
   agreedDriverId: string | null;
 };
@@ -164,7 +165,8 @@ export default function DispatchRadarPage() {
     const days=feedPeriod==='7'?7:30;return created>=Date.now()-days*24*60*60*1000;
   }).slice(0,Number(feedLimit));
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
-  const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'accepted'].includes(booking.status);
+  const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'accepted', 'in_progress'].includes(booking.status);
+  const cancelable = mutable && !(booking.status === 'in_progress' && booking.paymentMethod === 'cash');
 
   function pick(id: string) {
     if (locked.current) return;
@@ -180,7 +182,7 @@ export default function DispatchRadarPage() {
   }
 
   async function change() {
-    if (locked.current || loading || !!error || !booking || !review || !access || !(review === 'cancel' ? mutable : mutable && !booking.paymentStarted && ['pending','pending_admin'].includes(booking.status)) || note.trim().length < 3 || note.trim().length > 300 || (review === 'assign' && !eligibleDriver)) return;
+    if (locked.current || loading || !!error || !booking || !review || !access || !(review === 'cancel' ? cancelable : mutable && !booking.paymentStarted && ['pending','pending_admin'].includes(booking.status)) || note.trim().length < 3 || note.trim().length > 300 || (review === 'assign' && !eligibleDriver)) return;
     const wanted = { booking: booking.id, version: booking.version, action: review, driver: review === 'assign' ? driver : null, note: note.trim() };
     const previous = draft.current;
     const payload = previous && JSON.stringify({ ...previous, key: undefined }) === JSON.stringify(wanted) ? previous : { key: crypto.randomUUID(), ...wanted };
@@ -195,7 +197,7 @@ export default function DispatchRadarPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || sessionData.session?.user.id !== access.id) throw new Error('Your account changed. Reopen Dispatch.');
       if (!valid()) return;
-      const { data, error } = payload.action === 'cancel' && (booking.paymentStarted || booking.status === 'accepted' || booking.status === 'cash_reserve_pending')
+      const { data, error } = payload.action === 'cancel' && (booking.paymentStarted || booking.status === 'accepted' || booking.status === 'cash_reserve_pending' || booking.status === 'in_progress')
         ? await supabase.rpc('matmove_admin_cancel_booking', {
             p_booking_id: payload.booking,
             p_expected: payload.version,
@@ -340,7 +342,8 @@ export default function DispatchRadarPage() {
                         <div className="flex flex-wrap gap-2">
                           <button type="button" disabled={busy || loading || !eligibleDriver || !!booking.driverId || booking.pendingOffers !== '0' || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>
                           {booking.driverId && !booking.agreedDriverId && <button type="button" disabled={busy || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}
-                          <button type="button" disabled={busy} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
+                          <button type="button" disabled={busy || !cancelable} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
+                          {booking.status === 'in_progress' && booking.paymentMethod === 'cash' && <p className="text-xs text-amber-800">Cash handover may already have occurred. Verify the physical cash with both parties before cancelling or refunding; this request stays in the investigation queue.</p>}
                         </div>
                         {review && (
                           <div role="group" aria-label="Confirm dispatch action" className="space-y-3 rounded-xl border-2 border-indigo-500 p-3">
