@@ -166,7 +166,7 @@ export default function DispatchRadarPage() {
   }).slice(0,Number(feedLimit));
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
   const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'accepted', 'in_progress'].includes(booking.status);
-  const cancelable = mutable && !(booking.status === 'in_progress' && booking.paymentMethod === 'cash');
+  const cancelable = mutable && !(booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId));
 
   function pick(id: string) {
     if (locked.current) return;
@@ -242,7 +242,7 @@ export default function DispatchRadarPage() {
           // the protected scheduled reconciliation worker will retry.
         }
       }
-      setNotice(payload.action === 'assign' ? 'Driver assigned. The request remains pending until the driver accepts through the payment flow.' : payload.action === 'unassign' ? 'Pending driver assignment removed.' : finalRefundStatus === 'refunded' ? 'Admin cancellation and provider refund are verified.' : finalRefundStatus === 'refund_pending' ? 'Admin cancellation recorded. Refund is pending provider verification; the request will only show cancelled after the refund receipt is confirmed.' : 'Request cancellation verified. No refund was required.');
+      setNotice(payload.action === 'assign' ? 'Driver assigned. The request remains pending until the driver accepts through the payment flow.' : payload.action === 'unassign' ? 'Pending driver assignment removed.' : finalRefundStatus === 'refunded' && booking.paymentMethod === 'cash' ? 'MatMove cash-fee reserve return is verified. Any physical cash already handed to the driver must be returned to the customer and verified separately.' : finalRefundStatus === 'refunded' ? 'Admin cancellation and full digital fare refund are verified.' : finalRefundStatus === 'refund_pending' && booking.paymentMethod === 'cash' ? 'MatMove cash-fee reserve return is pending provider verification. Any physical cash already handed to the driver must be returned to the customer separately.' : finalRefundStatus === 'refund_pending' ? 'Admin cancellation recorded. Digital fare refund is pending provider verification; the request will only show cancelled after the refund receipt is confirmed.' : 'Request cancellation verified. No refund was required.');
         setReload(n => n + 1);
       }
     } catch (e) {
@@ -364,7 +364,7 @@ export default function DispatchRadarPage() {
                           <button type="button" disabled={busy || loading || !eligibleDriver || !!booking.driverId || booking.pendingOffers !== '0' || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>
                           {booking.driverId && !booking.agreedDriverId && <button type="button" disabled={busy || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}
                           <button type="button" disabled={busy || !cancelable} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
-                          {booking.status === 'in_progress' && booking.paymentMethod === 'cash' && <p className="text-xs text-amber-800">Cash handover may already have occurred. Verify the physical cash with both parties before cancelling or refunding; this request stays in the investigation queue.</p>}
+                          {booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId) && <p className="text-xs text-amber-800">A driver is linked to this cash request and the physical handover may already have occurred. Verify the driver returned any cash collected to the customer before resolving this request; it remains in the investigation queue.</p>}
                         </div>
                         {review && (
                           <div role="group" aria-label="Confirm dispatch action" className="space-y-3 rounded-xl border-2 border-indigo-500 p-3">
