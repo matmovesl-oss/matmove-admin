@@ -10,3 +10,10 @@ test('Dispatch supports cancellation review for unfinished paid and unpaid reque
   assert.match(source, /Review cancellation \/ refund/);
   assert.match(source, /booking\.paymentStarted/);
 });
+
+test('Dispatch shows the durable automatic stale-request investigation queue', async () => {
+  const source = await readFile(new URL('../src/pages/DispatchRadarPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /matmove_ride_investigation_tickets/);
+  assert.match(source, /Automatic ride investigations/);
+  assert.match(source, /Copy request reference/);
+});
