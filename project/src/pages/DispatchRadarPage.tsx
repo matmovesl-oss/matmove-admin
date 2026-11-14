@@ -50,6 +50,39 @@ function formatFare(val: string | number | null | undefined): string {
   return `SLE ${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+function StaleRideTickets({enabled}:{enabled:boolean}){
+  const [rows,setRows]=useState<any[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  const [reload,setReload]=useState(0);
+  useEffect(()=>{
+    if(!enabled)return;
+    let live=true,busy=false;
+    const load=async()=>{
+      if(busy)return;busy=true;setLoading(true);
+      try{
+        const {data,error}=await supabase.from('matmove_ride_investigation_tickets')
+          .select('id,booking_id,reason_code,source_status,status,first_seen_at,last_seen_at')
+          .eq('status','open').order('last_seen_at',{ascending:false}).limit(50);
+        if(error)throw error;
+        if(!Array.isArray(data))throw new Error('Investigation queue response was invalid.');
+        if(live){setRows(data);setError('');}
+      }catch(e:any){if(live){setError(e?.message||'Investigation queue unavailable. Apply the stale-request migration and retry.');setRows([]);}}
+      finally{busy=false;if(live)setLoading(false);}
+    };
+    void load();
+    const timer=window.setInterval(()=>{if(document.visibilityState!=='hidden')void load();},30000);
+    const channel=supabase.channel('matmove-ride-investigation-tickets')
+      .on('postgres_changes',{event:'*',schema:'public',table:'matmove_ride_investigation_tickets'},()=>void load()).subscribe();
+    return()=>{live=false;window.clearInterval(timer);void supabase.removeChannel(channel);};
+  },[enabled,reload]);
+  if(!enabled)return null;
+  return <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-slate-900">Automatic ride investigations</h2><p className="text-xs text-slate-600">Stale unfinished requests are added here automatically.</p></div><button type="button" disabled={loading} onClick={()=>setReload(n=>n+1)} className="rounded-lg border bg-white px-3 py-2 text-xs font-bold">Refresh tickets</button></div>
+    {error?<p role="alert" className="rounded-lg bg-white p-3 text-xs text-amber-900">{error}</p>:loading&&!rows.length?<p className="text-sm text-slate-500">Loading investigation tickets…</p>:!rows.length?<p className="rounded-lg bg-white p-3 text-sm text-slate-600">No open stale-request investigations.</p>:<div className="space-y-2">{rows.map(row=><article key={row.id} className="rounded-xl border bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{String(row.reason_code).replace(/_/g,' ')}</strong><span className="text-xs text-amber-800">{row.source_status?.replace(/_/g,' ')}</span></div><p className="mt-1 break-all font-mono text-xs text-slate-600">{row.booking_id}</p><p className="mt-1 text-xs text-slate-500">First flagged: {new Date(row.first_seen_at).toLocaleString()} · Last checked: {new Date(row.last_seen_at).toLocaleString()}</p><button type="button" onClick={()=>{navigator.clipboard?.writeText(row.booking_id);}} className="mt-2 text-xs font-bold text-indigo-700 underline">Copy request reference</button></article>)}</div>}
+  </section>;
+}
+
 export default function DispatchRadarPage() {
   const access = useAdminAccess(), allowed = canAccess(access, 'dispatch');
   const stamp = JSON.stringify([access?.id, access?.is_active, access?.is_owner, [...(access?.permissions || [])].sort()]);
@@ -202,6 +235,7 @@ export default function DispatchRadarPage() {
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>
       ) : (
         <div className="space-y-4">
+          <StaleRideTickets enabled={allowed}/>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Latest 2,000 requests. Use date filters or search by rider, driver, location or booking ID. Full export remains available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
             <button type="button" disabled={loading || busy} onClick={() => setReload(n => n + 1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50">
