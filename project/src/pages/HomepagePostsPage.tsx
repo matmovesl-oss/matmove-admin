@@ -39,7 +39,7 @@ export default function HomepagePostsPage(){
   if(draft.title.trim().length<3||draft.summary.trim().length<10||draft.body.trim().length<10){setError('Add a clear title, short description and full details.');return;}
   if(draft.expires_at&&draft.starts_at&&new Date(draft.expires_at)<=new Date(draft.starts_at)){setError('Expiry must be after the start date.');return;}
   const priceText=draft.price_amount.trim();
-  if(priceText&&(!/^\\d+(?:\\.\\d{1,2})?$/.test(priceText)||!Number.isFinite(Number(priceText))||Number(priceText)<=0||Number(priceText)>1000000)){setError('Enter a price greater than zero, up to 1,000,000, with no more than two decimal places.');return;}
+  if(priceText&&(!/^\d+(?:\.\d{1,2})?$/.test(priceText)||!Number.isFinite(Number(priceText))||Number(priceText)<=0||Number(priceText)>1000000)){setError('Enter a price greater than zero, up to 1,000,000, with no more than two decimal places.');return;}
   mutex.current=true;setBusy(true);setError('');setNotice('');
   let uploaded:string|null=null;let persisted=false;
   try{
