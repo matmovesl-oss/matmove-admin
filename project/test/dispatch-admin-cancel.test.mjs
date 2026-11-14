@@ -33,3 +33,10 @@ test('Admin cancellation immediately requests server-side provider reconciliatio
   assert.match(source, /reconciliation\?\.refundVerified === true/);
   assert.doesNotMatch(source, /MONIME_API_KEY|MONIME_SPACE_ID/);
 });
+
+test('Dispatch separates cash fee-reserve returns from physical cash refunds and blocks assigned cash rides', async () => {
+  const source = await readFile(new URL('../src/pages/DispatchRadarPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /booking\.paymentMethod === 'cash' && \(booking\.status === 'in_progress' \|\| !!booking\.driverId\)/);
+  assert.match(source, /MatMove cash-fee reserve return is verified/);
+  assert.match(source, /physical cash already handed to the driver must be returned/);
+});
