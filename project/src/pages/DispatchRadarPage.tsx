@@ -342,7 +342,8 @@ export default function DispatchRadarPage() {
                         <div className="flex flex-wrap gap-2">
                           <button type="button" disabled={busy || loading || !eligibleDriver || !!booking.driverId || booking.pendingOffers !== '0' || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>
                           {booking.driverId && !booking.agreedDriverId && <button type="button" disabled={busy || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}
-                          <button type="button" disabled={busy} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
+                          <button type="button" disabled={busy || !cancelable} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
+                          {booking.status === 'in_progress' && booking.paymentMethod === 'cash' && <p className="text-xs text-amber-800">Cash handover may already have occurred. Verify the physical cash with both parties before cancelling or refunding; this request stays in the investigation queue.</p>}
                         </div>
                         {review && (
                           <div role="group" aria-label="Confirm dispatch action" className="space-y-3 rounded-xl border-2 border-indigo-500 p-3">
