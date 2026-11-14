@@ -7,7 +7,7 @@ test('Dispatch supports cancellation review for unfinished paid and unpaid reque
   assert.match(source, /'cash_reserve_pending', 'accepted'/);
   assert.match(source, /matmove_admin_cancel_booking/);
   assert.match(source, /booking\.status === 'accepted' \|\| booking\.status === 'cash_reserve_pending'/);
-  assert.match(source, /data\.refundStatus === 'refund_pending'/);
+  assert.match(source, /finalRefundStatus === 'refund_pending'/);
   assert.match(source, /Review cancellation \/ refund/);
   assert.match(source, /booking\.paymentStarted/);
 });
