@@ -25,3 +25,11 @@ test('Dispatch only offers in-progress cancellation for digital payments and war
   assert.match(source, /Cash handover may already have occurred/);
   assert.match(source, /booking\.status === 'in_progress'/);
 });
+
+test('Admin cancellation immediately requests server-side provider reconciliation without exposing provider credentials', async () => {
+  const source = await readFile(new URL('../src/pages/DispatchRadarPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /api\\/accept-ride-escrow\\?action=admin_reconcile/);
+  assert.match(source, /session\\.access_token/);
+  assert.match(source, /reconciliation\\?\\.refundVerified === true/);
+  assert.doesNotMatch(source, /MONIME_API_KEY|MONIME_SPACE_ID/);
+});
