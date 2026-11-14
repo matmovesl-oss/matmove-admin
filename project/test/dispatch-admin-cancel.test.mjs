@@ -18,3 +18,10 @@ test('Dispatch shows the durable automatic stale-request investigation queue', a
   assert.match(source, /Automatic ride investigations/);
   assert.match(source, /Copy request reference/);
 });
+
+test('Dispatch only offers in-progress cancellation for digital payments and warns on cash handover uncertainty', async () => {
+  const source = await readFile(new URL('../src/pages/DispatchRadarPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const cancelable = mutable && !\(booking\.status === 'in_progress' && booking\.paymentMethod === 'cash'\)/);
+  assert.match(source, /Cash handover may already have occurred/);
+  assert.match(source, /booking\.status === 'in_progress'/);
+});
