@@ -44,3 +44,10 @@ test('scheduled homepage posts are distinguished from live posts and can be publ
  assert.match(page,/mutate\('publish_now',post\.id,post\.version\)/);
  assert.match(page,/const liveNow=posts\.filter/);
 });
+
+
+test('homepage price validation accepts whole numbers and one or two decimal places',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/\^\\d\+\(\?:\\\.\\d\{1,2\}\)\?\$/);
+ assert.match(page,/Number\(priceText\)>1000000/);
+});
