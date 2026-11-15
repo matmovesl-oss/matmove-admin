@@ -51,7 +51,7 @@ function formatFare(val: string | number | null | undefined): string {
   return `SLE ${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
-function StaleRideTickets({enabled}:{enabled:boolean}){
+function StaleRideTickets({enabled,onOpen}:{enabled:boolean;onOpen:(id:string)=>void}){
   const [rows,setRows]=useState<any[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
@@ -80,7 +80,7 @@ function StaleRideTickets({enabled}:{enabled:boolean}){
   if(!enabled)return null;
   return <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-slate-900">Automatic ride investigations</h2><p className="text-xs text-slate-600">Stale unfinished requests are added here automatically.</p></div><button type="button" disabled={loading} onClick={()=>setReload(n=>n+1)} className="rounded-lg border bg-white px-3 py-2 text-xs font-bold">Refresh tickets</button></div>
-    {error?<p role="alert" className="rounded-lg bg-white p-3 text-xs text-amber-900">{error}</p>:loading&&!rows.length?<p className="text-sm text-slate-500">Loading investigation tickets…</p>:!rows.length?<p className="rounded-lg bg-white p-3 text-sm text-slate-600">No open stale-request investigations.</p>:<div className="space-y-2">{rows.map(row=><article key={row.id} className="rounded-xl border bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{String(row.reason_code).replace(/_/g,' ')}</strong><span className="text-xs text-amber-800">{row.source_status?.replace(/_/g,' ')}</span></div><p className="mt-1 break-all font-mono text-xs text-slate-600">{row.booking_id}</p><p className="mt-1 text-xs text-slate-500">First flagged: {new Date(row.first_seen_at).toLocaleString()} · Last checked: {new Date(row.last_seen_at).toLocaleString()}</p><button type="button" onClick={()=>{navigator.clipboard?.writeText(row.booking_id);}} className="mt-2 text-xs font-bold text-indigo-700 underline">Copy request reference</button></article>)}</div>}
+    {error?<p role="alert" className="rounded-lg bg-white p-3 text-xs text-amber-900">{error}</p>:loading&&!rows.length?<p className="text-sm text-slate-500">Loading investigation tickets…</p>:!rows.length?<p className="rounded-lg bg-white p-3 text-sm text-slate-600">No open stale-request investigations.</p>:<div className="space-y-2">{rows.map(row=><article key={row.id} className="rounded-xl border bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{String(row.reason_code).replace(/_/g,' ')}</strong><span className="text-xs text-amber-800">{row.source_status?.replace(/_/g,' ')}</span></div><p className="mt-1 break-all font-mono text-xs text-slate-600">{row.booking_id}</p><p className="mt-1 text-xs text-slate-500">First flagged: {new Date(row.first_seen_at).toLocaleString()} · Last checked: {new Date(row.last_seen_at).toLocaleString()}</p><div className="mt-3 flex flex-wrap gap-3"><button type="button" onClick={()=>onOpen(row.booking_id)} className="min-h-9 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white">Open full request</button><button type="button" onClick={()=>{navigator.clipboard?.writeText(row.booking_id);}} className="min-h-9 text-xs font-bold text-indigo-700 underline">Copy request reference</button></div></article>)}</div>}
   </section>;
 }
 
@@ -98,6 +98,7 @@ export default function DispatchRadarPage() {
   const [loading, setLoading] = useState(true), [error, setError] = useState(''), [actionError, setActionError] = useState(''), [notice, setNotice] = useState('');
   const [selected, setSelected] = useState(''), [driver, setDriver] = useState(''), [note, setNote] = useState(''), [review, setReview] = useState<Action | null>(null), [busy, setBusy] = useState(false);
   const draft = useRef<{ key: string; booking: string; version: string; action: Action; driver: string | null; note: string } | null>(null);
+  const cashReturnDraft = useRef<{key:string;booking:string;version:string;note:string}|null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -167,6 +168,7 @@ export default function DispatchRadarPage() {
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
   const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'accepted', 'in_progress'].includes(booking.status);
   const cancelable = mutable && !(booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId));
+  const cashReturnable = !!booking && booking.paymentMethod==='cash' && !!booking.driverId && ['accepted','in_progress'].includes(booking.status);
 
   function pick(id: string) {
     if (locked.current) return;
@@ -252,13 +254,45 @@ export default function DispatchRadarPage() {
     }
   }
 
+  async function requestCashReturn(){
+    if(locked.current||loading||!!error||!booking||!access||!cashReturnable||note.trim().length<3||note.trim().length>300)return;
+    const wanted={booking:booking.id,version:booking.version,note:note.trim()};
+    const previous=cashReturnDraft.current;
+    const payload=previous&&JSON.stringify({...previous,key:undefined})===JSON.stringify(wanted)?previous:{key:crypto.randomUUID(),...wanted};
+    cashReturnDraft.current=payload;
+    const requestStamp=stamp,requestEpoch=epoch.current;
+    const valid=()=>mounted.current&&current.current===requestStamp&&epoch.current===requestEpoch;
+    locked.current=true;setBusy(true);setActionError('');setNotice('');
+    try{
+      const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError||sessionData.session?.user.id!==access.id)throw new Error('Your account changed. Reopen Dispatch.');
+      if(!valid())return;
+      const {data,error}=await supabase.rpc('matmove_admin_request_cash_return',{
+        p_booking_id:payload.booking,
+        p_expected:payload.version,
+        p_request_id:payload.key,
+        p_note:payload.note,
+        p_expected_actor:access.id,
+      });
+      if(error)throw error;
+      if(data?.actor!==access.id||data?.applied!==true||data?.requestId!==payload.key||data?.bookingId!==payload.booking||data?.action!=='cash_return')throw new Error('Physical cash-return request was not confirmed. Keep this trip open and retry the same request.');
+      if(valid()){
+        cashReturnDraft.current=null;
+        setNotice('Physical return requested. The driver must hand the physical cash back to the customer, and the customer must separately confirm receiving it. Only after both confirmations will MatMove process the separate fee-reserve refund. The booking stays open until the provider refund is verified.');
+        setReload(n=>n+1);
+      }
+    }catch(e:any){
+      if(valid())setActionError(String(e?.message||'Cash return request could not be confirmed.').replace(/^[A-Z_]+:\\s*/,'')); 
+    }finally{if(valid()){locked.current=false;setBusy(false);}}
+  }
+
   return (
     <AdminLayout title="Dispatch Radar" subtitle="Assign pending requests at their existing fare. Driver acceptance uses the verified escrow flow.">
       {!allowed ? (
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>
       ) : (
         <div className="space-y-4">
-          <StaleRideTickets enabled={allowed}/>
+          <StaleRideTickets enabled={allowed} onOpen={pick}/>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Latest 2,000 requests. Use date filters or search by rider, driver, location or booking ID. Full export remains available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
             <button type="button" disabled={loading || busy} onClick={() => setReload(n => n + 1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50">
@@ -364,7 +398,8 @@ export default function DispatchRadarPage() {
                           <button type="button" disabled={busy || loading || !eligibleDriver || !!booking.driverId || booking.pendingOffers !== '0' || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('assign')} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Review assignment</button>
                           {booking.driverId && !booking.agreedDriverId && <button type="button" disabled={busy || booking.paymentStarted || !['pending','pending_admin'].includes(booking.status)} onClick={() => setReview('unassign')} className="rounded-xl border px-4 py-3 text-sm font-bold">Review unassignment</button>}
                           <button type="button" disabled={busy || !cancelable} onClick={() => setReview('cancel')} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-700">Review cancellation / refund</button>
-                          {booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId) && <p className="text-xs text-amber-800">A driver is linked to this cash request and the physical handover may already have occurred. Verify the driver returned any cash collected to the customer before resolving this request; it remains in the investigation queue.</p>}
+                          {cashReturnable&&<button type="button" disabled={busy||note.trim().length<3} onClick={()=>void requestCashReturn()} className="rounded-xl bg-amber-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">Request physical cash return</button>}
+                          {booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId) && <p className="text-xs text-amber-800">A driver is linked to this cash request. Direct cancellation is disabled. Use the two-party physical-return workflow: driver confirms handing cash back, customer confirms receipt, then MatMove verifies the separate fee-reserve refund before cancellation.</p>}
                         </div>
                         {review && (
                           <div role="group" aria-label="Confirm dispatch action" className="space-y-3 rounded-xl border-2 border-indigo-500 p-3">
