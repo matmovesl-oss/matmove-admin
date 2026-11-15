@@ -60,63 +60,46 @@ function validRoutePin(value:any):boolean{
   );
 }
 
-function DispatchMiniMap({pickupPin,destinationPin}:{pickupPin:Booking['pickupPin'];destinationPin:Booking['destinationPin']}) {
-  const saved=!!pickupPin&&!!destinationPin&&validRoutePin(pickupPin)&&validRoutePin(destinationPin);
-  let start={x:18,y:60},end={x:102,y:22};
-  if(saved&&pickupPin&&destinationPin){
-    const minLng=Math.min(pickupPin.lng,destinationPin.lng),maxLng=Math.max(pickupPin.lng,destinationPin.lng);
-    const minLat=Math.min(pickupPin.lat,destinationPin.lat),maxLat=Math.max(pickupPin.lat,destinationPin.lat);
-    const spanLng=Math.max(maxLng-minLng,0.00001),spanLat=Math.max(maxLat-minLat,0.00001);
-    const xy=(p:{lat:number;lng:number})=>({x:14+((p.lng-minLng)/spanLng)*92,y:10+((maxLat-p.lat)/spanLat)*60});
-    start=xy(pickupPin);end=xy(destinationPin);
-    if(Math.hypot(end.x-start.x,end.y-start.y)<12)end={x:Math.min(106,start.x+38),y:Math.max(12,start.y-24)};
+function encodeRoutePolyline(points:Array<{lat:number;lng:number}>):string{
+  let previousLat=0,previousLng=0,result='';
+  const encodeValue=(value:number)=>{
+    let current=value<0?~(value<<1):(value<<1);
+    while(current>=0x20){
+      result+=String.fromCharCode((0x20|(current&0x1f))+63);
+      current>>=5;
+    }
+    result+=String.fromCharCode(current+63);
+  };
+  for(const point of points){
+    const lat=Math.round(point.lat*1e5),lng=Math.round(point.lng*1e5);
+    encodeValue(lat-previousLat);encodeValue(lng-previousLng);
+    previousLat=lat;previousLng=lng;
   }
-  const label=saved?'Saved GPS route':'Address route preview';
-  return <div role="img" aria-label={`${label}: pickup to destination`} title={label} className="w-[112px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1.5">
-    <svg viewBox="0 0 120 78" className="block h-[70px] w-full" aria-hidden="true">
-      <path d="M0 19H120 M0 39H120 M0 59H120 M30 0V78 M60 0V78 M90 0V78" stroke="#dbe4ee" strokeWidth="1"/>
-      <path d={`M${start.x} ${start.y} Q${(start.x+end.x)/2} ${Math.min(start.y,end.y)-10} ${end.x} ${end.y}`} fill="none" stroke={saved?"#2563eb":"#94a3b8"} strokeWidth="3" strokeLinecap="round" strokeDasharray={saved?undefined:"5 4"}/>
-      <circle cx={start.x} cy={start.y} r="7" fill="#0f766e" stroke="white" strokeWidth="2"/>
-      <text x={start.x} y={start.y+2.5} textAnchor="middle" fontSize="7" fontWeight="700" fill="white">P</text>
-      <circle cx={end.x} cy={end.y} r="7" fill="#4f46e5" stroke="white" strokeWidth="2"/>
-      <text x={end.x} y={end.y+2.5} textAnchor="middle" fontSize="7" fontWeight="700" fill="white">D</text>
-    </svg>
-    <span className="block truncate px-1 text-center text-[9px] font-semibold text-slate-500">{saved?'GPS route':'Address only'}</span>
-  </div>;
+  return result;
 }
 
-
-function StaleRideTickets({enabled,onOpen}:{enabled:boolean;onOpen:(bookingId:string)=>void}){
-  const [rows,setRows]=useState<any[]>([]);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState('');
-  const [reload,setReload]=useState(0);
-  useEffect(()=>{
-    if(!enabled)return;
-    let live=true,busy=false;
-    const load=async()=>{
-      if(busy)return;busy=true;setLoading(true);
-      try{
-        const {data,error}=await supabase.from('matmove_ride_investigation_tickets')
-          .select('id,booking_id,reason_code,source_status,status,first_seen_at,last_seen_at')
-          .eq('status','open').order('last_seen_at',{ascending:false}).limit(50);
-        if(error)throw error;
-        if(!Array.isArray(data))throw new Error('Investigation queue response was invalid.');
-        if(live){setRows(data);setError('');}
-      }catch(e:any){if(live){setError(e?.message||'Investigation queue unavailable. Apply the stale-request migration and retry.');setRows([]);}}
-      finally{busy=false;if(live)setLoading(false);}
-    };
-    void load();
-    const timer=window.setInterval(()=>{if(document.visibilityState!=='hidden')void load();},30000);
-    const channel=supabase.channel('matmove-ride-investigation-tickets')
-      .on('postgres_changes',{event:'*',schema:'public',table:'matmove_ride_investigation_tickets'},()=>void load()).subscribe();
-    return()=>{live=false;window.clearInterval(timer);void supabase.removeChannel(channel);};
-  },[enabled,reload]);
-  if(!enabled)return null;
-  return <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-bold text-slate-900">Automatic ride investigations</h2><p className="text-xs text-slate-600">Stale unfinished requests are added here automatically.</p></div><button type="button" disabled={loading} onClick={()=>setReload(n=>n+1)} className="rounded-lg border bg-white px-3 py-2 text-xs font-bold">Refresh tickets</button></div>
-    {error?<p role="alert" className="rounded-lg bg-white p-3 text-xs text-amber-900">{error}</p>:loading&&!rows.length?<p className="text-sm text-slate-500">Loading investigation tickets…</p>:!rows.length?<p className="rounded-lg bg-white p-3 text-sm text-slate-600">No open stale-request investigations.</p>:<div className="space-y-2">{rows.map(row=><article key={row.id} className="rounded-xl border bg-white p-3"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{String(row.reason_code).replace(/_/g,' ')}</strong><span className="text-xs text-amber-800">{row.source_status?.replace(/_/g,' ')}</span></div><p className="mt-1 break-all font-mono text-xs text-slate-600">{row.booking_id}</p><p className="mt-1 text-xs text-slate-500">First flagged: {new Date(row.first_seen_at).toLocaleString()} · Last checked: {new Date(row.last_seen_at).toLocaleString()}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={()=>onOpen(row.booking_id)} className="min-h-10 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white">Open full investigation</button><button type="button" onClick={()=>{navigator.clipboard?.writeText(row.booking_id);}} className="min-h-10 rounded-lg border px-3 text-xs font-bold text-indigo-700">Copy request reference</button></div></article>)}</div>}
-  </section>;
+function DispatchMiniMap({pickupPin,destinationPin}:{pickupPin:Booking['pickupPin'];destinationPin:Booking['destinationPin']}) {
+  const [failed,setFailed]=useState(false);
+  const saved=!!pickupPin&&!!destinationPin&&validRoutePin(pickupPin)&&validRoutePin(destinationPin);
+  const token=String(import.meta.env.VITE_MAPBOX_TOKEN||'');
+  const staticUrl=saved&&token
+    ? 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/'+
+      'path-4+2563eb-0.8('+encodeURIComponent(encodeRoutePolyline([pickupPin!,destinationPin!]))+'),'+
+      'pin-s-p+0e8a71('+pickupPin!.lng.toFixed(6)+','+pickupPin!.lat.toFixed(6)+'),'+
+      'pin-s-d+4f46e5('+destinationPin!.lng.toFixed(6)+','+destinationPin!.lat.toFixed(6)+')'+
+      '/auto/260x180@2x?access_token='+encodeURIComponent(token)
+    : '';
+  useEffect(()=>{setFailed(false);},[staticUrl]);
+  const mapAvailable=!!staticUrl&&!failed;
+  return <div className="w-[112px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+    {mapAvailable
+      ? <img src={staticUrl} alt="Map showing the saved pickup and destination route" onError={()=>setFailed(true)} className="block h-[70px] w-full object-cover"/>
+      : <div role="img" aria-label={saved?'Map preview unavailable':'Pickup or destination GPS not saved'} className="flex h-[70px] flex-col items-center justify-center gap-1 bg-slate-100 px-2 text-center">
+          <MapPin size={17} className="text-slate-500"/>
+          <span className="text-[9px] font-semibold leading-tight text-slate-600">{saved?'Map unavailable':'GPS unavailable'}</span>
+        </div>}
+    <span className="block truncate px-1 py-1 text-center text-[9px] font-semibold text-slate-500">{mapAvailable?'Pickup · Destination':saved?'Map unavailable':'No GPS pins'}</span>
+  </div>;
 }
 
 export default function DispatchRadarPage() {
