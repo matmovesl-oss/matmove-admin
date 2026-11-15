@@ -167,7 +167,7 @@ export default function DispatchRadarPage() {
           !data || data.actor !== access!.id || !Array.isArray(data.bookings) || !Array.isArray(data.drivers) || data.bookings.length > 2000 ||
           data.drivers.some((d: any) => typeof d?.id !== 'string' || typeof d.label !== 'string' || typeof d.eligible !== 'boolean' || typeof d.reasonCode !== 'string' || typeof d.reason !== 'string') ||
           new Set(data.drivers.map((d: any) => d.id)).size !== data.drivers.length ||
-          data.bookings.some((b: any) => typeof b?.id !== 'string' || typeof b.version !== 'string' || !/^\d+$/.test(b.version) || typeof b.paymentStarted !== 'boolean') || !validRoutePin(b.pickupPin) || !validRoutePin(b.destinationPin) ||
+          data.bookings.some((b: any) => typeof b?.id !== 'string' || typeof b.version !== 'string' || !/^\d+$/.test(b.version) || typeof b.paymentStarted !== 'boolean' || !validRoutePin(b.pickupPin) || !validRoutePin(b.destinationPin)) ||
           !Number.isFinite(Date.parse(data.generatedAt))
         ) {
           throw new Error('Dispatch response was not confirmed. Apply the complete updated ADMIN_DISPATCH_SETUP.sql and retry.');
