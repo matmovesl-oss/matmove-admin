@@ -48,3 +48,11 @@ test('Admin can open the cancellation workflow for quarantined requests without 
  assert.match(review,/cash_review_required/);
  assert.match(review,/cashPayment\?\.status!=='review_required'/);
 });
+
+test('Admin can flag an uncollected cash fare without treating the MatMove fee reserve as fare payment',async()=>{
+ const review=await readFile(new URL('../src/components/AdminTripReview.tsx',import.meta.url),'utf8');
+ assert.match(review,/canFlagUnpaid/);
+ assert.match(review,/cashPayment\.status==='collection_pending'/);
+ assert.match(review,/Flag unpaid cash fare/);
+ assert.match(review,/no cash receipt or payout is marked complete/);
+});
