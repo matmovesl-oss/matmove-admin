@@ -39,7 +39,7 @@ export default function AdminTripReview({userId,bookingId}:{userId:string;bookin
  },[allowed,bookingId,retry]);
  const safe=allowed&&loadedStamp===stamp?data:null;
  const cashReturnReady=safe?.cashPayment?.returnStatus==='both_confirmed';
- const canCancel=!!safe&&['pending','pending_admin','cash_reserve_pending','accepted','in_progress'].includes(safe.status)&&!(safe.paymentMethod==='cash'&&(safe.status==='in_progress'||!!safe.driver?.id)&&!cashReturnReady);
+ const canCancel=!!safe&&['pending','pending_admin','cash_reserve_pending','cash_review_required','accepted','in_progress'].includes(safe.status)&&!(safe.paymentMethod==='cash'&&(safe.status==='in_progress'||!!safe.driver?.id)&&!cashReturnReady)&&safe.cashPayment?.status!=='review_required';
  async function flagUnpaid(){
   if(!safe||actionBusy||safe.payment||safe.cashPayment||actionNote.trim().length<3)return;
   setActionBusy(true);setActionError('');setActionNotice('');
