@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 test('Dispatch supports cancellation review for unfinished paid and unpaid requests', async () => {
   const source = await readFile(new URL('../src/pages/DispatchRadarPage.tsx', import.meta.url), 'utf8');
-  assert.match(source, /'cash_reserve_pending', 'accepted'/);
+  assert.match(source, /'cash_reserve_pending', 'cash_review_required', 'accepted'/);
   assert.match(source, /matmove_admin_cancel_booking/);
   assert.match(source, /booking\.status === 'accepted' \|\| booking\.status === 'cash_reserve_pending'/);
   assert.match(source, /finalRefundStatus === 'refund_pending'/);
@@ -41,9 +41,9 @@ test('Dispatch separates cash fee-reserve returns from physical cash refunds and
   assert.match(source, /physical cash already handed to the driver must be returned/);
 });
 
-test('Admin can open the cancellation workflow for quarantined requests without bypassing uncertain cash ledgers',()=>{
- const dispatch=read('../src/pages/DispatchRadarPage.tsx');
- const review=read('../src/components/AdminTripReview.tsx');
+test('Admin can open the cancellation workflow for quarantined requests without bypassing uncertain cash ledgers',async()=>{
+ const dispatch=await readFile(new URL('../src/pages/DispatchRadarPage.tsx',import.meta.url),'utf8');
+ const review=await readFile(new URL('../src/components/AdminTripReview.tsx',import.meta.url),'utf8');
  assert.match(dispatch,/cash_review_required/);
  assert.match(review,/cash_review_required/);
  assert.match(review,/cashPayment\?\.status!=='review_required'/);
