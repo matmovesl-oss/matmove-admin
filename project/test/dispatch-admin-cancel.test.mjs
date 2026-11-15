@@ -62,7 +62,7 @@ test('Dispatch cards include a compact route map and selected-trip map sits besi
  const review=await readFile(new URL('../src/components/AdminTripReview.tsx',import.meta.url),'utf8');
  assert.match(dispatch,/pickupPin: \{lat:number;lng:number\} \| null/);
  assert.match(dispatch,/function DispatchMiniMap/);
- assert.match(dispatch,/<DispatchMiniMap pickupPin=\{b\.pickupPin\} destinationPin=\{b\.destinationPin\} \/>/);
+ assert.match(dispatch,/<DispatchMiniMap pickupPin=\{b\.pickupPin\} destinationPin=\{b\.destinationPin\}\s*\/>/);
  assert.match(dispatch,/md:grid-cols-\[minmax\(0,0\.85fr\)_minmax\(0,1\.15fr\)\]/);
  assert.match(review,/lg:grid-cols-\[minmax\(0,1\.1fr\)_minmax\(300px,\.9fr\)\]/);
  assert.match(review,/lg:sticky lg:top-4/);
