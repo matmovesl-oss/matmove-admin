@@ -14,6 +14,8 @@ type Booking = {
   vehicleType: string | null;
   pickup: string;
   destination: string;
+  pickupPin: {lat:number;lng:number} | null;
+  destinationPin: {lat:number;lng:number} | null;
   scheduledTime: string | null;
   createdAt: string;
   riderId: string;
@@ -50,6 +52,39 @@ function formatFare(val: string | number | null | undefined): string {
   if (!Number.isFinite(n)) return String(val);
   return `SLE ${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
+
+function validRoutePin(value:any):boolean{
+  return value==null || (
+    typeof value.lat==='number' && Number.isFinite(value.lat) && Math.abs(value.lat)<=90 &&
+    typeof value.lng==='number' && Number.isFinite(value.lng) && Math.abs(value.lng)<=180
+  );
+}
+
+function DispatchMiniMap({pickupPin,destinationPin}:{pickupPin:Booking['pickupPin'];destinationPin:Booking['destinationPin']}) {
+  const saved=!!pickupPin&&!!destinationPin&&validRoutePin(pickupPin)&&validRoutePin(destinationPin);
+  let start={x:18,y:60},end={x:102,y:22};
+  if(saved&&pickupPin&&destinationPin){
+    const minLng=Math.min(pickupPin.lng,destinationPin.lng),maxLng=Math.max(pickupPin.lng,destinationPin.lng);
+    const minLat=Math.min(pickupPin.lat,destinationPin.lat),maxLat=Math.max(pickupPin.lat,destinationPin.lat);
+    const spanLng=Math.max(maxLng-minLng,0.00001),spanLat=Math.max(maxLat-minLat,0.00001);
+    const xy=(p:{lat:number;lng:number})=>({x:14+((p.lng-minLng)/spanLng)*92,y:10+((maxLat-p.lat)/spanLat)*60});
+    start=xy(pickupPin);end=xy(destinationPin);
+    if(Math.hypot(end.x-start.x,end.y-start.y)<12)end={x:Math.min(106,start.x+38),y:Math.max(12,start.y-24)};
+  }
+  const label=saved?'Saved GPS route':'Address route preview';
+  return <div role="img" aria-label={`${label}: pickup to destination`} title={label} className="w-[112px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+    <svg viewBox="0 0 120 78" className="block h-[70px] w-full" aria-hidden="true">
+      <path d="M0 19H120 M0 39H120 M0 59H120 M30 0V78 M60 0V78 M90 0V78" stroke="#dbe4ee" strokeWidth="1"/>
+      <path d={`M${start.x} ${start.y} Q${(start.x+end.x)/2} ${Math.min(start.y,end.y)-10} ${end.x} ${end.y}`} fill="none" stroke={saved?"#2563eb":"#94a3b8"} strokeWidth="3" strokeLinecap="round" strokeDasharray={saved?undefined:"5 4"}/>
+      <circle cx={start.x} cy={start.y} r="7" fill="#0f766e" stroke="white" strokeWidth="2"/>
+      <text x={start.x} y={start.y+2.5} textAnchor="middle" fontSize="7" fontWeight="700" fill="white">P</text>
+      <circle cx={end.x} cy={end.y} r="7" fill="#4f46e5" stroke="white" strokeWidth="2"/>
+      <text x={end.x} y={end.y+2.5} textAnchor="middle" fontSize="7" fontWeight="700" fill="white">D</text>
+    </svg>
+    <span className="block truncate px-1 text-center text-[9px] font-semibold text-slate-500">{saved?'GPS route':'Address only'}</span>
+  </div>;
+}
+
 
 function StaleRideTickets({enabled,onOpen}:{enabled:boolean;onOpen:(bookingId:string)=>void}){
   const [rows,setRows]=useState<any[]>([]);
@@ -132,7 +167,7 @@ export default function DispatchRadarPage() {
           !data || data.actor !== access!.id || !Array.isArray(data.bookings) || !Array.isArray(data.drivers) || data.bookings.length > 2000 ||
           data.drivers.some((d: any) => typeof d?.id !== 'string' || typeof d.label !== 'string' || typeof d.eligible !== 'boolean' || typeof d.reasonCode !== 'string' || typeof d.reason !== 'string') ||
           new Set(data.drivers.map((d: any) => d.id)).size !== data.drivers.length ||
-          data.bookings.some((b: any) => typeof b?.id !== 'string' || typeof b.version !== 'string' || !/^\d+$/.test(b.version) || typeof b.paymentStarted !== 'boolean') ||
+          data.bookings.some((b: any) => typeof b?.id !== 'string' || typeof b.version !== 'string' || !/^\d+$/.test(b.version) || typeof b.paymentStarted !== 'boolean') || !validRoutePin(b.pickupPin) || !validRoutePin(b.destinationPin) ||
           !Number.isFinite(Date.parse(data.generatedAt))
         ) {
           throw new Error('Dispatch response was not confirmed. Apply the complete updated ADMIN_DISPATCH_SETUP.sql and retry.');
@@ -300,18 +335,23 @@ export default function DispatchRadarPage() {
           ) : !error && feed && !feed.bookings.length ? (
             <p className="rounded-xl border bg-white p-5 text-sm text-slate-600">No requests have been recorded yet.</p>
           ) : !error && feed ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
               <section className="space-y-3">
                 {visibleBookings.map(b => (
                   <button type="button" key={b.id} disabled={busy} onClick={() => pick(b.id)} className={`w-full space-y-2 rounded-2xl border bg-white p-4 text-left disabled:opacity-50 ${selected === b.id ? 'border-indigo-500' : 'border-slate-200'}`}>
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <span className="font-bold">{b.riderLabel || b.riderId}</span>
-                      <span className="text-sm font-semibold">{formatFare(b.fare)}</span>
+                    <div className="grid grid-cols-[minmax(0,1fr)_112px] items-start gap-3">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap justify-between gap-2">
+                          <span className="break-words font-bold">{b.riderLabel || b.riderId}</span>
+                          <span className="shrink-0 text-sm font-semibold">{formatFare(b.fare)}</span>
+                        </div>
+                        <p className="text-xs capitalize text-slate-500">{b.serviceType} · {b.status.replace(/_/g, ' ')}</p>
+                        <p className="flex gap-2 break-words text-xs text-slate-600"><MapPin size={14} className="shrink-0" />{b.pickup}</p>
+                        <p className="flex gap-2 break-words text-xs text-slate-600"><Navigation size={14} className="shrink-0" />{b.destination}</p>
+                        <p className="text-xs text-slate-500">Driver: {b.driverLabel || 'Awaiting assignment'}</p>
+                      </div>
+                      <DispatchMiniMap pickupPin={b.pickupPin} destinationPin={b.destinationPin}/>
                     </div>
-                    <p className="text-xs capitalize text-slate-500">{b.serviceType} · {b.status.replace(/_/g, ' ')}</p>
-                    <p className="flex gap-2 text-xs text-slate-600"><MapPin size={14} className="shrink-0" />{b.pickup}</p>
-                    <p className="flex gap-2 text-xs text-slate-600"><Navigation size={14} className="shrink-0" />{b.destination}</p>
-                    <p className="text-xs text-slate-500">Driver: {b.driverLabel || 'Awaiting assignment'}</p>
                   </button>
                 ))}
               </section>
