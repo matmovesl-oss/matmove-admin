@@ -40,3 +40,11 @@ test('Dispatch separates cash fee-reserve returns from physical cash refunds and
   assert.match(source, /MatMove cash-fee reserve return is verified/);
   assert.match(source, /physical cash already handed to the driver must be returned/);
 });
+
+test('Admin can open the cancellation workflow for quarantined requests without bypassing uncertain cash ledgers',()=>{
+ const dispatch=read('../src/pages/DispatchRadarPage.tsx');
+ const review=read('../src/components/AdminTripReview.tsx');
+ assert.match(dispatch,/cash_review_required/);
+ assert.match(review,/cash_review_required/);
+ assert.match(review,/cashPayment\?\.status!=='review_required'/);
+});
