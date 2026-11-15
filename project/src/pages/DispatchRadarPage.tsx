@@ -165,7 +165,7 @@ export default function DispatchRadarPage() {
     const days=feedPeriod==='7'?7:30;return created>=Date.now()-days*24*60*60*1000;
   }).slice(0,Number(feedLimit));
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
-  const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'accepted', 'in_progress'].includes(booking.status);
+  const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'cash_review_required', 'accepted', 'in_progress'].includes(booking.status);
   const cancelable = mutable && !(booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId));
 
   function pick(id: string) {
@@ -197,7 +197,7 @@ export default function DispatchRadarPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || sessionData.session?.user.id !== access.id) throw new Error('Your account changed. Reopen Dispatch.');
       if (!valid()) return;
-      const { data, error } = payload.action === 'cancel' && (booking.paymentStarted || booking.status === 'accepted' || booking.status === 'cash_reserve_pending' || booking.status === 'in_progress')
+      const { data, error } = payload.action === 'cancel' && (booking.paymentStarted || booking.status === 'accepted' || booking.status === 'cash_reserve_pending' || booking.status === 'cash_review_required' || booking.status === 'in_progress')
         ? await supabase.rpc('matmove_admin_cancel_booking', {
             p_booking_id: payload.booking,
             p_expected: payload.version,
