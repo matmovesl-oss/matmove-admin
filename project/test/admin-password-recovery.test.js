@@ -100,3 +100,8 @@ test('Supabase password-policy 422 is translated into actionable requirements an
  assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);
  assert.match(h.text,/lowercase, uppercase, a number and a symbol/);
 },{update:async()=>({error:{status:422,message:'Password should contain at least one character of each: lowercase, uppercase, numbers and symbols.'}})}));
+
+test('Admin sign-in uses the staff email and the password saved through Supabase Auth',()=>harness('src/pages/LoginPage.tsx',async h=>{
+ h.input('email','staff@example.com');await h.settle();h.input('password','MatMove!Secure2026');await h.settle();await h.submit();await h.settle();
+ assert.equal(h.calls.login.length,1);assert.deepEqual(h.calls.login[0][0],{email:'staff@example.com',password:'MatMove!Secure2026'});
+}));
