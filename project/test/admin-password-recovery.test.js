@@ -51,26 +51,29 @@ test('Forgot password requests one same-origin reset link with a generic respons
 test('Reset request failures remain retryable and login mode keeps email/password sign-in',()=>harness('src/pages/LoginPage.tsx',async h=>{
  await h.click('Forgot password?');await h.settle();h.input('email','staff@example.com');await h.settle();await h.submit();await h.settle();assert.match(h.text,/could not be confirmed/);await h.click('Back to sign in');await h.settle();h.input('password','old-password');await h.settle();await h.submit();assert.equal(h.calls.login.length,1);assert.equal(h.calls.login[0][0].password,'old-password');
 },{reset:async()=>({error:{message:'Sensitive provider details'}})}));
-test('Mismatch and short passwords stop before Auth writes; valid recovery updates once without changing staff grants',()=>harness('src/pages/StaffPasswordPage.tsx',async h=>{
- h.passwords('short');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);h.passwords('a-long-new-password','different-password');await h.settle();await h.submit();assert.equal(h.calls.update.length,0);
- h.passwords('a-long-new-password');await h.settle();const work=h.submit();h.submit();await work;await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,1);assert.equal(h.calls.rpc.length,0);assert.doesNotMatch(h.text,/a-long-new-password/);
+test('12-digit-only and short passwords stop before Auth writes; valid strong password updates once',()=>harness('src/pages/StaffPasswordPage.tsx',async h=>{
+ assert.match(h.text,/Password requirements/);
+ h.passwords('123456789012');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);assert.match(h.text,/12-digit-only password is not accepted/);
+ h.passwords('short');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);
+ h.passwords('MatMove!Secure2026','MatMove!Secure2027');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);assert.match(h.text,/do not match/);
+ h.passwords('MatMove!Secure2026');await h.settle();const work=h.submit();h.submit();await work;await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,1);assert.equal(h.calls.rpc.length,0);assert.doesNotMatch(h.text,/MatMove!Secure2026/);
 }));
 test('Removed staff and changed sessions cannot submit a new password',async()=>{
  for(const kind of ['removed','identity'])await harness('src/pages/StaffPasswordPage.tsx',async h=>{
-  if(kind==='removed')h.state.access={...access,is_active:false};else h.setSession({user:{id:other},access_token:'other-token'});h.passwords('a-long-new-password');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);assert.equal(h.calls.complete,0);assert.match(h.text,/required|changed/);
+  if(kind==='removed')h.state.access={...access,is_active:false};else h.setSession({user:{id:other},access_token:'other-token'});h.passwords('MatMove!Secure2026');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);assert.equal(h.calls.complete,0);assert.match(h.text,/required|changed/);
  });
 });
 test('A failed post-save permission check preserves saved state and Continue never changes the password twice',async()=>{
  let reads=0;await harness('src/pages/StaffPasswordPage.tsx',async h=>{
-  h.passwords('a-long-new-password');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);assert.match(h.text,/password was saved/i);await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,1);
+  h.passwords('MatMove!Secure2026');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);assert.match(h.text,/password was saved/i);await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,1);
  },{load:async()=>{if(++reads===2)throw Error('Permissions unavailable.');return access;}});
 });
 test('Invitation setup still finishes only the current active staff record',()=>harness('src/pages/StaffPasswordPage.tsx',async h=>{
- h.state.access={...access,requires_password_setup:true};h.passwords('a-long-new-password');await h.settle();await h.submit();await h.settle();assert.deepEqual(h.calls.rpc,[['matmove_staff_finish_setup']]);assert.equal(h.calls.complete,1);
+ h.state.access={...access,requires_password_setup:true};h.passwords('MatMove!Secure2026');await h.settle();await h.submit();await h.settle();assert.deepEqual(h.calls.rpc,[['matmove_staff_finish_setup']]);assert.equal(h.calls.complete,1);
 },{props:{mode:'invite'}}));
 test('A late verification result after leaving the page cannot update any password',async()=>{
  const wait=deferred();await harness('src/pages/StaffPasswordPage.tsx',async h=>{
-  h.passwords('a-long-new-password');await h.settle();const work=h.submit();h.unmount();wait.resolve({data:{session:{user:{id:user},access_token:'token'}},error:null});await work;assert.equal(h.calls.update.length,0);assert.equal(h.calls.complete,0);
+  h.passwords('MatMove!Secure2026');await h.settle();const work=h.submit();h.unmount();wait.resolve({data:{session:{user:{id:user},access_token:'token'}},error:null});await work;assert.equal(h.calls.update.length,0);assert.equal(h.calls.complete,0);
  },{getSession:()=>wait.promise});
 });
 test('Expired links stay outside Console even with an old signed-in session; markers bind identity and expiry',()=>harness('src/App.tsx',async h=>{
@@ -91,3 +94,9 @@ test('Logo is present on entrance, reset and sidebar; existing notification navi
  for(const file of ['src/pages/LoginPage.tsx','src/pages/StaffPasswordPage.tsx','src/components/AdminLayout.tsx'])assert.match(await readFile(file,'utf8'),/src="\/logo.png"/);
  const layout=await readFile('src/components/AdminLayout.tsx','utf8');assert.match(layout,/Customer Messages/);assert.match(layout,/canAccess\(access/);const app=await readFile('src/App.tsx','utf8');assert.match(app,/<Gate access=\{access\} section="notifications"/);assert.match(app,/if\(!row\?\.is_active\)throw/);
 });
+
+test('Supabase password-policy 422 is translated into actionable requirements and never completes Admin setup',()=>harness('src/pages/StaffPasswordPage.tsx',async h=>{
+ h.passwords('MatMove!Secure2026');await h.settle();await h.submit();await h.settle();
+ assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);
+ assert.match(h.text,/lowercase, uppercase, a number and a symbol/);
+},{update:async()=>({error:{status:422,message:'Password should contain at least one character of each: lowercase, uppercase, numbers and symbols.'}})}));
