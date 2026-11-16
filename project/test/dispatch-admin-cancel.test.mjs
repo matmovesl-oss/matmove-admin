@@ -68,15 +68,14 @@ test('Dispatch cards include a compact route map and selected-trip map sits besi
  assert.match(review,/lg:sticky lg:top-4/);
 });
 
-test('Admin offers an audited mark-uncompleted 50/5/45 settlement for in-progress digital rides',async()=>{
+test('Admin offers an audited full customer refund with no driver payout for in-progress digital rides',async()=>{
  const dispatch=await readFile(new URL('../src/pages/DispatchRadarPage.tsx',import.meta.url),'utf8');
  const review=await readFile(new URL('../src/components/AdminTripReview.tsx',import.meta.url),'utf8');
- assert.match(dispatch,/Review uncompleted settlement \(50\/5\/45\)/);
- assert.match(dispatch,/marking this digital ride uncompleted and settling 50% to the customer, 5% to the driver and 45% to MatMove/);
- assert.match(review,/adminUncompleted\?\'Mark uncompleted · settle 50\/5\/45\'/);
- assert.match(review,/Admin uncompleted settlement · 50 \/ 5 \/ 45/);
- assert.match(review,/splitRefund\/100/);
- assert.match(review,/splitDriver\/100/);
- assert.match(review,/splitPlatform\/100/);
- assert.match(review,/Cash bookings do not use the digital 50\/5\/45 escrow split/);
+ assert.match(dispatch,/Review uncompleted & full refund/);
+ assert.match(dispatch,/refunding 100% of its escrowed fare to the customer, with no driver payout or platform-fee transfer/);
+ assert.match(review,/refunds 100% of the escrowed fare to the original customer/);
+ assert.match(review,/Mark uncompleted · full customer refund/);
+ assert.match(review,/Driver payout from this cancelled ride/);
+ assert.match(review,/MatMove platform fee from this cancelled ride/);
+ assert.match(review,/physical cash return verification/);
 });
