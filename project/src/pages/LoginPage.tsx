@@ -19,7 +19,7 @@ export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
    }else{
     const r=await supabase.auth.signInWithPassword({email:address,password});if(r.error)throw r.error;
    }
-  }catch{if(mounted.current&&epoch.current===token)setError(mode==='reset'?'The reset request could not be confirmed. Please wait before trying again.':'Unable to sign in. Check your email and password and try again.');}
+  }catch{if(mounted.current&&epoch.current===token)setError(mode==='reset'?'The reset request could not be confirmed. Please wait before trying again.':'Unable to sign in. Check your work email and password. If password setup was not completed, use Forgot password to create a new password that meets the Admin security requirements.');}
   finally{mutex.current=false;if(mounted.current&&epoch.current===token)setBusy(false);}
  }
  return <main className="min-h-screen bg-[#f5f8f7] text-slate-900 lg:grid lg:grid-cols-[1.05fr_.95fr]">
