@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {supabase} from '@/lib/supabase';
 import {loadAdminSession} from '@/lib/adminSession';
 
-const ADMIN_PASSWORD_SYMBOLS = "!@#$%^&*()_+-=[]{};':\"\\\\|<>?,./`~";
+const ADMIN_PASSWORD_SYMBOLS = "!@#$%^&*()_+-=[]{};:\"|<>?,./" + String.fromCharCode(39, 92, 96) + "~";
 export function staffPasswordRequirements(value:string){
  return [
   {label:'At least 12 characters (maximum 128)',met:value.length>=12&&value.length<=128},
