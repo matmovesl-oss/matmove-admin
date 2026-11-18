@@ -59,3 +59,8 @@ svg { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Navigation and frequent actions stay comfortable to tap on phones. */
+aside nav > a, aside nav > div > button, aside > div button, header button[aria-label="Open navigation"] {
+  min-height: 44px;
+}
