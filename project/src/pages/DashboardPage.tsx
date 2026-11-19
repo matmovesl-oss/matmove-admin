@@ -168,6 +168,9 @@ export default function DashboardPage() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [balanceError, setBalanceError] = useState('');
   const [balanceAt, setBalanceAt] = useState('');
+  const snapshotStamp = useRef('');
+  const hasOverviewSnapshot = useRef(false);
+  const hasTreasurySnapshot = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -175,21 +178,39 @@ export default function DashboardPage() {
     const controller = new AbortController();
     const valid = () => live && current.current === stamp && !controller.signal.aborted;
 
+    const identityChanged = snapshotStamp.current !== stamp;
+    if (identityChanged) {
+      snapshotStamp.current = stamp;
+      hasOverviewSnapshot.current = false;
+      hasTreasurySnapshot.current = false;
+      setOverview(null);
+      setTreasury([]);
+      setBalanceAt('');
+    }
     setLoadedStamp(stamp);
-    setOverview(null);
     setError('');
-    setTreasury([]);
     setBalanceError('');
-    setBalanceAt('');
-    setLoading(allowed);
-    setBalanceLoading(allowed && financial);
+    if (identityChanged) {
+      setLoading(allowed);
+      setBalanceLoading(allowed && financial);
+    } else {
+      if (!hasOverviewSnapshot.current) setLoading(allowed);
+      if (allowed && financial && !hasTreasurySnapshot.current) setBalanceLoading(true);
+    }
 
     if (!allowed) return () => { live = false; controller.abort(); };
 
     async function refresh() {
       if (inFlight || !valid()) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setError('Offline. Showing the last verified dashboard data.');
+        if (financial) setBalanceError('Offline. Showing the last verified Monime balances.');
+        setLoading(false);
+        setBalanceLoading(false);
+        return;
+      }
       inFlight = true;
-      setLoading(true);
+      if (!hasOverviewSnapshot.current) setLoading(true);
       setError('');
 
       const db = async () => {
@@ -207,6 +228,7 @@ export default function DashboardPage() {
               modules: body.modules.filter((m: any) => canAccess(access, m.permission)),
               recentBookings: canAccess(access, 'dispatch') ? body.recentBookings : [],
             });
+            hasOverviewSnapshot.current = true;
           }
         } catch (e) {
           if (valid()) setError(errorMessage(e));
@@ -217,7 +239,7 @@ export default function DashboardPage() {
 
       const balances = async () => {
         if (!financial) return;
-        setBalanceLoading(true);
+        if (!hasTreasurySnapshot.current) setBalanceLoading(true);
         setBalanceError('');
         try {
           const response = await adminFetch('/api/admin-wallet-balances', { signal: controller.signal });
@@ -231,6 +253,7 @@ export default function DashboardPage() {
           if (valid()) {
             setTreasury(rows);
             setBalanceAt(new Date().toISOString());
+            hasTreasurySnapshot.current = true;
           }
         } catch (e) {
           if (valid()) setBalanceError(errorMessage(e));
@@ -244,14 +267,26 @@ export default function DashboardPage() {
     }
 
     void refresh();
+    const onOnline = () => { void refresh(); };
+    const onOffline = () => {
+      if (!valid()) return;
+      setError('Offline. Showing the last verified dashboard data.');
+      if (financial) setBalanceError('Offline. Showing the last verified Monime balances.');
+      setLoading(false);
+      setBalanceLoading(false);
+    };
+    window.addEventListener?.('online', onOnline);
+    window.addEventListener?.('offline', onOffline);
     const timer = window.setInterval(() => {
-      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void refresh();
+      if (navigator.onLine !== false && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) void refresh();
     }, 60000);
 
     return () => {
       live = false;
       controller.abort();
       window.clearInterval(timer);
+      window.removeEventListener?.('online', onOnline);
+      window.removeEventListener?.('offline', onOffline);
     };
   }, [stamp, allowed, financial, reload]);
 

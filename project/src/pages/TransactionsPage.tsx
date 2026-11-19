@@ -29,15 +29,23 @@ export function TransactionsPage() {
   const reviewLock = useRef(false);
 
   const mounted = useRef(false), generation = useRef(0);
+  const hasSnapshot = useRef(false);
   const fetchTransactions = useCallback(async () => {
     const token = ++generation.current;
-    setLoading(true); setLoadError('');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setLoadError('Offline. Showing the last loaded gateway transactions.');
+      setLoading(false);
+      return;
+    }
+    if (!hasSnapshot.current) setLoading(true);
+    setLoadError('');
     try {
       const response = await adminFetch('/api/get-all-transactions');
       const data = await response.json();
       if (!response.ok || !Array.isArray(data.transactions)) throw new Error(data.error || 'Could not load gateway transactions.');
       if (mounted.current && token === generation.current) {
         setTransactions(data.transactions);
+        hasSnapshot.current = true;
         setReviewAvailable(data.webhookReviewAvailable === true);
         setReviewEvents(Array.isArray(data.webhookReviewEvents) ? data.webhookReviewEvents : []);
         setReviewQueueError(typeof data.webhookReviewError === 'string' ? data.webhookReviewError : '');
@@ -49,7 +57,13 @@ export function TransactionsPage() {
     }
   }, []);
 
-  useEffect(() => { mounted.current = true; void fetchTransactions(); return () => { mounted.current = false; generation.current++; }; }, [fetchTransactions]);
+  useEffect(() => {
+    mounted.current = true;
+    void fetchTransactions();
+    const onOnline = () => { void fetchTransactions(); };
+    window.addEventListener?.('online', onOnline);
+    return () => { window.removeEventListener?.('online', onOnline); mounted.current = false; generation.current++; };
+  }, [fetchTransactions]);
 
   const filteredTxns = transactions.filter(tx => {
     const matchSearch = !search.trim() || 
