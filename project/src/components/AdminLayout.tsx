@@ -378,7 +378,7 @@ export default function AdminLayout({
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => { setSidebarOpen(true); setSidebarCollapsed(value => !value); }}
+              onClick={() => { if (window.matchMedia('(min-width: 1024px)').matches) setSidebarCollapsed(value => !value); else setSidebarOpen(true); }}
               className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
               aria-label="Toggle navigation"
               aria-expanded={!sidebarCollapsed}
