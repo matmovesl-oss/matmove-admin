@@ -97,7 +97,7 @@ export default function AdminDashboard() {
 
   const hasProfileSnapshot = useRef(false);
   const fetchProfiles = useCallback(async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setErrorMessage('Offline. Showing the last verified customer and KYC records.');
       setLoading(false);
       return;
