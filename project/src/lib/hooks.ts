@@ -24,9 +24,10 @@ export function useKycQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetch = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
@@ -43,9 +44,9 @@ export function useKycQueue() {
       if (err) throw err;
 
       setItems((data || []) as KycQueueItem[]);
+      hasSnapshot.current = true;
     } catch (e: any) {
-      setError(e.message);
-      setItems([]);
+      setError(e.message || 'KYC queue refresh failed.');
     } finally {
       setLoading(false);
     }
@@ -315,9 +316,10 @@ export function useWithdrawals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetchPayouts = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
@@ -349,9 +351,9 @@ export function useWithdrawals() {
       setItems(
         enriched as WithdrawalRequest[]
       );
+      hasSnapshot.current = true;
     } catch (e: any) {
-      setError(e.message);
-      setItems([]);
+      setError(e.message || 'Withdrawal refresh failed.');
     } finally {
       setLoading(false);
     }
@@ -432,9 +434,10 @@ export function useAuditLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
@@ -466,9 +469,9 @@ export function useAuditLogs() {
       setFraud(
         (fRes.data || []) as FraudLog[]
       );
-    } catch {
-      setAudit([]);
-      setFraud([]);
+      hasSnapshot.current = true;
+    } catch (e: any) {
+      setError(e?.message || 'Audit history refresh failed.');
     } finally {
       setLoading(false);
     }
