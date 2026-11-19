@@ -14,4 +14,12 @@ test('Admin trip review exposes payment state and an explicit audited action sur
  assert.match(review,/Cancel request and verify refund/);
  assert.match(review,/matmove_admin_flag_unpaid_ride/);
  assert.match(review,/matmove_admin_cancel_booking/);
+ assert.match(review,/Trip locations/);
+ assert.match(review,/\['Requested vehicle',safe\.vehicleType\],\['Driver vehicle',safe\.driver\?\.vehicleType\]/);
+ assert.match(review,/saved pickup, destination and trip details are still available/);
+});
+test('dispatch investigation and selected request open in a full-height accessible side drawer',()=>{
+ assert.match(page,/aria-label=\"Full ride investigation\"/);
+ assert.match(page,/h-\[100dvh\]/);
+ assert.match(page,/max-w-5xl/);
 });

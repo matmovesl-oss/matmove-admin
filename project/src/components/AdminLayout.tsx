@@ -69,7 +69,9 @@ export default function AdminLayout({
   const access = useAdminAccess();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return sessionStorage.getItem('matmove-admin-sidebar-collapsed') === '1'; } catch { return false; }
+  });
   const [networkOnline, setNetworkOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -104,6 +106,10 @@ export default function AdminLayout({
   const [gamesExpanded, setGamesExpanded] = useState(location.pathname === '/games');
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
+  useEffect(() => {
+    try { sessionStorage.setItem('matmove-admin-sidebar-collapsed', sidebarCollapsed ? '1' : '0'); } catch { /* Sidebar preference is optional. */ }
+  }, [sidebarCollapsed]);
+
   const [signingOut, setSigningOut] = useState(false);
   const owner = access?.is_active === true && access?.is_owner === true;
 
@@ -159,7 +165,8 @@ export default function AdminLayout({
 
       {/* SIDEBAR */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-slate-950 text-slate-300 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
+        id="admin-sidebar"
+        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-slate-950 text-slate-300 transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
       >
         {/* BRAND */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
@@ -381,7 +388,8 @@ export default function AdminLayout({
               onClick={() => { if (window.matchMedia('(min-width: 1024px)').matches) setSidebarCollapsed(value => !value); else setSidebarOpen(true); }}
               className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
               aria-label="Toggle navigation"
-              aria-expanded={!sidebarCollapsed}
+              aria-controls="admin-sidebar"
+              aria-expanded={typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches ? !sidebarCollapsed : sidebarOpen}
             >
               <Menu size={24} />
             </button>

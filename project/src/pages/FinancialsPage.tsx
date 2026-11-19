@@ -99,14 +99,15 @@ export function FinancialsPage() {
   const [currency, setCurrency] = useState('all');
   const [target, setTarget] = useState<Row | null>(null);
   const [reason, setReason] = useState('');
+  const [labelSyncBusy, setLabelSyncBusy] = useState(false);
+  const [labelSyncProgress, setLabelSyncProgress] = useState('');
 
   const load=useCallback(async()=> {
     if(!allowed)return;
     const token=++generation.current;
     const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
     const hasCurrentSnapshot = loadedStampRef.current === stamp;
-    if (!hasCurrentSnapshot) { setWallets([]); setAccounts([]); setPlatform(emptyPlatform); }
-    setLoading(true);
+    if (!hasCurrentSnapshot) { setWallets([]); setAccounts([]); setPlatform(emptyPlatform); setLoading(true); }
     setError('');
     setGatewayError('');
 
@@ -200,6 +201,54 @@ export function FinancialsPage() {
       if(valid())setLoading(false);
     }
   },[stamp,allowed,access?.id]);
+
+
+  const syncAccountLabels = useCallback(async () => {
+    if (!allowed || labelSyncBusy) return;
+    setLabelSyncBusy(true);
+    setLabelSyncProgress('Preparing account labels…');
+    setError('');
+    setNotice('');
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (sessionError || !session || session.user.id !== access?.id) throw new Error('Your Admin sign-in changed. Reopen Financials.');
+      const token = session.access_token;
+      let offset = 0;
+      const totals = { updated: 0, unchanged: 0, skipped: 0, failed: 0 };
+      let complete = false;
+      let batches = 0;
+      while (!complete && batches < 200) {
+        const response = await fetch('/api/admin-wallet-balances', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ action: 'sync_account_labels', offset, limit: 25 })
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result || !Number.isSafeInteger(result.nextOffset) || result.nextOffset <= offset && !result.complete) {
+          throw new Error(result?.error || 'Monime account labels could not be synchronized.');
+        }
+        for (const key of Object.keys(totals) as (keyof typeof totals)[]) totals[key] += Number.isSafeInteger(result[key]) ? result[key] : 0;
+        offset = result.nextOffset;
+        complete = result.complete === true;
+        batches++;
+        setLabelSyncProgress(`Checked ${Math.min(offset, result.total || offset).toLocaleString()} of ${Number(result.total || offset).toLocaleString()} linked wallets…`);
+        if (!complete && result.nextOffset <= result.offset) throw new Error('Account-label synchronization stopped before all linked wallets were checked.');
+      }
+      if (!complete) throw new Error('Account-label synchronization reached its safety limit. Retry to continue.');
+      const { data: after } = await supabase.auth.getSession();
+      if (after.session?.user.id !== access?.id) throw new Error('Your Admin sign-in changed during synchronization.');
+      setNotice(`Monime account names synchronized: ${totals.updated} updated, ${totals.unchanged} already correct, ${totals.skipped} skipped (missing or conflicting links), ${totals.failed} failed and left unchanged.`);
+      setLabelSyncProgress('');
+      await load();
+    } catch (err: any) {
+      setError(err?.message || 'Monime account labels could not be synchronized.');
+      setLabelSyncProgress('');
+    } finally {
+      setLabelSyncBusy(false);
+    }
+  }, [allowed, labelSyncBusy, access?.id, load]);
 
   useEffect(() => {
     mounted.current=true;setTarget(null);setReason('');setNotice('');setBusy(false);
@@ -392,6 +441,7 @@ export function FinancialsPage() {
           >
             {loadedStamp!==stamp ? 'Loading...' : error || gatewayError ? 'Retry financials' : 'Refresh'}
           </button>
+          <button type="button" disabled={labelSyncBusy || !allowed} onClick={() => void syncAccountLabels()} className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-800 disabled:opacity-50">{labelSyncBusy ? 'Syncing Monime names…' : 'Sync Monime account names'}</button>
         </div>
 
         {error && (
@@ -420,6 +470,7 @@ export function FinancialsPage() {
             {notice}
           </p>
         )}
+        {labelSyncProgress && <p role="status" className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">{labelSyncProgress}</p>}
 
         
 

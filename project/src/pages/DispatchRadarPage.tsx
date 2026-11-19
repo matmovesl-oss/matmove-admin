@@ -339,8 +339,8 @@ export default function DispatchRadarPage() {
             <p className="text-xs text-slate-500 sm:col-span-3">Showing {visibleBookings.length.toLocaleString()} matching records from {feed?.bookings.length.toLocaleString()||0} loaded (maximum 2,000).</p>
           </section>
           {searchedTrip && <>
-            <button type="button" aria-label="Close investigation" onClick={()=>setSearchedTrip('')} className="fixed inset-0 z-40 bg-slate-950/30" />
-            <section className="fixed inset-y-0 right-0 z-50 h-dvh w-full max-w-3xl overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+            <button type="button" aria-label="Close investigation" onClick={()=>setSearchedTrip('')} className="fixed inset-0 z-[70] bg-slate-950/45" />
+            <section role="dialog" aria-modal="true" aria-label="Full ride investigation" className="fixed inset-y-0 right-0 z-[71] h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain border-l border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
               <div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="text-lg font-extrabold text-slate-900">Full ride investigation</h2><p className="mt-1 break-all font-mono text-xs text-slate-500">{searchedTrip}</p></div><button type="button" onClick={()=>setSearchedTrip('')} className="min-h-10 rounded-lg border px-3 text-sm font-bold">Close</button></div>
               <AdminTripReview key={`${access!.id}:${searchedTrip}`} userId={access!.id} bookingId={searchedTrip} />
             </section>
@@ -373,8 +373,8 @@ export default function DispatchRadarPage() {
                   </button>
                 ))}
               </section>
-              {booking && <button type="button" aria-label="Close selected request" onClick={()=>setSelected('')} className="fixed inset-0 z-40 cursor-default bg-slate-950/30"/>}
-              <section className={booking ? "fixed inset-y-0 right-0 z-50 h-dvh w-full max-w-3xl overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-2xl sm:p-6" : "hidden"}>
+              {booking && <button type="button" aria-label="Close selected request" onClick={()=>setSelected('')} className="fixed inset-0 z-[70] cursor-default bg-slate-950/45"/>}
+              <section role={booking ? "dialog" : undefined} aria-modal={booking ? true : undefined} aria-label={booking ? "Selected ride request details" : undefined} className={booking ? "fixed inset-y-0 right-0 z-[71] h-[100dvh] w-full max-w-5xl overflow-y-auto overscroll-contain border-l border-slate-200 bg-white p-4 shadow-2xl sm:p-6" : "hidden"}>
                 {!booking ? (
                   <p className="text-sm text-slate-500">Select a request to review its dispatch controls.</p>
                 ) : (

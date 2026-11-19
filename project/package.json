@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && node --test test/admin-homepage-posts-ui.test.mjs test/admin-money-and-operations-ui.test.mjs test/dispatch-admin-cancel.test.mjs test/ride-investigation-workflow.test.mjs test/admin-cash-return-resolution.test.mjs test/admin-password-recovery.test.js && vite build",
+    "build": "npm run typecheck && node --test test/admin-homepage-posts-ui.test.mjs test/admin-money-and-operations-ui.test.mjs test/dispatch-admin-cancel.test.mjs test/ride-investigation-workflow.test.mjs test/admin-cash-return-resolution.test.mjs test/admin-password-recovery.test.js test/admin-monime-account-label-sync.test.mjs && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  useRef,
 } from 'react';
 
 import { supabase } from './supabase';
@@ -23,9 +24,10 @@ export function useKycQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetch = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
@@ -42,9 +44,9 @@ export function useKycQueue() {
       if (err) throw err;
 
       setItems((data || []) as KycQueueItem[]);
+      hasSnapshot.current = true;
     } catch (e: any) {
-      setError(e.message);
-      setItems([]);
+      setError(e.message || 'KYC queue refresh failed.');
     } finally {
       setLoading(false);
     }
@@ -85,12 +87,16 @@ export function useWallets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetchLedger = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error('You are offline. Showing the last successfully loaded wallet data.');
+      }
       const [
         walletRes,
         txnRes,
@@ -222,6 +228,7 @@ export function useWallets() {
       setTransactions(
         enrichedTxns as WalletTransaction[]
       );
+      hasSnapshot.current = true;
     } catch (e: any) {
       setError(
         e.message ||
@@ -248,7 +255,10 @@ export function useWallets() {
       )
       .subscribe();
 
+    const onOnline = () => { void fetchLedger(); };
+    window.addEventListener('online', onOnline);
     return () => {
+      window.removeEventListener('online', onOnline);
       void supabase.removeChannel(channel);
     };
   }, [fetchLedger]);
@@ -306,9 +316,10 @@ export function useWithdrawals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetchPayouts = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
@@ -340,9 +351,9 @@ export function useWithdrawals() {
       setItems(
         enriched as WithdrawalRequest[]
       );
+      hasSnapshot.current = true;
     } catch (e: any) {
-      setError(e.message);
-      setItems([]);
+      setError(e.message || 'Withdrawal refresh failed.');
     } finally {
       setLoading(false);
     }
@@ -423,9 +434,10 @@ export function useAuditLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
@@ -457,9 +469,9 @@ export function useAuditLogs() {
       setFraud(
         (fRes.data || []) as FraudLog[]
       );
-    } catch {
-      setAudit([]);
-      setFraud([]);
+      hasSnapshot.current = true;
+    } catch (e: any) {
+      setError(e?.message || 'Audit history refresh failed.');
     } finally {
       setLoading(false);
     }
