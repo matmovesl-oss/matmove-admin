@@ -32,7 +32,7 @@ export function TransactionsPage() {
   const hasSnapshot = useRef(false);
   const fetchTransactions = useCallback(async () => {
     const token = ++generation.current;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setLoadError('Offline. Showing the last loaded gateway transactions.');
       setLoading(false);
       return;
