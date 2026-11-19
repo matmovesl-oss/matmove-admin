@@ -29,11 +29,97 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
     res.setHeader('Cache-Control', 'no-store');
     try {
       const view = req.query?.view || new URL(req.url || '/api/admin-staff', 'https://admin.invalid').searchParams.get('view');
-      if (!['loading-bonanza-overview', 'loading-bonanza-settings'].includes(view)) throw failure(400, 'Invalid Loading Bonanza view.');
-      const write = view === 'loading-bonanza-settings';
+      if (!['loading-bonanza-overview', 'loading-bonanza-settings', 'loading-bonanza-fund'].includes(view)) throw failure(400, 'Invalid Loading Bonanza view.');
+      const write = view !== 'loading-bonanza-overview';
       if (req.method !== (write ? 'POST' : 'GET')) throw failure(405, 'Method not allowed.');
       const { client, user, access } = await authorize(req, ['financials'], { env });
       if (req.query?.actor !== user.id) throw failure(409, 'Your signed-in account changed. Reopen Loading Bonanza.');
+
+
+      if (view === 'loading-bonanza-fund') {
+        if (access.is_owner !== true) throw failure(403, 'Only the owner may fund the referral treasury.');
+        let body;
+        try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
+        catch { throw failure(400, 'Invalid treasury funding request.'); }
+        if (!body || typeof body !== 'object' || Array.isArray(body) ||
+            Object.keys(body).some(key => !['requestId','amountMinor','confirmed'].includes(key)) ||
+            !uuid(body.requestId) || !digits(body.amountMinor) || BigInt(body.amountMinor) <= 0n ||
+            BigInt(body.amountMinor) > 9000000000000000n || body.confirmed !== true) {
+          throw failure(400, 'Review and confirm the exact referral treasury funding amount.');
+        }
+        if (env.MONIME_ENVIRONMENT !== 'live' || !env.MONIME_API_KEY || !env.MONIME_SPACE_ID) {
+          throw failure(503, 'Live Monime settings must be configured before funding the referral treasury.');
+        }
+        const source = env.MONIME_MAIN_ACCOUNT_ID;
+        const destination = sourceFor(env);
+        if (!/^fac-[A-Za-z0-9_-]+$/.test(source || '') || source === destination) {
+          throw failure(503, 'Configure distinct MatMove main and referral financial accounts.');
+        }
+        const claim = await rpc(client, 'matmove_loading_bonanza_funding_claim', {
+          p_actor: user.id, p_request: body.requestId, p_amount: body.amountMinor,
+          p_source: source, p_destination: destination
+        });
+        if (claim?.id !== body.requestId || claim.actor_id !== user.id && claim.actor_id !== undefined) {
+          throw failure(503, 'Referral treasury funding authorization was not confirmed.');
+        }
+        const provider = async (path, options = {}) => {
+          if (options.method && options.method !== 'POST') throw failure(400, 'Invalid Monime funding operation.');
+          if (options.method === 'POST' && path !== 'internal-transfers') throw failure(400, 'Invalid Monime funding operation.');
+          if (!options.method && !/^internal-transfers\/trn-[A-Za-z0-9_-]+$/.test(path)) throw failure(400, 'Invalid Monime receipt path.');
+          const response = await fetch(`https://api.monime.io/v1/${path}`, {
+            ...options, redirect: 'error', signal: AbortSignal.timeout(12000),
+            headers: { Authorization: `Bearer ${env.MONIME_API_KEY}`, 'Monime-Space-Id': env.MONIME_SPACE_ID,
+              'Monime-Version': 'caph.2025-08-23', 'Content-Type': 'application/json', ...options.headers }
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.result) throw failure(503, 'Monime could not confirm the original treasury funding transfer.');
+          return payload.result;
+        };
+        if (claim.provider_id) {
+          const receipt = await provider(`internal-transfers/${encodeURIComponent(claim.provider_id)}`);
+          const matches = receipt?.id === claim.provider_id && receipt.amount?.currency === 'SLE' &&
+            receipt.amount.value === Number(body.amountMinor) &&
+            receipt.sourceFinancialAccount?.id === source && receipt.destinationFinancialAccount?.id === destination &&
+            receipt.metadata?.matmoveLoadingBonanzaFundingId === body.requestId &&
+            receipt.metadata?.matmoveRequestKey === body.requestId &&
+            ['pending','processing','completed','failed'].includes(receipt.status);
+          const saved = await rpc(client, 'matmove_loading_bonanza_funding_record', {
+            p_actor: user.id, p_request: body.requestId, p_receipt: matches ? receipt : null
+          });
+          return res.status(200).json({ ...saved, actor: user.id, recovered: true });
+        }
+        if (claim.can_create !== true) throw failure(409, 'This funding request is already processing or needs receipt review. Do not start another transfer.');
+        let receipt;
+        try {
+          receipt = await provider('internal-transfers', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': `matmove-loading-bonanza-funding:${body.requestId}` },
+            body: JSON.stringify({
+              amount: { currency: 'SLE', value: Number(body.amountMinor) },
+              sourceFinancialAccount: { id: source },
+              destinationFinancialAccount: { id: destination },
+              description: 'MatMove Loading Bonanza treasury funding',
+              metadata: { matmoveLoadingBonanzaFundingId: body.requestId, matmoveRequestKey: body.requestId }
+            })
+          });
+        } catch (error) {
+          await rpc(client, 'matmove_loading_bonanza_funding_record', { p_actor: user.id, p_request: body.requestId, p_receipt: null }).catch(() => {});
+          throw error;
+        }
+        const matches = typeof receipt?.id === 'string' && /^trn-[A-Za-z0-9_-]+$/.test(receipt.id) &&
+          receipt.amount?.currency === 'SLE' && receipt.amount.value === Number(body.amountMinor) &&
+          receipt.sourceFinancialAccount?.id === source && receipt.destinationFinancialAccount?.id === destination &&
+          receipt.metadata?.matmoveLoadingBonanzaFundingId === body.requestId &&
+          receipt.metadata?.matmoveRequestKey === body.requestId &&
+          ['pending','processing','completed','failed'].includes(receipt.status);
+        const saved = await rpc(client, 'matmove_loading_bonanza_funding_record', {
+          p_actor: user.id, p_request: body.requestId, p_receipt: matches ? receipt : null
+        });
+        if (saved?.id !== body.requestId || !['processing','completed','failed','review_required'].includes(saved.state)) {
+          throw failure(503, 'Treasury funding receipt was not confirmed.');
+        }
+        return res.status(200).json({ ...saved, actor: user.id });
+      }
 
       if (!write) {
         const overview = await rpc(client, 'matmove_loading_bonanza_admin_overview', { p_actor: user.id });
