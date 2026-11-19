@@ -103,7 +103,6 @@ export function FinancialsPage() {
     if(!allowed)return;
     const token=++generation.current;
     const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
-    setLoadedStamp(stamp);
     setLoading(true);
     setError('');
     setGatewayError('');
@@ -121,9 +120,9 @@ export function FinancialsPage() {
       if(!Array.isArray(data))throw new Error('Customer wallet response is invalid.');
       if(!valid())return;
       setWallets(data as unknown as Row[]);
+      setLoadedStamp(stamp);
     } catch (err: any) {
       if(!valid())return;
-      setWallets([]);
       setError(
         err.message ||
         'Customer wallets could not be loaded.'
@@ -253,7 +252,7 @@ export function FinancialsPage() {
     const metadata = wallet.metadata?.monime_account_id;
 
     if (
-      error || gatewayError || loadedStamp!==stamp ||
+      loadedStamp!==stamp ||
       (direct && metadata && direct !== metadata) ||
       linkCounts.get(id) !== 1 ||
       account?.currency !== wallet.currency ||
@@ -382,11 +381,11 @@ export function FinancialsPage() {
           </select>
 
           <button
-            disabled={loading || busy}
+            disabled={(loading && loadedStamp!==stamp) || busy}
             onClick={() => void load()}
             className="rounded-lg border px-4 py-2 disabled:opacity-50"
           >
-            {loading ? 'Loading...' : error || gatewayError ? 'Retry financials' : 'Refresh'}
+            {loadedStamp!==stamp ? 'Loading...' : error || gatewayError ? 'Retry financials' : 'Refresh'}
           </button>
         </div>
 
@@ -457,7 +456,7 @@ export function FinancialsPage() {
           <div className="rounded-xl border bg-white p-5">
             <p>Active wallets</p>
             <p className="mt-2 text-2xl font-bold">
-              {loading ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
+              {loadedStamp!==stamp ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
                 w => w.is_frozen === false
               ).length}
             </p>
@@ -555,7 +554,7 @@ export function FinancialsPage() {
                 </tr>
               )}
 
-              {!loading && !error && filtered.map(wallet => {
+              {loadedStamp===stamp && filtered.map(wallet => {
                 const balance =
                   customerBalance(wallet);
 
