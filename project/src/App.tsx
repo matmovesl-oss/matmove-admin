@@ -22,6 +22,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import { KycPage } from './pages/KycPage';
 import { FinancialsPage } from './pages/FinancialsPage';
+import LoadingBonanzaPage from './pages/LoadingBonanzaPage';
 import { PayoutsPage } from './pages/PayoutsPage';
 import UsersPage from './pages/UsersPage';
 import { StaffGovernancePage } from './pages/StaffGovernancePage';
@@ -78,6 +79,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/travel" element={<Gate access={access} section="travel"><AdminTravelPage/></Gate>}/>
  <Route path="/events" element={<Gate access={access} section="events"><AdminEventsPage/></Gate>}/>
  <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage/></Gate>}/>
+ <Route path="/loading-bonanza" element={<Gate access={access} section="financials"><LoadingBonanzaPage/></Gate>}/>
  <Route path="/cash-payments" element={<Gate access={access} section="financials"><CashPaymentsPage/></Gate>}/>
  <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage/></Gate>}/>
  <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
