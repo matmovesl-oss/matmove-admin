@@ -142,13 +142,13 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const onOnline = () => { void fetchProfiles(); };
-    window.addEventListener('online', onOnline);
+    window.addEventListener?.('online', onOnline);
     const channel = supabase.channel('admin-kyc-live-data')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { void fetchProfiles(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kyc_submissions' }, () => { void fetchProfiles(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kyc_documents' }, () => { void fetchProfiles(); })
       .subscribe();
-    return () => { window.removeEventListener('online', onOnline); void supabase.removeChannel(channel); };
+    return () => { window.removeEventListener?.('online', onOnline); void supabase.removeChannel(channel); };
   }, [fetchProfiles]);
 
   const handleFinancialRefresh = async () => {
