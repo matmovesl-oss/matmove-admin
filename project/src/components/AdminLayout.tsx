@@ -48,7 +48,7 @@ const navItems = [
   { key: 'kyc', name: 'KYC & Onboarding', path: '/kyc', icon: ShieldCheck },
   { key: 'financials', name: 'Civitas Administrative', path: '/civitas', icon: Wallet },
   { key: 'financials', name: 'Financial & Wallets', path: '/financials', icon: Wallet },
-  { key: 'financials', name: 'Cash Payments', path: '/cash-payments', icon: CreditCard },
+  { key: 'financials', name: 'Cash & Digital Payments', path: '/cash-payments', icon: CreditCard },
   { key: 'special', name: 'Customer Refunds', path: '/special', icon: ShieldAlert },
   { key: 'special', name: 'Administrative Payroll', path: '/payroll', icon: CreditCard },
   { key: 'transactions', name: 'Digital Payments', path: '/transactions', icon: ArrowRightLeft },
