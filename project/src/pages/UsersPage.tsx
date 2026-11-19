@@ -85,8 +85,8 @@ export default function UsersPage() {
     if(lastSnapshotStamp.current!==stamp){lastSnapshotStamp.current=stamp;hasSnapshot.current=false;setUsers([]);setSelectedUser(null);}
     void fetchUsers();
     const onOnline=()=>{void fetchUsers();};
-    window.addEventListener('online',onOnline);
-    return()=>{window.removeEventListener('online',onOnline);mounted.current=false;readGeneration.current++;};
+    window.addEventListener?.('online',onOnline);
+    return()=>{window.removeEventListener?.('online',onOnline);mounted.current=false;readGeneration.current++;};
   },[fetchUsers,stamp]);
   useEffect(()=>{
     let active=true;
