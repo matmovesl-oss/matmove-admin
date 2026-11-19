@@ -31,6 +31,14 @@ test('admin sidebar preference persists and wallet data remains visible offline'
   assert.match(hooks, /hasSnapshot\.current/);
 });
 
+test('dispatch keeps its verified feed and open investigations during background refresh', async () => {
+  const dispatch = await readFile('src/pages/DispatchRadarPage.tsx', 'utf8');
+  assert.match(dispatch, /hasFeedSnapshot/);
+  assert.match(dispatch, /identityChanged/);
+  assert.match(dispatch, /if \(!hasFeedSnapshot\.current\) setLoading\(true\)/);
+  assert.match(dispatch, /Showing the last loaded tickets if available/);
+});
+
 test('financial refresh keeps the last verified customer snapshot visible during background refresh', async () => {
   const ui = await readFile('src/pages/FinancialsPage.tsx', 'utf8');
   assert.match(ui, /if \(!hasCurrentSnapshot\) \{ setWallets\(\[\]\); setAccounts\(\[\]\); setPlatform\(emptyPlatform\); setLoading\(true\); \}/);
