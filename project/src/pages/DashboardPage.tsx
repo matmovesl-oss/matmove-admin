@@ -202,7 +202,7 @@ export default function DashboardPage() {
 
     async function refresh() {
       if (inFlight || !valid()) return;
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         setError('Offline. Showing the last verified dashboard data.');
         if (financial) setBalanceError('Offline. Showing the last verified Monime balances.');
         setLoading(false);
@@ -278,7 +278,7 @@ export default function DashboardPage() {
     window.addEventListener?.('online', onOnline);
     window.addEventListener?.('offline', onOffline);
     const timer = window.setInterval(() => {
-      if (navigator.onLine && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) void refresh();
+      if (navigator.onLine !== false && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) void refresh();
     }, 60000);
 
     return () => {
