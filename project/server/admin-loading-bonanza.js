@@ -153,7 +153,7 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
           body.confirmed !== true) {
         throw failure(400, 'Review and confirm the minimum top-up, campaign budget and reason.');
       }
-      if (body.enabled && (env.MONIME_ENVIRONMENT !== 'live' || !env.MONIME_API_KEY || !env.MONIME_SPACE_ID || !env.CRON_SECRET)) {
+      if (body.enabled && (env.MONIME_ENVIRONMENT !== 'live' || !String(env.MONIME_API_KEY || '').startsWith('mon_') || String(env.MONIME_API_KEY || '').startsWith('mon_test_') || !env.MONIME_SPACE_ID || !env.CRON_SECRET)) {
         throw failure(503, 'Live Monime and scheduled reconciliation settings must be configured before activating cashback.');
       }
       const source = sourceFor(env);
