@@ -19,6 +19,18 @@ test('Monime account label sync is a permission-gated, batched POST and only cha
   assert.match(ui, /nextOffset/);
 });
 
+test('admin sidebar preference persists and wallet data remains visible offline', async () => {
+  const layout = await readFile('src/components/AdminLayout.tsx', 'utf8');
+  const hooks = await readFile('src/lib/hooks.ts', 'utf8');
+  assert.match(layout, /matmove-admin-sidebar-collapsed/);
+  assert.match(layout, /transition-transform duration-300 ease-out/);
+  assert.match(layout, /aria-controls="admin-sidebar"/);
+  assert.match(layout, /Offline · showing last known data/);
+  assert.match(hooks, /navigator\.onLine/);
+  assert.match(hooks, /Showing the last successfully loaded wallet data/);
+  assert.match(hooks, /hasSnapshot\.current/);
+});
+
 test('financial refresh keeps the last verified customer snapshot visible during background refresh', async () => {
   const ui = await readFile('src/pages/FinancialsPage.tsx', 'utf8');
   assert.match(ui, /if \(!hasCurrentSnapshot\) \{ setWallets\(\[\]\); setAccounts\(\[\]\); setPlatform\(emptyPlatform\); setLoading\(true\); \}/);
