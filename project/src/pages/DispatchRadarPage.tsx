@@ -310,7 +310,7 @@ export default function DispatchRadarPage() {
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>
       ) : (
         <div className="space-y-4">
-          <StaleRideTickets enabled={allowed} onOpen={(id)=>{setSearchedTrip('');setSelected(id);setDriver('');setNote('');setReview(null);setNotice('');setActionError('');}}/>
+          <StaleRideTickets enabled={allowed} onOpen={(id)=>{setSelected('');setSearchedTrip(id);setNotice('');setActionError('');}}/>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Latest 2,000 requests. Use date filters or search by rider, driver, location or booking ID. Full export remains available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
             <button type="button" disabled={loading || busy} onClick={() => setReload(n => n + 1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50">
@@ -338,12 +338,13 @@ export default function DispatchRadarPage() {
             </label>
             <p className="text-xs text-slate-500 sm:col-span-3">Showing {visibleBookings.length.toLocaleString()} matching records from {feed?.bookings.length.toLocaleString()||0} loaded (maximum 2,000).</p>
           </section>
-          {searchedTrip && (
-            <div className="rounded-xl border bg-white p-4">
-              <button type="button" onClick={() => setSearchedTrip('')} className="mb-3 min-h-11 underline">Close reference review</button>
+          {searchedTrip && <>
+            <button type="button" aria-label="Close investigation" onClick={()=>setSearchedTrip('')} className="fixed inset-0 z-40 bg-slate-950/30" />
+            <section className="fixed inset-y-0 right-0 z-50 h-dvh w-full max-w-3xl overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-2xl sm:p-6">
+              <div className="mb-3 flex items-center justify-between gap-3"><div><h2 className="text-lg font-extrabold text-slate-900">Full ride investigation</h2><p className="mt-1 break-all font-mono text-xs text-slate-500">{searchedTrip}</p></div><button type="button" onClick={()=>setSearchedTrip('')} className="min-h-10 rounded-lg border px-3 text-sm font-bold">Close</button></div>
               <AdminTripReview key={`${access!.id}:${searchedTrip}`} userId={access!.id} bookingId={searchedTrip} />
-            </div>
-          )}
+            </section>
+          </>}
           {notice && <p role="status" className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p>}
           {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}<button type="button" disabled={busy} onClick={() => setReload(n => n + 1)} className="ml-2 font-bold underline">Retry Dispatch</button></p>}
           {actionError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{actionError}</p>}
