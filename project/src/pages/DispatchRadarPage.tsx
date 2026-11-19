@@ -96,9 +96,9 @@ function DispatchMiniMap({pickupPin,destinationPin}:{pickupPin:Booking['pickupPi
       ? <img src={staticUrl} alt="Map showing the saved pickup and destination route" onError={()=>setFailed(true)} className="block h-[70px] w-full object-cover"/>
       : <div role="img" aria-label={saved?'Map preview unavailable':'Pickup or destination GPS not saved'} className="flex h-[70px] flex-col items-center justify-center gap-1 bg-slate-100 px-2 text-center">
           <MapPin size={17} className="text-slate-500"/>
-          <span className="text-[9px] font-semibold leading-tight text-slate-600">{saved?'Map unavailable':'GPS unavailable'}</span>
+          <span className="text-[9px] font-semibold leading-tight text-slate-600">{saved?'Pins saved':'No GPS pins'}</span>
         </div>}
-    <span className="block truncate px-1 py-1 text-center text-[9px] font-semibold text-slate-500">{mapAvailable?'Pickup · Destination':saved?'Map unavailable':'No GPS pins'}</span>
+    <span className="block truncate px-1 py-1 text-center text-[9px] font-semibold text-slate-500">{mapAvailable?'Pickup · Destination':saved?'Location pins saved':'No GPS pins'}</span>
   </div>;
 }
 
@@ -310,7 +310,7 @@ export default function DispatchRadarPage() {
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>
       ) : (
         <div className="space-y-4">
-          <StaleRideTickets enabled={allowed} onOpen={(id)=>{setSelected('');setSearchedTrip(id);setNotice('');setActionError('');}}/>
+          <StaleRideTickets enabled={allowed} onOpen={(id)=>{setSearchedTrip('');setSelected(id);setDriver('');setNote('');setReview(null);setNotice('');setActionError('');}}/>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Latest 2,000 requests. Use date filters or search by rider, driver, location or booking ID. Full export remains available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
             <button type="button" disabled={loading || busy} onClick={() => setReload(n => n + 1)} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-bold disabled:opacity-50">
@@ -372,11 +372,13 @@ export default function DispatchRadarPage() {
                   </button>
                 ))}
               </section>
-              <section className="min-w-0 space-y-4 self-start rounded-2xl border bg-white p-4">
+              {booking && <button type="button" aria-label="Close selected request" onClick={()=>setSelected('')} className="fixed inset-0 z-40 cursor-default bg-slate-950/30"/>}
+              <section className={booking ? "fixed inset-y-0 right-0 z-50 h-dvh w-full max-w-3xl overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-2xl sm:p-6" : "hidden"}>
                 {!booking ? (
                   <p className="text-sm text-slate-500">Select a request to review its dispatch controls.</p>
                 ) : (
                   <>
+                    <div className="mb-2 flex items-center justify-between gap-3"><h2 className="text-lg font-extrabold text-slate-900">Request details</h2><button type="button" onClick={()=>setSelected('')} className="min-h-10 rounded-lg border px-3 text-sm font-bold">Close</button></div>
                     <AdminTripReview key={`${access!.id}:${booking.id}`} userId={access!.id} bookingId={booking.id} />
                     <h2 className="font-bold">Dispatch controls</h2>
                     <p className="break-all text-xs text-slate-500">{booking.id}</p>
