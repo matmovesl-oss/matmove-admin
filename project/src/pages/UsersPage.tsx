@@ -63,21 +63,31 @@ export default function UsersPage() {
   const [deletionRequestsLoading,setDeletionRequestsLoading]=useState(false);
   const [deletionActionBusy,setDeletionActionBusy]=useState(false);
 
-  const mounted=useRef(false),readGeneration=useRef(0);
+  const mounted=useRef(false),readGeneration=useRef(0),hasSnapshot=useRef(false),lastSnapshotStamp=useRef('');
   const fetchUsers=useCallback(async()=>{
     if(!allowed)return;
-    const generation=++readGeneration.current;setLoading(true);setError('');
+    const generation=++readGeneration.current;
+    if(typeof navigator!=='undefined'&&!navigator.onLine){setError('Offline. Showing the last loaded customer records.');setLoading(false);return;}
+    if(!hasSnapshot.current)setLoading(true);
+    setError('');
     setLoadedStamp(stamp);
     try{
       // Added 'staff' so we can see users converted to staff
       const {data,error:queryError}=await supabase.from('profiles').select('id,email,full_name,first_name,last_name,phone,phone_number,role,kyc_status,created_at,is_payroll_staff,customer_onboarding_role,address,business_name,business_type,city,country,date_of_birth,driver_license_no,nationality,plate_number,residential_address,tax_id,vehicle_type').in('role',['rider','driver','merchant','staff']).order('created_at',{ascending:false});
       if(queryError)throw queryError;
       if(!Array.isArray(data))throw new Error('The customer response could not be verified.');
-      if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setUsers(data);
+      if(mounted.current&&current.current===stamp&&generation===readGeneration.current){setUsers(data);hasSnapshot.current=true;}
     }catch(error:any){if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setError(error.message||'Could not load customers.');}
     finally{if(mounted.current&&current.current===stamp&&generation===readGeneration.current)setLoading(false);}
   },[stamp,allowed]);
-  useEffect(()=>{mounted.current=true;setUsers([]);setSelectedUser(null);void fetchUsers();return()=>{mounted.current=false;readGeneration.current++;};},[fetchUsers]);
+  useEffect(()=>{
+    mounted.current=true;
+    if(lastSnapshotStamp.current!==stamp){lastSnapshotStamp.current=stamp;hasSnapshot.current=false;setUsers([]);setSelectedUser(null);}
+    void fetchUsers();
+    const onOnline=()=>{void fetchUsers();};
+    window.addEventListener('online',onOnline);
+    return()=>{window.removeEventListener('online',onOnline);mounted.current=false;readGeneration.current++;};
+  },[fetchUsers,stamp]);
   useEffect(()=>{
     let active=true;
     if(!owner){setDeletionRequests([]);return()=>{active=false;};}
