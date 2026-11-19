@@ -22,4 +22,9 @@ test('dispatch investigation and selected request open in a full-height accessib
  assert.match(page,/aria-label=\"Full ride investigation\"/);
  assert.match(page,/h-\[100dvh\]/);
  assert.match(page,/max-w-5xl/);
+ assert.match(page,/createPortal/);
+ assert.match(page,/document\.body/);
+ assert.match(page,/aria-label="Selected ride request details"/);
+ assert.match(page,/aria-label="Full ride investigation"/);
+ assert.match(page,/h-\[100dvh\]/);
 });

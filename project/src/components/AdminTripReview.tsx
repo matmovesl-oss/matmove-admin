@@ -31,7 +31,7 @@ export default function AdminTripReview({userId,bookingId}:{userId:string;bookin
    finally{clearTimeout(timer);busy=false;if(live&&epoch===n)setLoading(false);}
   }
   const hidden=()=>{epoch++;controller?.abort();setData(null);if(visible())void read();};
-  void read();const poll=setInterval(()=>{setData((old:any)=>old&&Date.now()-Date.parse(old.serverTime)>45000?{...old,driverPosition:null,customerPosition:null}:old);void read();},5000);document.addEventListener('visibilitychange',hidden);
+  void read();const poll=setInterval(()=>{setData((old:any)=>old&&Date.now()-Date.parse(old.serverTime)>45000?{...old,driverPosition:null,customerPosition:null}:old);void read();},10000);document.addEventListener('visibilitychange',hidden);
   return()=>{live=false;epoch++;controller?.abort();clearInterval(poll);document.removeEventListener('visibilitychange',hidden);};
  },[stamp,allowed,retry,userId,bookingId]);
  useEffect(()=>{let live=true;setMapReady(false);setMapError('');if(!allowed)return;
