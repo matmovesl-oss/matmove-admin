@@ -359,7 +359,7 @@ export function FinancialsPage() {
   return (
     <AdminLayout
       title="Financial & Wallet Control Center"
-      subtitle="Platform escrow, live customer balances and wallet freeze controls"
+      subtitle="Monime is the balance source of truth; local wallet rows provide account links and freeze controls."
     >
       
       <div className="mt-6 space-y-5">
@@ -533,7 +533,6 @@ export function FinancialsPage() {
                   'Currency',
                   'Monime account',
                   'Gateway available',
-                  'Local balance',
                   'Status',
                   'Controls',
                 ].map(label => (
@@ -545,7 +544,7 @@ export function FinancialsPage() {
             </thead>
 
             <tbody>
-              {loading ? <tr><td colSpan={7} className="p-6 text-center">Loading customer wallets...</td></tr> : error ? <tr><td colSpan={7} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : !filtered.length && (
+              {loading ? <tr><td colSpan={6} className="p-6 text-center">Loading customer wallets...</td></tr> : error ? <tr><td colSpan={7} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : !filtered.length && (
                 <tr>
                   <td
                     colSpan={7}
@@ -591,10 +590,6 @@ export function FinancialsPage() {
                             balance,
                             wallet.currency
                           )}
-                    </td>
-
-                    <td className="p-4">
-                      {wallet.balance!=null && Number.isFinite(Number(wallet.balance)) ? money(Number(wallet.balance),wallet.currency) : 'Unavailable'}
                     </td>
 
                     <td className="p-4">
