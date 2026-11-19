@@ -121,7 +121,7 @@ export default function LoadingBonanzaPage() {
       setNotice(result.state === 'completed' ? 'Referral treasury funding completed and verified by Monime.' :
         result.state === 'processing' ? 'Funding transfer is processing. MatMove will reconcile the original transfer; do not submit it again.' :
         'Funding needs receipt review. No replacement transfer was created.');
-      setFundingRequestId('');
+      if (result.state === 'completed' || result.state === 'failed') setFundingRequestId('');
       setFundingConfirmed(false);
       if (result.state === 'completed') setFundingAmount('0.00');
     } catch (e) {
@@ -168,7 +168,7 @@ export default function LoadingBonanzaPage() {
             <p className="mt-1 text-xs text-slate-600">Transfer funds from the MatMove main Monime account into the dedicated referral account. This is a real money movement and is separate from the campaign reward budget.</p>
             <label className="mt-3 block"><span className="mb-1.5 block text-sm font-bold text-slate-700">Amount to transfer (SLE)</span><input inputMode="decimal" value={fundingAmount} onChange={e=>setFundingAmount(e.target.value)} disabled={fundingBusy} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-emerald-600" placeholder="100.00"/></label>
             <label className="mt-3 flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={fundingConfirmed} onChange={e=>setFundingConfirmed(e.target.checked)} disabled={fundingBusy} className="mt-0.5 h-4 w-4 accent-emerald-700"/><span>I authorize this exact amount to move from the MatMove main account to the referral treasury. I understand an uncertain provider response will be held for receipt review, not resent.</span></label>
-            <button type="button" onClick={()=>void fundTreasury()} disabled={fundingBusy || !fundingConfirmed} className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-700 px-5 font-bold text-white disabled:opacity-50">{fundingBusy?<RefreshCw size={16} className="animate-spin"/>:<Wallet size={16}/>}Fund referral account</button>
+            <button type="button" onClick={()=>void fundTreasury()} disabled={fundingBusy || !fundingConfirmed} className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-700 px-5 font-bold text-white disabled:opacity-50">{fundingBusy?<RefreshCw size={16} className="animate-spin"/>:<Wallet size={16}/>}{fundingRequestId ? 'Check original funding' : 'Fund referral account'}</button>
           </div>}
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-500">Completed cashback</p><p className="mt-1 text-xl font-black">{money(overview.totals.completedMinor)}</p></div>
