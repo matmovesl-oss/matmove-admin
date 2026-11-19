@@ -275,8 +275,8 @@ export default function DashboardPage() {
       setLoading(false);
       setBalanceLoading(false);
     };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
+    window.addEventListener?.('online', onOnline);
+    window.addEventListener?.('offline', onOffline);
     const timer = window.setInterval(() => {
       if (navigator.onLine && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) void refresh();
     }, 60000);
@@ -285,8 +285,8 @@ export default function DashboardPage() {
       live = false;
       controller.abort();
       window.clearInterval(timer);
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+      window.removeEventListener?.('online', onOnline);
+      window.removeEventListener?.('offline', onOffline);
     };
   }, [stamp, allowed, financial, reload]);
 
