@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  useRef,
 } from 'react';
 
 import { supabase } from './supabase';
@@ -85,12 +86,16 @@ export function useWallets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] =
     useState<string | null>(null);
+  const hasSnapshot = useRef(false);
 
   const fetchLedger = useCallback(async () => {
-    setLoading(true);
+    if (!hasSnapshot.current) setLoading(true);
     setError(null);
 
     try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error('You are offline. Showing the last successfully loaded wallet data.');
+      }
       const [
         walletRes,
         txnRes,
@@ -222,6 +227,7 @@ export function useWallets() {
       setTransactions(
         enrichedTxns as WalletTransaction[]
       );
+      hasSnapshot.current = true;
     } catch (e: any) {
       setError(
         e.message ||
@@ -248,7 +254,10 @@ export function useWallets() {
       )
       .subscribe();
 
+    const onOnline = () => { void fetchLedger(); };
+    window.addEventListener('online', onOnline);
     return () => {
+      window.removeEventListener('online', onOnline);
       void supabase.removeChannel(channel);
     };
   }, [fetchLedger]);
