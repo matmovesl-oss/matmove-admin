@@ -35,6 +35,10 @@ export default function LoadingBonanzaPage() {
   const [enabled, setEnabled] = useState(false);
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [fundingAmount, setFundingAmount] = useState('0.00');
+  const [fundingConfirmed, setFundingConfirmed] = useState(false);
+  const [fundingBusy, setFundingBusy] = useState(false);
+  const [fundingRequestId, setFundingRequestId] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -98,6 +102,33 @@ export default function LoadingBonanzaPage() {
     finally { setBusy(false); }
   }
 
+
+  async function fundTreasury() {
+    if (!editable || fundingBusy) return;
+    setFundingBusy(true); setError(''); setNotice('');
+    const requestId = fundingRequestId || crypto.randomUUID();
+    setFundingRequestId(requestId);
+    try {
+      const amountMinor = toMinor(fundingAmount);
+      if (BigInt(amountMinor) <= 0n) throw new Error('Enter a funding amount greater than zero.');
+      if (!fundingConfirmed) throw new Error('Confirm the exact transfer from the MatMove main account to the referral account.');
+      const result = await request('loading-bonanza-fund', 'POST', {
+        requestId, amountMinor, confirmed: true
+      });
+      if (result.id !== requestId || !['processing','completed','failed','review_required'].includes(result.state)) {
+        throw new Error('Referral treasury funding receipt was not confirmed.');
+      }
+      setNotice(result.state === 'completed' ? 'Referral treasury funding completed and verified by Monime.' :
+        result.state === 'processing' ? 'Funding transfer is processing. MatMove will reconcile the original transfer; do not submit it again.' :
+        'Funding needs receipt review. No replacement transfer was created.');
+      setFundingRequestId('');
+      setFundingConfirmed(false);
+      if (result.state === 'completed') setFundingAmount('0.00');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Referral treasury funding could not be confirmed.');
+    } finally { setFundingBusy(false); }
+  }
+
   const editable = access?.is_owner === true;
   return <AdminLayout title="Loading Bonanza" subtitle="Manage the fixed 1% cashback promotion for completed Monime wallet top-ups.">
     <div className="mx-auto max-w-5xl space-y-6">
@@ -132,6 +163,13 @@ export default function LoadingBonanzaPage() {
             <label className={`mt-4 flex items-center gap-3 ${editable?'cursor-pointer':'cursor-not-allowed opacity-60'}`}><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)} disabled={!editable || busy} className="h-5 w-5 accent-emerald-700"/><span className="text-sm font-semibold text-slate-700">Enable Loading Bonanza cashback</span></label>
           </div>
           <div className="mt-4 flex items-start gap-3 rounded-xl bg-slate-50 p-4"><Wallet size={19} className="mt-0.5 shrink-0 text-slate-500"/><div className="min-w-0"><p className="text-sm font-bold text-slate-800">Funding source</p><p className="break-all text-xs text-slate-500">{overview.campaign.source || 'Referral treasury not configured'}</p><p className="mt-1 text-xs text-slate-500">Cashback transfers are paid from the separate Monime referral account. The budget limits total rewards; it does not move money into that account.</p></div></div>
+          {editable && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+            <h3 className="font-bold text-slate-900">Fund referral treasury</h3>
+            <p className="mt-1 text-xs text-slate-600">Transfer funds from the MatMove main Monime account into the dedicated referral account. This is a real money movement and is separate from the campaign reward budget.</p>
+            <label className="mt-3 block"><span className="mb-1.5 block text-sm font-bold text-slate-700">Amount to transfer (SLE)</span><input inputMode="decimal" value={fundingAmount} onChange={e=>setFundingAmount(e.target.value)} disabled={fundingBusy} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-emerald-600" placeholder="100.00"/></label>
+            <label className="mt-3 flex items-start gap-2 text-xs text-slate-700"><input type="checkbox" checked={fundingConfirmed} onChange={e=>setFundingConfirmed(e.target.checked)} disabled={fundingBusy} className="mt-0.5 h-4 w-4 accent-emerald-700"/><span>I authorize this exact amount to move from the MatMove main account to the referral treasury. I understand an uncertain provider response will be held for receipt review, not resent.</span></label>
+            <button type="button" onClick={()=>void fundTreasury()} disabled={fundingBusy || !fundingConfirmed} className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-700 px-5 font-bold text-white disabled:opacity-50">{fundingBusy?<RefreshCw size={16} className="animate-spin"/>:<Wallet size={16}/>}Fund referral account</button>
+          </div>}
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-500">Completed cashback</p><p className="mt-1 text-xl font-black">{money(overview.totals.completedMinor)}</p></div>
             <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs font-semibold text-slate-500">Pending cashback</p><p className="mt-1 text-xl font-black">{money(overview.totals.pendingMinor)}</p></div>
