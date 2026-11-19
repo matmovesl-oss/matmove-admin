@@ -67,7 +67,7 @@ export default function UsersPage() {
   const fetchUsers=useCallback(async()=>{
     if(!allowed)return;
     const generation=++readGeneration.current;
-    if(typeof navigator!=='undefined'&&!navigator.onLine){setError('Offline. Showing the last loaded customer records.');setLoading(false);return;}
+    if(typeof navigator!=='undefined'&&navigator.onLine === false){setError('Offline. Showing the last loaded customer records.');setLoading(false);return;}
     if(!hasSnapshot.current)setLoading(true);
     setError('');
     setLoadedStamp(stamp);
