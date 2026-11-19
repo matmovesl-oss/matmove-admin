@@ -25,7 +25,7 @@ test('admin sidebar preference persists and wallet data remains visible offline'
   assert.match(layout, /matmove-admin-sidebar-collapsed/);
   assert.match(layout, /transition-transform duration-300 ease-out/);
   assert.match(layout, /aria-controls="admin-sidebar"/);
-  assert.match(layout, /Offline · showing last known data/);
+  assert.match(layout, /Offline · showing last view/);
   assert.match(hooks, /navigator\.onLine/);
   assert.match(hooks, /Showing the last successfully loaded wallet data/);
   assert.match(hooks, /hasSnapshot\.current/);
