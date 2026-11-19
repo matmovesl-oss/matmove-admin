@@ -5,7 +5,6 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import CashCollectionsManager from '@/components/CashCollectionsManager';
 
 type Row = {
   id: string;
@@ -85,6 +84,7 @@ export function FinancialsPage() {
   const current=useRef(stamp);current.current=stamp;
   const mounted=useRef(false),generation=useRef(0),writeLock=useRef(false);
   const [loadedStamp,setLoadedStamp]=useState('');
+  const loadedStampRef=useRef('');
   const [referralAccountId,setReferralAccountId]=useState<string|null>(null);
   const [wallets, setWallets] = useState<Row[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -104,12 +104,11 @@ export function FinancialsPage() {
     if(!allowed)return;
     const token=++generation.current;
     const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
-    setLoadedStamp(stamp);setWallets([]);
+    const hasCurrentSnapshot = loadedStampRef.current === stamp;
+    if (!hasCurrentSnapshot) { setWallets([]); setAccounts([]); setPlatform(emptyPlatform); }
     setLoading(true);
     setError('');
     setGatewayError('');
-    setAccounts([]);
-    setPlatform(emptyPlatform);
 
     try {
       const {
@@ -124,9 +123,11 @@ export function FinancialsPage() {
       if(!Array.isArray(data))throw new Error('Customer wallet response is invalid.');
       if(!valid())return;
       setWallets(data as unknown as Row[]);
+      loadedStampRef.current = stamp;
+      setLoadedStamp(stamp);
     } catch (err: any) {
       if(!valid())return;
-      setWallets([]);
+      if (!hasCurrentSnapshot) { loadedStampRef.current = stamp; setLoadedStamp(stamp); }
       setError(
         err.message ||
         'Customer wallets could not be loaded.'
@@ -256,7 +257,7 @@ export function FinancialsPage() {
     const metadata = wallet.metadata?.monime_account_id;
 
     if (
-      loading || error || gatewayError || loadedStamp!==stamp ||
+      loadedStamp!==stamp ||
       (direct && metadata && direct !== metadata) ||
       linkCounts.get(id) !== 1 ||
       account?.currency !== wallet.currency ||
@@ -357,16 +358,15 @@ export function FinancialsPage() {
   }
 
   if(!allowed)return <AdminLayout title="Financial & Wallets"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
-  if(loadedStamp!==stamp)return <AdminLayout title="Financial & Wallets"><p className="p-6">Loading wallets...</p></AdminLayout>;
+  if(loadedStamp!==stamp)return <AdminLayout title="Financial & Wallets"><p className="p-6">Loading customer wallets...</p></AdminLayout>;
 
   return (
     <AdminLayout
       title="Financial & Wallet Control Center"
-      subtitle="Platform escrow, live customer balances and wallet freeze controls"
+      subtitle="Monime is the balance source of truth; local wallet rows provide account links and freeze controls."
     >
       
       <div className="mt-6 space-y-5">
-        <CashCollectionsManager />
         <div className="flex flex-wrap gap-3">
           <input
             value={search}
@@ -386,11 +386,11 @@ export function FinancialsPage() {
           </select>
 
           <button
-            disabled={loading || busy}
+            disabled={(loading && loadedStamp!==stamp) || busy}
             onClick={() => void load()}
             className="rounded-lg border px-4 py-2 disabled:opacity-50"
           >
-            {loading ? 'Loading...' : error || gatewayError ? 'Retry financials' : 'Refresh'}
+            {loadedStamp!==stamp ? 'Loading...' : error || gatewayError ? 'Retry financials' : 'Refresh'}
           </button>
         </div>
 
@@ -442,9 +442,7 @@ export function FinancialsPage() {
                 </p>
 
                 <p className="mt-2 text-2xl font-bold">
-                  {loading ? 'Loading...' : error ||
-                  gatewayError ||
-                  !verified.length
+                  {loadedStamp!==stamp ? 'Loading...' : !verified.length
                     ? 'Unavailable'
                     : money(
                         verified.reduce(
@@ -461,7 +459,7 @@ export function FinancialsPage() {
           <div className="rounded-xl border bg-white p-5">
             <p>Active wallets</p>
             <p className="mt-2 text-2xl font-bold">
-              {loading ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
+              {loadedStamp!==stamp ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
                 w => w.is_frozen === false
               ).length}
             </p>
@@ -470,7 +468,7 @@ export function FinancialsPage() {
           <div className="rounded-xl border bg-white p-5">
             <p>Frozen wallets</p>
             <p className="mt-2 text-2xl font-bold">
-              {loading ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
+              {loadedStamp!==stamp ? 'Loading...' : wallets.filter(
                 w => w.is_frozen === true
               ).length}
             </p>
@@ -537,7 +535,6 @@ export function FinancialsPage() {
                   'Currency',
                   'Monime account',
                   'Gateway available',
-                  'Local balance',
                   'Status',
                   'Controls',
                 ].map(label => (
@@ -549,10 +546,10 @@ export function FinancialsPage() {
             </thead>
 
             <tbody>
-              {loading ? <tr><td colSpan={7} className="p-6 text-center">Loading customer wallets...</td></tr> : error ? <tr><td colSpan={7} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : !filtered.length && (
+              {error && !wallets.length ? <tr><td colSpan={6} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : loadedStamp===stamp && !filtered.length && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="p-6 text-center"
                   >
                     No customer wallets found.
@@ -560,7 +557,7 @@ export function FinancialsPage() {
                 </tr>
               )}
 
-              {!loading && !error && filtered.map(wallet => {
+              {loadedStamp===stamp && filtered.map(wallet => {
                 const balance =
                   customerBalance(wallet);
 
@@ -598,10 +595,6 @@ export function FinancialsPage() {
                     </td>
 
                     <td className="p-4">
-                      {wallet.balance!=null && Number.isFinite(Number(wallet.balance)) ? money(Number(wallet.balance),wallet.currency) : 'Unavailable'}
-                    </td>
-
-                    <td className="p-4">
                       {wallet.is_frozen
                         ? 'Frozen'
                         : 'Active'}
@@ -609,7 +602,7 @@ export function FinancialsPage() {
 
                     <td className="p-4">
                       <button
-                        disabled={loading || busy}
+                        disabled={(loading && loadedStamp!==stamp) || busy}
                         onClick={() => {
                           setTarget(wallet);
                           setReason('');

@@ -117,7 +117,7 @@ test('incomplete, cancelled, revoked or changed-identity reports never create a 
 });
 test('Reports navigation and route retain existing section gates and hide Reports for unassigned staff',async()=>{
  const app=await readFile('src/App.tsx','utf8');assert.match(app,/path="\/reports" element=\{sections.some/);for(const route of ['dashboard','dispatch','pricing','games','kyc','financials','transactions','payouts','customers','staff','logs','audit'])assert.ok(app.includes(`path="/${route}"`));
- const slots=[];let i=0;globalThis.__reportUI={access:owner,hooks:{useState:v=>{const n=i++;if(!(n in slots))slots[n]=v;return[slots[n],()=>{}];}},db:{auth:{signOut:async()=>({})}}};
+ const slots=[];let i=0;globalThis.__reportUI={access:owner,hooks:{useState:v=>{const n=i++;if(!(n in slots))slots[n]=v;return[slots[n],()=>{}];},useRef:v=>({current:v}),useEffect:()=>{}},db:{auth:{signOut:async()=>({})}}};
  const b=await bundle('src/components/AdminLayout.tsx');
  try{assert.match(text(b.module.default({children:null,title:'Test'})),/Reports & Analytics/);i=0;globalThis.__reportUI.access={...owner,is_owner:false,permissions:[]};assert.doesNotMatch(text(b.module.default({children:null,title:'Test'})),/Reports & Analytics/);}finally{await b.close();delete globalThis.__reportUI;}
 });

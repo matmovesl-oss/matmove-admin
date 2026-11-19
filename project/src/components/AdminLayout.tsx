@@ -1,5 +1,5 @@
 import AdminAssistance from './AdminAssistance';
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Activity,
@@ -48,9 +48,10 @@ const navItems = [
   { key: 'kyc', name: 'KYC & Onboarding', path: '/kyc', icon: ShieldCheck },
   { key: 'financials', name: 'Civitas Administrative', path: '/civitas', icon: Wallet },
   { key: 'financials', name: 'Financial & Wallets', path: '/financials', icon: Wallet },
+  { key: 'financials', name: 'Cash & Digital Payments', path: '/cash-payments', icon: CreditCard },
   { key: 'special', name: 'Customer Refunds', path: '/special', icon: ShieldAlert },
   { key: 'special', name: 'Administrative Payroll', path: '/payroll', icon: CreditCard },
-  { key: 'transactions', name: 'Gateway Transactions', path: '/transactions', icon: ArrowRightLeft },
+  { key: 'transactions', name: 'Digital Payments', path: '/transactions', icon: ArrowRightLeft },
   { key: 'payouts', name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },
   { key: 'customers', name: 'Customer Governance', path: '/customers', icon: Users },
   { key: 'staff', name: 'Staff Governance', path: '/staff', icon: Settings },
@@ -68,6 +69,38 @@ export default function AdminLayout({
   const access = useAdminAccess();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [networkOnline, setNetworkOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const online = () => setNetworkOnline(true);
+    const offline = () => setNetworkOnline(false);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
+
+  useEffect(() => {
+    const element = mainRef.current;
+    if (!element) return;
+    const key = `matmove-admin-scroll:${location.pathname}${location.search}`;
+    let saved = 0;
+    try { saved = Math.max(0, Number(sessionStorage.getItem(key) || 0)); } catch { /* Scroll restoration is best-effort. */ }
+    let restored = false;
+    let observer: ResizeObserver | null = null;
+    const restore = () => {
+      if (restored || !element.isConnected || element.scrollHeight - element.clientHeight < saved) return;
+      element.scrollTop = saved;
+      restored = true;
+      observer?.disconnect();
+    };
+    if (typeof ResizeObserver !== 'undefined') { observer = new ResizeObserver(restore); observer.observe(element); }
+    const frame = window.requestAnimationFrame(restore);
+    const persist = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* Ignore unavailable storage. */ } };
+    element.addEventListener('scroll', persist, { passive: true });
+    return () => { window.cancelAnimationFrame(frame); persist(); observer?.disconnect(); element.removeEventListener('scroll', persist); };
+  }, [location.pathname, location.search]);
   const [gamesExpanded, setGamesExpanded] = useState(location.pathname === '/games');
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
@@ -126,9 +159,7 @@ export default function AdminLayout({
 
       {/* SIDEBAR */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-slate-950 text-slate-300 transition-transform duration-300 lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-slate-950 text-slate-300 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
       >
         {/* BRAND */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
@@ -342,14 +373,15 @@ export default function AdminLayout({
       </aside>
 
       {/* MAIN CONTENT */}
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-[260px]">
+      <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-300 ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-[260px]"}`}>
         <header className="z-10 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="text-slate-500 hover:text-slate-700 lg:hidden"
-              aria-label="Open navigation"
+              onClick={() => { if (window.matchMedia('(min-width: 1024px)').matches) setSidebarCollapsed(value => !value); else setSidebarOpen(true); }}
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Toggle navigation"
+              aria-expanded={!sidebarCollapsed}
             >
               <Menu size={24} />
             </button>
@@ -359,10 +391,13 @@ export default function AdminLayout({
               {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
             </div>
           </div>
-          <AdminAssistance key={access?.id || 'signed-out'} />
+          <div className="flex items-center gap-3">
+            <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-flex ${networkOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{networkOnline ? 'Online' : 'Offline · showing last view'}</span>
+            <AdminAssistance key={access?.id || 'signed-out'} />
+          </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 sm:p-6">
+        <main ref={mainRef} className="flex-1 overflow-auto p-4 sm:p-6">
           {children}
         </main>
       </div>
