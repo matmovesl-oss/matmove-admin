@@ -1,6 +1,6 @@
 
 import {adminFetch} from '@/lib/adminFetch';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
@@ -9,24 +9,37 @@ import { Banknote, Clock, CheckCircle2, XCircle, RefreshCw, Loader2 } from 'luci
 export default function WithdrawalsPage() {
   const [payouts, setPayouts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const hasSnapshot = useRef(false);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'failed'>('all');
 
   const fetchRealPayouts = async () => {
-    setLoading(true);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setLoadError('Offline. Showing the last loaded payout records.');
+      setLoading(false);
+      return;
+    }
+    if (!hasSnapshot.current) setLoading(true);
+    setLoadError('');
     try {
       const res = await adminFetch('/api/get-payouts');
       const data = await res.json();
-      if (data.payouts) {
-        setPayouts(data.payouts.sort((a: any, b: any) => new Date(b.createTime).getTime() - new Date(a.createTime).getTime()));
-      }
-    } catch (err) {
-      console.error(err);
+      if (!res.ok || !Array.isArray(data.payouts)) throw new Error(data.error || 'Could not verify live payout records.');
+      setPayouts(data.payouts.sort((a: any, b: any) => new Date(b.createTime).getTime() - new Date(a.createTime).getTime()));
+      hasSnapshot.current = true;
+    } catch (err: any) {
+      setLoadError(err?.message || 'Could not refresh payout records. Showing the last loaded data if available.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchRealPayouts(); }, []);
+  useEffect(() => {
+    void fetchRealPayouts();
+    const onOnline = () => { void fetchRealPayouts(); };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
 
   const stats = useMemo(() => {
     let pending = 0, completed = 0, failed = 0, pendingSle = 0;
@@ -47,6 +60,7 @@ export default function WithdrawalsPage() {
 
   return (
     <AdminLayout title="Payouts & Withdrawals" subtitle="Live payout status directly from Monime Gateway">
+      {loadError && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{loadError}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 mt-6">
         <StatCard label="Pending Requests" value={String(stats.pending)} icon={Clock} tone="amber" />
         <StatCard label="Pending SLE" value={`SLE ${stats.pendingSle.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} icon={Banknote} tone="indigo" />
