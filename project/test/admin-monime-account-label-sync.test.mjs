@@ -8,8 +8,8 @@ test('Monime account label sync is a permission-gated, batched POST and only cha
   assert.match(api, /req\.body\?\.action !== 'sync_account_labels'/);
   assert.match(api, /if \(!financial\)/);
   assert.match(api, /method: 'PATCH'/);
-  assert.match(api, /account\.id !== accountId/);
-  assert.match(api, /updatedAccount\.name !== displayName/);
+  assert.match(api, /account\?\.id !== accountId/);
+  assert.match(api, /updatedAccount\?\.name !== displayName/);
   assert.match(api, /monimeAccountDisplayName/);
   assert.match(api, /'Rider'/);
   assert.match(api, /'Driver'/);
