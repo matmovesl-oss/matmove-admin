@@ -61,8 +61,8 @@ export function TransactionsPage() {
     mounted.current = true;
     void fetchTransactions();
     const onOnline = () => { void fetchTransactions(); };
-    window.addEventListener('online', onOnline);
-    return () => { window.removeEventListener('online', onOnline); mounted.current = false; generation.current++; };
+    window.addEventListener?.('online', onOnline);
+    return () => { window.removeEventListener?.('online', onOnline); mounted.current = false; generation.current++; };
   }, [fetchTransactions]);
 
   const filteredTxns = transactions.filter(tx => {
