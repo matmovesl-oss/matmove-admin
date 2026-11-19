@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   BarChart3,
   ClipboardCheck,
+  Percent,
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
@@ -48,6 +49,7 @@ const navItems = [
   { key: 'kyc', name: 'KYC & Onboarding', path: '/kyc', icon: ShieldCheck },
   { key: 'financials', name: 'Civitas Administrative', path: '/civitas', icon: Wallet },
   { key: 'financials', name: 'Financial & Wallets', path: '/financials', icon: Wallet },
+  { key: 'financials', name: 'Loading Bonanza', path: '/loading-bonanza', icon: Percent },
   { key: 'financials', name: 'Cash & Digital Payments', path: '/cash-payments', icon: CreditCard },
   { key: 'special', name: 'Customer Refunds', path: '/special', icon: ShieldAlert },
   { key: 'special', name: 'Administrative Payroll', path: '/payroll', icon: CreditCard },
