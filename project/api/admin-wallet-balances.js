@@ -45,6 +45,23 @@ async function syncAccountLabels({ req, res, client, fetcher, env }) {
     if (!roles.has(row.profile_id)) roles.set(row.profile_id, []);
     roles.get(row.profile_id).push(row.role);
   }
+  const accountIds = [...new Set(wallets.map(wallet => wallet.monime_account_id || wallet.metadata?.monime_account_id).filter(id => typeof id === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(id)))];
+  const linkedWallets = new Map();
+  if (accountIds.length) {
+    const [directLinks, metadataLinks] = await Promise.all([
+      client.from('wallets').select('id,user_id,monime_account_id,metadata').in('monime_account_id', accountIds),
+      client.from('wallets').select('id,user_id,monime_account_id,metadata').in('metadata->>monime_account_id', accountIds)
+    ]);
+    if (directLinks.error || metadataLinks.error || !Array.isArray(directLinks.data) || !Array.isArray(metadataLinks.data)) {
+      return res.status(503).json({ error: 'Monime account ownership links could not be verified. No account names were changed.' });
+    }
+    for (const wallet of [...directLinks.data, ...metadataLinks.data]) {
+      const id = wallet.monime_account_id || wallet.metadata?.monime_account_id;
+      if (!id || !accountIds.includes(id)) continue;
+      if (!linkedWallets.has(id)) linkedWallets.set(id, new Map());
+      linkedWallets.get(id).set(wallet.id, wallet);
+    }
+  }
   const headers = {
     Authorization: `Bearer ${env.MONIME_API_KEY}`,
     'Monime-Space-Id': env.MONIME_SPACE_ID,
@@ -66,6 +83,11 @@ async function syncAccountLabels({ req, res, client, fetcher, env }) {
         continue;
       }
       const accountId = directId || metadataId;
+      const owners = linkedWallets.get(accountId);
+      if (!owners || owners.size !== 1 || !owners.has(wallet.id) || owners.get(wallet.id)?.user_id !== wallet.user_id) {
+        counts.skipped++;
+        continue;
+      }
       const profile = profiles.get(wallet.user_id);
       const displayName = monimeAccountDisplayName(profile, roles.get(wallet.user_id) || [], currency);
       if (!accountId || !/^fac-[A-Za-z0-9_-]+$/.test(accountId) || !displayName) {
