@@ -109,7 +109,7 @@ const text=n=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):Arr
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 async function page(fn,{grants={id:admin,is_active:true,is_owner:true,permissions:[]},paid=false,failedFeed=false,directory=null}={}){
  const dir=await mkdtemp(join(process.cwd(),'.dispatch-ui-')),out=join(dir,'ui.mjs');const slots=[],effects=[],calls=[];let i=0,dirty=true,tree,mutations=0;
- const oldWindow=globalThis.window;globalThis.window={setInterval:()=>1,clearInterval(){}};
+ const oldWindow=globalThis.window,oldDocument=globalThis.document;globalThis.window={setInterval:()=>1,clearInterval(){}};globalThis.document={body:{}};
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,j)=>!Object.is(v,b[j]));
  const row={id:booking,version:'1',status:'pending',fare:'20',serviceType:'ride',vehicleType:null,pickup:'Freetown',destination:'Lumley',riderId:rider,riderLabel:'rider@example.com',driverId:null,driverLabel:null,paymentStarted:paid,pendingOffers:'0',agreedDriverId:null};
  globalThis.__dispatchUI={grants,hooks:{useState(initial){const n=i++;if(!(n in slots))slots[n]={value:typeof initial==='function'?initial():initial};return[slots[n].value,v=>{slots[n].value=typeof v==='function'?v(slots[n].value):v;dirty=true;}];},useRef(initial){const n=i++;if(!(n in slots))slots[n]={current:initial};return slots[n];},useEffect(fn,deps){const n=i++,old=slots[n];if(!old||changed(old.deps,deps)){const next={deps,cleanup:old?.cleanup};slots[n]=next;effects.push(()=>{next.cleanup?.();next.cleanup=fn();});}}},db:{auth:{getSession:async()=>({data:{session:{user:{id:admin}}}})},rpc:async(name,args)=>{
@@ -126,7 +126,7 @@ async function page(fn,{grants={id:admin,is_active:true,is_owner:true,permission
  const button=label=>{const b=nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);assert.ok(b,`Missing ${label}: ${text(tree)}`);return b;};
  const h={calls,button,settle,get tree(){return tree;},get text(){return text(tree);},async open(){nodes(tree).find(n=>n.type==='button'&&text(n).includes('rider@example.com')).props.onClick();await settle();},async input(kind,value){const n=nodes(tree).find(n=>n.type===kind&&(kind!=='select'||n.props['aria-label']==='Approved driver'));assert.ok(n,'Expected the labelled '+kind+' control');n.props.onChange({target:{value}});await settle();},async click(label){const b=button(label);assert.ok(!b.props.disabled);b.props.onClick();await settle();}};
  await settle();await fn(h);
- }finally{for(const s of slots)s?.cleanup?.();if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;delete globalThis.__dispatchUI;await rm(dir,{recursive:true,force:true});}
+ }finally{for(const s of slots)s?.cleanup?.();if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;delete globalThis.__dispatchUI;await rm(dir,{recursive:true,force:true});}
 }
 test('Dispatch UI requires review, sends exact version and actor, prevents duplicate clicks and reuses a lost-response key',()=>page(async h=>{
  await h.open();await h.input('select',driver);await h.input('textarea','Assign current fare');await h.click('Review assignment');
