@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {MapPin} from 'lucide-react';
 import {supabase} from '@/lib/supabase';
 import {canAccess,useAdminAccess} from '@/lib/adminAccess';
 import {loadAdminMap} from '@/lib/adminMap';
@@ -163,7 +164,7 @@ export default function AdminTripReview({userId,bookingId}:{userId:string;bookin
    </div>
    <aside className="min-w-0 space-y-2 lg:sticky lg:top-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">Request map</h3><span className="text-xs text-slate-500">{safe?.trackingActive?'Live GPS when fresh':'Saved pickup and destination'}</span></div>
-    <div ref={host} aria-label="Admin trip tracking map" className="h-[360px] w-full rounded-xl border bg-slate-100"/>
+    {mapError ? <div role="img" aria-label="Trip map preview unavailable; saved pickup and destination details remain available" className="flex h-[360px] w-full flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-6 text-center"><span className="grid h-14 w-14 place-items-center rounded-full bg-white text-slate-500 shadow-sm"><MapPin size={26}/></span><b className="text-sm text-slate-700">Trip locations</b><span className="max-w-xs text-xs text-slate-500">The map preview could not load. The saved pickup, destination and trip details are still available.</span></div> : <div ref={host} aria-label="Admin trip tracking map" className="h-[360px] w-full rounded-xl border bg-slate-100"/>}
     {mapError&&<p role="alert" className="text-xs text-amber-900">{mapError}</p>}
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600"><span>A · Pickup</span><span>B · Destination</span><span>D · Driver</span><span>C · Customer</span></div>
     <p role="status" className="text-xs text-slate-600">{!safe?'Select a request to load its map.':!safe.trackingActive?'Live tracking is closed for this trip.':safe.driverPosition? `Driver GPS received ${time(safe.driverPosition.receivedAt)} · accuracy about ${Math.ceil(safe.driverPosition.accuracy)} m.`:'Waiting for the driver. Fresh GPS has not arrived yet; the saved route remains visible.'}</p>
