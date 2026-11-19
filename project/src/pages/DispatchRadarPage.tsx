@@ -217,7 +217,7 @@ export default function DispatchRadarPage() {
     const days=feedPeriod==='7'?7:30;return created>=Date.now()-days*24*60*60*1000;
   }).slice(0,Number(feedLimit));
   const eligibleDriver = !!selectedDriver?.eligible && !!booking && selectedDriver.id !== booking.riderId && (!booking.agreedDriverId || booking.agreedDriverId === selectedDriver.id);
-  const mutable = !!booking && ['pending', 'pending_admin', 'cash_reserve_pending', 'cash_review_required', 'accepted', 'in_progress'].includes(booking.status);
+  const mutable = !!booking && !booking.paymentStarted && ['pending', 'pending_admin', 'cash_reserve_pending', 'cash_review_required', 'accepted', 'in_progress'].includes(booking.status);
   const cancelable = mutable && !(booking.paymentMethod === 'cash' && (booking.status === 'in_progress' || !!booking.driverId));
 
   function pick(id: string) {
