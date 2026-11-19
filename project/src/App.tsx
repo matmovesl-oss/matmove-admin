@@ -14,7 +14,7 @@ import ReportsPage from './pages/ReportsPage';
 
 import {loadAdminSession} from './lib/adminSession';
 import { GamesPage } from './pages/GamesPage';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import LoginPage from './pages/LoginPage';
