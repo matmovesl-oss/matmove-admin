@@ -107,19 +107,20 @@ function StaleRideTickets({enabled,onOpen}:{enabled:boolean;onOpen:(bookingId:st
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState('');
   const [reload,setReload]=useState(0);
+  const hasSnapshot=useRef(false);
   useEffect(()=>{
-    if(!enabled)return;
+    if(!enabled){setRows([]);hasSnapshot.current=false;return;}
     let live=true,busy=false;
     const load=async()=>{
-      if(busy)return;busy=true;setLoading(true);
+      if(busy)return;busy=true;if(!hasSnapshot.current)setLoading(true);
       try{
         const {data,error}=await supabase.from('matmove_ride_investigation_tickets')
           .select('id,booking_id,reason_code,source_status,status,first_seen_at,last_seen_at')
           .eq('status','open').order('last_seen_at',{ascending:false}).limit(50);
         if(error)throw error;
         if(!Array.isArray(data))throw new Error('Investigation queue response was invalid.');
-        if(live){setRows(data);setError('');}
-      }catch(e:any){if(live){setError(e?.message||'Investigation queue unavailable. Apply the stale-request migration and retry.');setRows([]);}}
+        if(live){setRows(data);hasSnapshot.current=true;setError('');}
+      }catch(e:any){if(live){setError(e?.message||'Investigation queue unavailable. Showing the last loaded tickets if available.');}}
       finally{busy=false;if(live)setLoading(false);}
     };
     void load();
@@ -142,6 +143,7 @@ export default function DispatchRadarPage() {
   const current = useRef(stamp);
   current.current = stamp;
   const mounted = useRef(false), epoch = useRef(0), locked = useRef(false);
+  const hasFeedSnapshot = useRef(false), lastFeedStamp = useRef('');
   const [tripReference, setTripReference] = useState(''), [searchedTrip, setSearchedTrip] = useState('');
   const [feedSearch,setFeedSearch]=useState('');
   const [feedPeriod,setFeedPeriod]=useState<'today'|'7'|'30'|'all'>('all');
@@ -160,23 +162,28 @@ export default function DispatchRadarPage() {
     let live = true, inFlight = false;
     const generation = ++epoch.current;
     const valid = () => live && mounted.current && current.current === stamp && epoch.current === generation;
-    setFeed(null);
+    const identityChanged = lastFeedStamp.current !== stamp;
+    if (identityChanged) {
+      lastFeedStamp.current = stamp;
+      hasFeedSnapshot.current = false;
+      setFeed(null);
+      setReview(null);
+      setSelected('');
+      setDriver('');
+      setNote('');
+      locked.current = false;
+      setBusy(false);
+      draft.current = null;
+    }
     setLoadedStamp(stamp);
     setError('');
     setActionError('');
-    setLoading(allowed);
-    setReview(null);
-    setSelected('');
-    setDriver('');
-    setNote('');
-    locked.current = false;
-    setBusy(false);
-    draft.current = null;
+    if (identityChanged || !hasFeedSnapshot.current) setLoading(allowed);
 
     async function load() {
       if (inFlight || !valid() || !allowed) return;
       inFlight = true;
-      setLoading(true);
+      if (!hasFeedSnapshot.current) setLoading(true);
       try {
         const { data, error } = await supabase.rpc('matmove_admin_dispatch_feed');
         if (error) throw error;
@@ -189,7 +196,7 @@ export default function DispatchRadarPage() {
         ) {
           throw new Error('Dispatch response was not confirmed. Apply the complete updated ADMIN_DISPATCH_SETUP.sql and retry.');
         }
-        if (valid()) { setFeed(data); setError(''); }
+        if (valid()) { setFeed(data); hasFeedSnapshot.current = true; setError(''); }
       } catch (e) {
         if (valid()) setError(e instanceof Error ? e.message : String((e as any)?.message || 'Dispatch unavailable. Check ADMIN_DISPATCH_SETUP.sql and retry.'));
       } finally {
