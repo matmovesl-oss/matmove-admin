@@ -14,7 +14,7 @@ export default function WithdrawalsPage() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'failed'>('all');
 
   const fetchRealPayouts = async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setLoadError('Offline. Showing the last loaded payout records.');
       setLoading(false);
       return;
