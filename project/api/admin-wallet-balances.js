@@ -46,7 +46,7 @@ async function syncAccountLabels({ req, res, client, fetcher, env }) {
     if (!roles.has(row.profile_id)) roles.set(row.profile_id, []);
     roles.get(row.profile_id).push(row.role);
   }
-  const accountIds = [...new Set(wallets.map(wallet => wallet.monime_account_id || wallet.metadata?.monime_account_id).filter(id => typeof id === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(id)))];
+  const accountIds = [...new Set(wallets.flatMap(wallet => [wallet.monime_account_id, wallet.metadata?.monime_account_id]).filter(id => typeof id === 'string' && /^fac-[A-Za-z0-9_-]+$/.test(id)))];
   const linkedWallets = new Map();
   if (accountIds.length) {
     const [directLinks, metadataLinks] = await Promise.all([
@@ -57,10 +57,11 @@ async function syncAccountLabels({ req, res, client, fetcher, env }) {
       return res.status(503).json({ error: 'Monime account ownership links could not be verified. No account names were changed.' });
     }
     for (const wallet of [...directLinks.data, ...metadataLinks.data]) {
-      const id = wallet.monime_account_id || wallet.metadata?.monime_account_id;
-      if (!id || !accountIds.includes(id)) continue;
-      if (!linkedWallets.has(id)) linkedWallets.set(id, new Map());
-      linkedWallets.get(id).set(wallet.id, wallet);
+      for (const id of [wallet.monime_account_id, wallet.metadata?.monime_account_id]) {
+        if (!id || !accountIds.includes(id)) continue;
+        if (!linkedWallets.has(id)) linkedWallets.set(id, new Map());
+        linkedWallets.get(id).set(wallet.id, wallet);
+      }
     }
   }
   const headers = {
