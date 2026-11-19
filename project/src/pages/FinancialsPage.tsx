@@ -84,6 +84,7 @@ export function FinancialsPage() {
   const current=useRef(stamp);current.current=stamp;
   const mounted=useRef(false),generation=useRef(0),writeLock=useRef(false);
   const [loadedStamp,setLoadedStamp]=useState('');
+  const loadedStampRef=useRef('');
   const [referralAccountId,setReferralAccountId]=useState<string|null>(null);
   const [wallets, setWallets] = useState<Row[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
