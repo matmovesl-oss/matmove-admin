@@ -103,6 +103,8 @@ export function FinancialsPage() {
     if(!allowed)return;
     const token=++generation.current;
     const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
+    const hasCurrentSnapshot = loadedStampRef.current === stamp;
+    if (!hasCurrentSnapshot) { setWallets([]); setAccounts([]); setPlatform(emptyPlatform); }
     setLoading(true);
     setError('');
     setGatewayError('');
@@ -120,9 +122,11 @@ export function FinancialsPage() {
       if(!Array.isArray(data))throw new Error('Customer wallet response is invalid.');
       if(!valid())return;
       setWallets(data as unknown as Row[]);
+      loadedStampRef.current = stamp;
       setLoadedStamp(stamp);
     } catch (err: any) {
       if(!valid())return;
+      if (!hasCurrentSnapshot) { loadedStampRef.current = stamp; setLoadedStamp(stamp); }
       setError(
         err.message ||
         'Customer wallets could not be loaded.'
