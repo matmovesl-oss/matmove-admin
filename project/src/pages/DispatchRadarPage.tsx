@@ -209,7 +209,7 @@ export default function DispatchRadarPage() {
     void load();
     const timer = window.setInterval(() => {
       if (!locked.current && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) void load();
-    }, 15000);
+    }, 30000);
 
     return () => { live = false; epoch.current++; window.clearInterval(timer); };
   }, [stamp, allowed, reload]);
