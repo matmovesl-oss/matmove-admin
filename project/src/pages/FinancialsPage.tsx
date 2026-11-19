@@ -441,9 +441,7 @@ export function FinancialsPage() {
                 </p>
 
                 <p className="mt-2 text-2xl font-bold">
-                  {loading ? 'Loading...' : error ||
-                  gatewayError ||
-                  !verified.length
+                  {loadedStamp!==stamp ? 'Loading...' : !verified.length
                     ? 'Unavailable'
                     : money(
                         verified.reduce(
@@ -469,7 +467,7 @@ export function FinancialsPage() {
           <div className="rounded-xl border bg-white p-5">
             <p>Frozen wallets</p>
             <p className="mt-2 text-2xl font-bold">
-              {loading ? 'Loading...' : error ? 'Unavailable' : wallets.filter(
+              {loadedStamp!==stamp ? 'Loading...' : wallets.filter(
                 w => w.is_frozen === true
               ).length}
             </p>
@@ -547,10 +545,10 @@ export function FinancialsPage() {
             </thead>
 
             <tbody>
-              {loading ? <tr><td colSpan={6} className="p-6 text-center">Loading customer wallets...</td></tr> : error ? <tr><td colSpan={7} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : !filtered.length && (
+              {error && loadedStamp!==stamp ? <tr><td colSpan={6} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : loadedStamp===stamp && !filtered.length && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="p-6 text-center"
                   >
                     No customer wallets found.
@@ -603,7 +601,7 @@ export function FinancialsPage() {
 
                     <td className="p-4">
                       <button
-                        disabled={loading || busy}
+                        disabled={(loading && loadedStamp!==stamp) || busy}
                         onClick={() => {
                           setTarget(wallet);
                           setReason('');
