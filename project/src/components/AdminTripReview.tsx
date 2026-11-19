@@ -166,7 +166,7 @@ export default function AdminTripReview({userId,bookingId}:{userId:string;bookin
     <div ref={host} aria-label="Admin trip tracking map" className="h-[360px] w-full rounded-xl border bg-slate-100"/>
     {mapError&&<p role="alert" className="text-xs text-amber-900">{mapError}</p>}
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600"><span>A · Pickup</span><span>B · Destination</span><span>D · Driver</span><span>C · Customer</span></div>
-    <p role="status" className="text-xs text-slate-600">{!safe?'Select a request to load its map.':!safe.trackingActive?'Live tracking is closed for this trip.':safe.driverPosition? `Driver GPS received ${time(safe.driverPosition.receivedAt)} · accuracy about ${Math.ceil(safe.driverPosition.accuracy)} m.`:'Waiting for fresh driver GPS. The saved route remains visible.'}</p>
+    <p role="status" className="text-xs text-slate-600">{!safe?'Select a request to load its map.':!safe.trackingActive?'Live tracking is closed for this trip.':safe.driverPosition? `Driver GPS received ${time(safe.driverPosition.receivedAt)} · accuracy about ${Math.ceil(safe.driverPosition.accuracy)} m.`:'Waiting for the driver. Fresh GPS has not arrived yet; the saved route remains visible.'}</p>
     {safe&&(!pickupPin||!destinationPin)&&<p className="text-xs text-amber-800">One or more saved GPS coordinates are missing. MatMove is attempting an address lookup; an unverified location will not be shown as a live position.</p>}
    </aside>
   </div>
