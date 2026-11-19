@@ -545,7 +545,7 @@ export function FinancialsPage() {
             </thead>
 
             <tbody>
-              {error && loadedStamp!==stamp ? <tr><td colSpan={6} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : loadedStamp===stamp && !filtered.length && (
+              {error && !wallets.length ? <tr><td colSpan={6} className="p-6 text-center">Customer wallets could not be loaded. Use Retry financials.</td></tr> : loadedStamp===stamp && !filtered.length && (
                 <tr>
                   <td
                     colSpan={6}
