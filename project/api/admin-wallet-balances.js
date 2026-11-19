@@ -2,6 +2,115 @@ import {requireAdmin} from '../server/admin-auth.js';
 import {canAdminAccess} from '../shared/admin-permissions.js';
 import { createClient } from '@supabase/supabase-js';
 
+
+export function monimeAccountDisplayName(profile, roles, currency) {
+  const labels = { rider: 'Rider', driver: 'Driver', merchant: 'Merchant' };
+  const roleList = [...new Set([
+    ...(Array.isArray(roles) ? roles : []),
+    profile?.role
+  ].map(value => String(value || '').toLowerCase()).filter(role => labels[role]))]
+    .sort((a, b) => ['rider', 'driver', 'merchant'].indexOf(a) - ['rider', 'driver', 'merchant'].indexOf(b));
+  if (!roleList.length) return null;
+  const fullName = String(profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'MatMove User').trim().replace(/\\s+/g, ' ');
+  const suffix = ' · ' + roleList.map(role => labels[role]).join('/') + ' · ' + currency;
+  return fullName.slice(0, Math.max(1, 100 - suffix.length)).trim() + suffix;
+}
+
+async function syncAccountLabels({ req, res, client, fetcher, env }) {
+  const offset = Number.isSafeInteger(req.body?.offset) && req.body.offset >= 0 ? req.body.offset : 0;
+  const limit = Number.isSafeInteger(req.body?.limit) ? Math.min(25, Math.max(1, req.body.limit)) : 25;
+  const { data: wallets, count, error: walletError } = await client.from('wallets')
+    .select('id,user_id,currency,monime_account_id,metadata,created_at', { count: 'exact' })
+    .order('created_at', { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (walletError || !Array.isArray(wallets)) {
+    return res.status(503).json({ error: 'Customer wallet links could not be loaded. No Monime account names were changed.' });
+  }
+  const total = Number.isSafeInteger(count) ? count : offset + wallets.length;
+  const userIds = [...new Set(wallets.map(wallet => wallet.user_id).filter(id => typeof id === 'string'))];
+  if (!userIds.length) {
+    const nextOffset = offset + wallets.length;
+    return res.status(200).json({ offset, nextOffset, total, complete: nextOffset >= total || wallets.length < limit, updated: 0, unchanged: 0, skipped: 0, failed: 0 });
+  }
+  const [profileResult, roleResult] = await Promise.all([
+    client.from('profiles').select('id,full_name,first_name,last_name,role').in('id', userIds),
+    client.from('user_roles').select('profile_id,role').in('profile_id', userIds)
+  ]);
+  if (profileResult.error || roleResult.error || !Array.isArray(profileResult.data) || !Array.isArray(roleResult.data)) {
+    return res.status(503).json({ error: 'Customer names and roles could not be verified. No Monime account names were changed.' });
+  }
+  const profiles = new Map(profileResult.data.map(profile => [profile.id, profile]));
+  const roles = new Map();
+  for (const row of roleResult.data) {
+    if (!roles.has(row.profile_id)) roles.set(row.profile_id, []);
+    roles.get(row.profile_id).push(row.role);
+  }
+  const headers = {
+    Authorization: `Bearer ${env.MONIME_API_KEY}`,
+    'Monime-Space-Id': env.MONIME_SPACE_ID,
+    'Monime-Version': 'caph.2025-08-23',
+    Accept: 'application/json'
+  };
+  const counts = { updated: 0, unchanged: 0, skipped: 0, failed: 0 };
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(4, wallets.length) }, async () => {
+    while (true) {
+      const index = cursor++;
+      if (index >= wallets.length) return;
+      const wallet = wallets[index];
+      const currency = String(wallet.currency || '').toUpperCase();
+      const directId = wallet.monime_account_id || null;
+      const metadataId = wallet.metadata?.monime_account_id || null;
+      if (!['SLE', 'USD'].includes(currency) || (directId && metadataId && directId !== metadataId)) {
+        counts.skipped++;
+        continue;
+      }
+      const accountId = directId || metadataId;
+      const profile = profiles.get(wallet.user_id);
+      const displayName = monimeAccountDisplayName(profile, roles.get(wallet.user_id) || [], currency);
+      if (!accountId || !/^fac-[A-Za-z0-9_-]+$/.test(accountId) || !displayName) {
+        counts.skipped++;
+        continue;
+      }
+      try {
+        const url = `https://api.monime.io/v1/financial-accounts/${encodeURIComponent(accountId)}`;
+        const accountResponse = await fetcher(url, { headers, signal: AbortSignal.timeout(12000) });
+        if (!accountResponse.ok) { counts.failed++; continue; }
+        const accountPayload = await accountResponse.json();
+        const account = accountPayload?.result || accountPayload;
+        if (account?.id !== accountId || String(account.currency || '').toUpperCase() !== currency) {
+          counts.failed++;
+          continue;
+        }
+        if (account.name === displayName) { counts.unchanged++; continue; }
+        const updateResponse = await fetcher(url, {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: displayName }),
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!updateResponse.ok) { counts.failed++; continue; }
+        const updatePayload = await updateResponse.json();
+        const updatedAccount = updatePayload?.result || updatePayload;
+        if (updatedAccount?.id !== accountId || String(updatedAccount.currency || '').toUpperCase() !== currency || updatedAccount.name !== displayName) {
+          counts.failed++;
+          continue;
+        }
+        counts.updated++;
+      } catch {
+        counts.failed++;
+      }
+    }
+  });
+  await Promise.all(workers);
+  const nextOffset = offset + wallets.length;
+  return res.status(200).json({
+    offset, nextOffset, total,
+    complete: nextOffset >= total || wallets.length < limit,
+    ...counts
+  });
+}
+
 export function createHandler(
   clientFactory = createClient,
   fetcher = fetch,
@@ -11,10 +120,11 @@ export function createHandler(
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Vary', 'Authorization');
 
-    if (req.method !== 'GET') {
-      return res.status(405).json({
-        error: 'Method Not Allowed'
-      });
+    if (!['GET', 'POST'].includes(req.method)) {
+      return res.status(405).json({ error: 'Method Not Allowed' });
+    }
+    if (req.method === 'POST' && req.body?.action !== 'sync_account_labels') {
+      return res.status(400).json({ error: 'Unsupported financial account action.' });
     }
 
     try {
@@ -53,6 +163,11 @@ export function createHandler(
       const {access} = await requireAdmin(req, ['financials', 'games.settings', 'special'], {client, env});
       const financial = canAdminAccess(access, 'financials');
       const special = canAdminAccess(access, 'special');
+
+      if (req.method === 'POST') {
+        if (!financial) return res.status(403).json({ error: 'Financial administration permission is required.' });
+        return await syncAccountLabels({ req, res, client, fetcher, env });
+      }
 
       let savedReferral = null;
       if (financial) {
