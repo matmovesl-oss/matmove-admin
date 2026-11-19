@@ -144,7 +144,7 @@ export function createHandler(
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Vary', 'Authorization');
 
-    if (!['GET', 'POST'].includes(req.method)) {
+    if (!['GET', 'POST'].includes(req.method) || (req.method === 'POST' && !req.body?.action)) {
       return res.status(405).json({ error: 'Method Not Allowed' });
     }
     if (req.method === 'POST' && req.body?.action !== 'sync_account_labels') {
