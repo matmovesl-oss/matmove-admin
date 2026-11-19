@@ -107,8 +107,7 @@ export function FinancialsPage() {
     const token=++generation.current;
     const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
     const hasCurrentSnapshot = loadedStampRef.current === stamp;
-    if (!hasCurrentSnapshot) { setWallets([]); setAccounts([]); setPlatform(emptyPlatform); }
-    setLoading(true);
+    if (!hasCurrentSnapshot) { setWallets([]); setAccounts([]); setPlatform(emptyPlatform); setLoading(true); }
     setError('');
     setGatewayError('');
 
