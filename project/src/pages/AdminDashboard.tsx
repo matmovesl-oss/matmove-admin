@@ -95,8 +95,15 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  const hasProfileSnapshot = useRef(false);
   const fetchProfiles = useCallback(async () => {
-    setLoading(true); setErrorMessage('');
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setErrorMessage('Offline. Showing the last verified customer and KYC records.');
+      setLoading(false);
+      return;
+    }
+    if (!hasProfileSnapshot.current) setLoading(true);
+    setErrorMessage('');
     try {
       const [profileResponse, submissionResponse, documentResponse] = await Promise.all([
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),
@@ -114,6 +121,7 @@ export default function AdminDashboard() {
       setProfiles(normalizedProfiles);
       setSubmissions(normalizedSubmissions);
       setDocuments(normalizedDocuments);
+      hasProfileSnapshot.current = true;
 
       setSelectedUser((current) => {
         if (current) {
@@ -123,8 +131,7 @@ export default function AdminDashboard() {
         return normalizedProfiles[0] || null;
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to load MatMove verification records.');
-      setProfiles([]); setSubmissions([]); setDocuments([]); setSelectedUser(null);
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to refresh MatMove verification records.');
     } finally { setLoading(false); }
   }, []);
 
@@ -134,12 +141,14 @@ export default function AdminDashboard() {
   }, [fetchProfiles, fetchTransactionStats]);
 
   useEffect(() => {
+    const onOnline = () => { void fetchProfiles(); };
+    window.addEventListener('online', onOnline);
     const channel = supabase.channel('admin-kyc-live-data')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { void fetchProfiles(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kyc_submissions' }, () => { void fetchProfiles(); })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kyc_documents' }, () => { void fetchProfiles(); })
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => { window.removeEventListener('online', onOnline); void supabase.removeChannel(channel); };
   }, [fetchProfiles]);
 
   const handleFinancialRefresh = async () => {
