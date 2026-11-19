@@ -29,7 +29,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   const view=req.query?.view??new URL(req.url||'/api/admin-staff','https://admin.invalid').searchParams.get('view');
   if(typeof view==='string'&&view.startsWith('concierge-'))return concierge(req,res);
   if(['referral-overview','referral-page','referral-settings','referral-recovery','referral-recovery-save'].includes(view))return referrals(req,res);
-  if(['loading-bonanza-overview','loading-bonanza-settings'].includes(view))return loadingBonanza(req,res);
+  if(['loading-bonanza-overview','loading-bonanza-settings','loading-bonanza-fund'].includes(view))return loadingBonanza(req,res);
   if(['report-catalog','report-page','report-overview'].includes(view))return reports(req,res);
   if(view!=null&&view!=='me')throw failure(400,'Invalid staff view.');
   if(view==='me'&&req.method!=='GET')throw failure(405,'Use GET for your staff session.');
