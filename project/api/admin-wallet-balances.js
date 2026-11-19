@@ -11,7 +11,8 @@ export function monimeAccountDisplayName(profile, roles, currency) {
   ].map(value => String(value || '').toLowerCase()).filter(role => labels[role]))]
     .sort((a, b) => ['rider', 'driver', 'merchant'].indexOf(a) - ['rider', 'driver', 'merchant'].indexOf(b));
   if (!roleList.length) return null;
-  const fullName = String(profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'MatMove User').trim().replace(/\\s+/g, ' ');
+  const fullName = String(profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')).trim().replace(/\s+/g, ' ');
+  if (!fullName) return null;
   const suffix = ' · ' + roleList.map(role => labels[role]).join('/') + ' · ' + currency;
   return fullName.slice(0, Math.max(1, 100 - suffix.length)).trim() + suffix;
 }
