@@ -54,7 +54,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
   };
   if(!lastVerified.current)setLoading(true);
   void refresh();
-  const timer=setInterval(()=>void refresh(),15000);
+  const timer=setInterval(()=>void refresh(),30000);
   window.addEventListener('online',refresh);
   return()=>{live=false;clearInterval(timer);window.removeEventListener('online',refresh);};
  },[session.user.id,session.access_token,reload]);
