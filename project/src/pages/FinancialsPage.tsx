@@ -5,7 +5,6 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {useAdminAccess,canAccess} from '@/lib/adminAccess';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '@/components/AdminLayout';
-import CashCollectionsManager from '@/components/CashCollectionsManager';
 
 type Row = {
   id: string;
@@ -104,12 +103,10 @@ export function FinancialsPage() {
     if(!allowed)return;
     const token=++generation.current;
     const valid=()=>mounted.current&&current.current===stamp&&generation.current===token;
-    setLoadedStamp(stamp);setWallets([]);
+    setLoadedStamp(stamp);
     setLoading(true);
     setError('');
     setGatewayError('');
-    setAccounts([]);
-    setPlatform(emptyPlatform);
 
     try {
       const {
@@ -256,7 +253,7 @@ export function FinancialsPage() {
     const metadata = wallet.metadata?.monime_account_id;
 
     if (
-      loading || error || gatewayError || loadedStamp!==stamp ||
+      error || gatewayError || loadedStamp!==stamp ||
       (direct && metadata && direct !== metadata) ||
       linkCounts.get(id) !== 1 ||
       account?.currency !== wallet.currency ||
@@ -366,7 +363,6 @@ export function FinancialsPage() {
     >
       
       <div className="mt-6 space-y-5">
-        <CashCollectionsManager />
         <div className="flex flex-wrap gap-3">
           <input
             value={search}
