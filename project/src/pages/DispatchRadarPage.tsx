@@ -94,7 +94,7 @@ function DispatchMiniMap({pickupPin,destinationPin}:{pickupPin:Booking['pickupPi
   return <div className="w-[112px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
     {mapAvailable
       ? <img src={staticUrl} alt="Map showing the saved pickup and destination route" onError={()=>setFailed(true)} className="block h-[70px] w-full object-cover"/>
-      : <div role="img" aria-label={saved?'Map preview unavailable':'Pickup or destination GPS not saved'} className="flex h-[70px] flex-col items-center justify-center gap-1 bg-slate-100 px-2 text-center">
+      : <div role="img" aria-label={saved?'Location pins saved':'Pickup or destination location not recorded'} className="flex h-[70px] flex-col items-center justify-center gap-1 bg-slate-100 px-2 text-center">
           <MapPin size={17} className="text-slate-500"/>
           <span className="text-[9px] font-semibold leading-tight text-slate-600">{saved?'Pins saved':'No GPS pins'}</span>
         </div>}
