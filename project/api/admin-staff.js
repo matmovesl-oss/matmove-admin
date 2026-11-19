@@ -2,6 +2,7 @@ import {createConciergeHandler} from '../server/admin-concierge.js';
 
 export const config = {maxDuration:30};
 import {createReferralAdminHandler} from '../server/admin-referrals.js';
+import {createLoadingBonanzaAdminHandler} from '../server/admin-loading-bonanza.js';
 
 import {createReportHandler} from '../server/admin-reports.js';
 import {requireAdmin, failure} from '../server/admin-auth.js';
@@ -20,6 +21,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
  const concierge=createConciergeHandler({authorize,env});
  const reports=createReportHandler({authorize,env});
  const referrals=createReferralAdminHandler({authorize,env});
+ const loadingBonanza=createLoadingBonanzaAdminHandler({authorize,env});
  return async(req,res)=>{
  res.setHeader('Cache-Control','no-store');
  if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Method not allowed.'});
@@ -27,6 +29,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   const view=req.query?.view??new URL(req.url||'/api/admin-staff','https://admin.invalid').searchParams.get('view');
   if(typeof view==='string'&&view.startsWith('concierge-'))return concierge(req,res);
   if(['referral-overview','referral-page','referral-settings','referral-recovery','referral-recovery-save'].includes(view))return referrals(req,res);
+  if(['loading-bonanza-overview','loading-bonanza-settings'].includes(view))return loadingBonanza(req,res);
   if(['report-catalog','report-page','report-overview'].includes(view))return reports(req,res);
   if(view!=null&&view!=='me')throw failure(400,'Invalid staff view.');
   if(view==='me'&&req.method!=='GET')throw failure(405,'Use GET for your staff session.');
