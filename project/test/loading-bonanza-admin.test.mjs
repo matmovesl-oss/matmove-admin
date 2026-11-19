@@ -7,7 +7,8 @@ test('Loading Bonanza admin API uses the existing staff endpoint and owner-only 
   const router = await readFile(new URL('../api/admin-staff.js', import.meta.url), 'utf8');
   assert.match(api, /authorize\(req, \['financials'\]/);
   assert.match(api, /access\.is_owner !== true/);
-  assert.match(api, /MONIME_ENVIRONMENT !== 'live'/);
+  assert.match(api, /function assertLiveMonime/);
+  assert.match(api, /token\.startsWith\('mon_test_'\)/);
   assert.match(api, /matmove_loading_bonanza_admin_overview/);
   assert.match(api, /matmove_loading_bonanza_admin_save/);
   assert.match(api, /matmove_loading_bonanza_funding_claim/);
