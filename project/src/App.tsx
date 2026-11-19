@@ -30,6 +30,7 @@ import AuditPage from './pages/AuditPage';
 import DispatchRadarPage from './pages/DispatchRadarPage';
 import { PricingPage } from './pages/PricingPage';
 import { TransactionsPage } from './pages/TransactionsPage';
+import CashPaymentsPage from './pages/CashPaymentsPage';
 
 import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
@@ -72,6 +73,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/travel" element={<Gate access={access} section="travel"><AdminTravelPage/></Gate>}/>
  <Route path="/events" element={<Gate access={access} section="events"><AdminEventsPage/></Gate>}/>
  <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage/></Gate>}/>
+ <Route path="/cash-payments" element={<Gate access={access} section="financials"><CashPaymentsPage/></Gate>}/>
  <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage/></Gate>}/>
  <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
  <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage/></Gate>}/>
