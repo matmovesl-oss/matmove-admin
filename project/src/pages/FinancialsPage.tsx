@@ -211,8 +211,9 @@ export function FinancialsPage() {
     setNotice('');
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || sessionData.session?.user.id !== access?.id) throw new Error('Your Admin sign-in changed. Reopen Financials.');
-      const token = sessionData.session.access_token;
+      const session = sessionData.session;
+      if (sessionError || !session || session.user.id !== access?.id) throw new Error('Your Admin sign-in changed. Reopen Financials.');
+      const token = session.access_token;
       let offset = 0;
       const totals = { updated: 0, unchanged: 0, skipped: 0, failed: 0 };
       let complete = false;
