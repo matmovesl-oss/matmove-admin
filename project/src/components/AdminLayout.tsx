@@ -405,7 +405,7 @@ export default function AdminLayout({
           </div>
         </header>
 
-        <main ref={mainRef} className="flex-1 overflow-auto p-4 sm:p-6">
+        <main ref={mainRef} className="flex-1 overflow-auto scroll-smooth p-4 sm:p-6">
           {children}
         </main>
       </div>
