@@ -392,7 +392,7 @@ export default function AdminLayout({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-flex ${networkOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{networkOnline ? 'Online' : 'Offline · showing saved view'}</span>
+            <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-flex ${networkOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{networkOnline ? 'Online' : 'Offline · showing last view'}</span>
             <AdminAssistance key={access?.id || 'signed-out'} />
           </div>
         </header>
