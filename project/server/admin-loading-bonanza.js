@@ -12,6 +12,18 @@ function sourceFor(env) {
   return id;
 }
 
+
+function assertLiveMonime(env, message) {
+  const configured = env.MONIME_ENVIRONMENT || null;
+  const deploymentMode = env.VERCEL_ENV === 'production' ? 'live' : env.VERCEL_ENV === 'preview' ? 'test' : null;
+  const expected = deploymentMode || configured;
+  const token = String(env.MONIME_API_KEY || '');
+  const actual = token.startsWith('mon_test_') ? 'test' : token.startsWith('mon_') ? 'live' : 'unknown';
+  if ((configured && deploymentMode && configured !== deploymentMode) || expected !== 'live' || actual !== 'live' || !env.MONIME_SPACE_ID) {
+    throw failure(503, message);
+  }
+}
+
 async function rpc(client, name, args) {
   const result = await client.rpc(name, args);
   if (result.error) {
@@ -33,7 +45,8 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
       const write = view !== 'loading-bonanza-overview';
       if (req.method !== (write ? 'POST' : 'GET')) throw failure(405, 'Method not allowed.');
       const { client, user, access } = await authorize(req, ['financials'], { env });
-      if (req.query?.actor !== user.id) throw failure(409, 'Your signed-in account changed. Reopen Loading Bonanza.');
+      const actor = req.query?.actor || new URL(req.url || '/api/admin-staff', 'https://admin.invalid').searchParams.get('actor');
+      if (actor !== user.id) throw failure(409, 'Your signed-in account changed. Reopen Loading Bonanza.');
 
 
       if (view === 'loading-bonanza-fund') {
@@ -47,11 +60,7 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
             BigInt(body.amountMinor) > 9000000000000000n || body.confirmed !== true) {
           throw failure(400, 'Review and confirm the exact referral treasury funding amount.');
         }
-        const mode = env.MONIME_ENVIRONMENT || (env.VERCEL_ENV === 'production' ? 'live' : null);
-        const tokenMode = String(env.MONIME_API_KEY || '').startsWith('mon_test_') ? 'test' : String(env.MONIME_API_KEY || '').startsWith('mon_') ? 'live' : 'unknown';
-        if (mode !== 'live' || tokenMode !== 'live' || !env.MONIME_SPACE_ID) {
-          throw failure(503, 'Live Monime settings must be configured before funding the referral treasury.');
-        }
+        assertLiveMonime(env, 'Live Monime settings must be configured before funding the referral treasury.');
         const source = env.MONIME_MAIN_ACCOUNT_ID;
         const destination = sourceFor(env);
         if (!/^fac-[A-Za-z0-9_-]+$/.test(source || '') || source === destination) {
@@ -153,8 +162,9 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
           body.confirmed !== true) {
         throw failure(400, 'Review and confirm the minimum top-up, campaign budget and reason.');
       }
-      if (body.enabled && (env.MONIME_ENVIRONMENT !== 'live' || !String(env.MONIME_API_KEY || '').startsWith('mon_') || String(env.MONIME_API_KEY || '').startsWith('mon_test_') || !env.MONIME_SPACE_ID || !env.CRON_SECRET)) {
-        throw failure(503, 'Live Monime and scheduled reconciliation settings must be configured before activating cashback.');
+      if (body.enabled) {
+        assertLiveMonime(env, 'Live Monime and scheduled reconciliation settings must be configured before activating cashback.');
+        if (!env.CRON_SECRET) throw failure(503, 'Scheduled reconciliation must be configured before activating cashback.');
       }
       const source = sourceFor(env);
       const saved = await rpc(client, 'matmove_loading_bonanza_admin_save', {
