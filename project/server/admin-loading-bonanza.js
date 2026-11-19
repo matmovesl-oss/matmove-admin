@@ -47,7 +47,9 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
             BigInt(body.amountMinor) > 9000000000000000n || body.confirmed !== true) {
           throw failure(400, 'Review and confirm the exact referral treasury funding amount.');
         }
-        if (env.MONIME_ENVIRONMENT !== 'live' || !env.MONIME_API_KEY || !env.MONIME_SPACE_ID) {
+        const mode = env.MONIME_ENVIRONMENT || (env.VERCEL_ENV === 'production' ? 'live' : null);
+        const tokenMode = String(env.MONIME_API_KEY || '').startsWith('mon_test_') ? 'test' : String(env.MONIME_API_KEY || '').startsWith('mon_') ? 'live' : 'unknown';
+        if (mode !== 'live' || tokenMode !== 'live' || !env.MONIME_SPACE_ID) {
           throw failure(503, 'Live Monime settings must be configured before funding the referral treasury.');
         }
         const source = env.MONIME_MAIN_ACCOUNT_ID;
@@ -145,6 +147,7 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
           !digits(body.minimumTopupMinor) || !digits(body.budgetMinor) ||
           BigInt(body.minimumTopupMinor) <= 0n || BigInt(body.minimumTopupMinor) > 9000000000000000n ||
           BigInt(body.budgetMinor) > 9000000000000000n ||
+          (body.enabled === true && BigInt(body.budgetMinor) === 0n) ||
           typeof body.enabled !== 'boolean' ||
           typeof body.reason !== 'string' || body.reason.trim().length < 3 || body.reason.trim().length > 500 ||
           body.confirmed !== true) {
