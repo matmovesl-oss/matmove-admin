@@ -40,18 +40,23 @@ function Denied({message='Access denied. This section has not been assigned to y
 function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
 function GameGate({access}:{access:AdminAccess}){const loc=useLocation();const tab=new URLSearchParams(loc.search).get('tab');if(!tab){const first=['overview','players','entries','winnings','settings','recovery'].find(t=>canAccess(access,`games.${t}`));return first?<Navigate to={`/games?tab=${first}`} replace/>:<Denied/>;}if(!['overview','players','entries','winnings','settings','recovery'].includes(tab))return <Denied/>;return <Gate access={access} section={`games.${tab}`}><GamesPage/></Gate>;}
 function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean;onRecoveryDone:()=>void}){
- const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();
+ const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();const lastVerified=useRef<AdminAccess|null>(null);
  useEffect(()=>{
   let live=true,inFlight=false;
+  if(lastVerified.current?.id!==session.user.id)lastVerified.current=null;
   const refresh=async()=>{
-   if(inFlight)return;inFlight=true;
-   try{const row=await loadAdminSession(supabase,session);if(live){setAccess(row);setError('');}}
-   catch(e){if(live){setAccess(null);setError(e instanceof Error?e.message:'Unable to verify staff permissions.');}}
+   if(inFlight)return;
+   if(typeof navigator!=='undefined'&&!navigator.onLine){if(!lastVerified.current){setError('Connect to the internet to verify your MatMove Admin access.');setLoading(false);}return;}
+   inFlight=true;
+   try{const row=await loadAdminSession(supabase,session);if(live){lastVerified.current=row;setAccess(row);setError('');}}
+   catch(e){if(live){const message=e instanceof Error?e.message:'Unable to verify staff permissions.';const networkFailure=(typeof navigator!=='undefined'&&!navigator.onLine)||/failed to fetch|network|timeout|offline|load failed/i.test(message);if(networkFailure&&lastVerified.current?.id===session.user.id){setAccess(lastVerified.current);setError('Connection interrupted. Showing the last verified admin view; actions will resume when you are back online.');}else{lastVerified.current=null;setAccess(null);setError(message);}}}
    finally{inFlight=false;if(live)setLoading(false);}
   };
-  setAccess(null);setLoading(true);void refresh();
+  if(!lastVerified.current)setLoading(true);
+  void refresh();
   const timer=setInterval(()=>void refresh(),15000);
-  return()=>{live=false;clearInterval(timer);};
+  window.addEventListener('online',refresh);
+  return()=>{live=false;clearInterval(timer);window.removeEventListener('online',refresh);};
  },[session.user.id,session.access_token,reload]);
  async function finished(){const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
 
