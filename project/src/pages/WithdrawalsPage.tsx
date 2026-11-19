@@ -37,8 +37,8 @@ export default function WithdrawalsPage() {
   useEffect(() => {
     void fetchRealPayouts();
     const onOnline = () => { void fetchRealPayouts(); };
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
+    window.addEventListener?.('online', onOnline);
+    return () => window.removeEventListener?.('online', onOnline);
   }, []);
 
   const stats = useMemo(() => {
