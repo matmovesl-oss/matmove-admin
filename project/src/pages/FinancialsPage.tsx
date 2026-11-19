@@ -358,7 +358,7 @@ export function FinancialsPage() {
   }
 
   if(!allowed)return <AdminLayout title="Financial & Wallets"><p role="alert" className="p-6">Access denied.</p></AdminLayout>;
-  if(loadedStamp!==stamp)return <AdminLayout title="Financial & Wallets"><p className="p-6">Loading wallets...</p></AdminLayout>;
+  if(loadedStamp!==stamp)return <AdminLayout title="Financial & Wallets"><p className="p-6">Loading customer wallets...</p></AdminLayout>;
 
   return (
     <AdminLayout
