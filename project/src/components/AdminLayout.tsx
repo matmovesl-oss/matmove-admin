@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Megaphone,
+  MessageCircle,
   Settings,
   Send,
   ShieldCheck,
@@ -39,6 +40,7 @@ interface AdminLayoutProps {
 const navItems = [
   { key: 'dashboard', name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
   { key: 'notifications', name: 'Customer Messages', path: '/notifications', icon: Send },
+  { key: 'support', name: 'Customer Support', path: '/support', icon: MessageCircle },
   { key: 'notifications', name: 'Homepage Posts', path: '/homepage-posts', icon: Megaphone },
   { key: 'concierge', name: 'Concierge', path: '/concierge', icon: ClipboardCheck },
   { key: 'dispatch', name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
@@ -75,6 +77,7 @@ export default function AdminLayout({
     try { return sessionStorage.getItem('matmove-admin-sidebar-collapsed') === '1'; } catch { return false; }
   });
   const [networkOnline, setNetworkOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const mainRef = useRef<HTMLElement | null>(null);
   const sidebarNavRef = useRef<HTMLElement | null>(null);
 
