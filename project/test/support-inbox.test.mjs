@@ -64,7 +64,7 @@ test('Support requests are private, durable, idempotent and two-way; staff acces
 
   const ownRows=await db.query('select count(*)::int n from public.matmove_support_conversations');
   assert.equal(ownRows.rows[0].n,1);
-  await assert.rejects(()=>db.exec('insert into public.matmove_support_conversations(customer_id,request_key,subject,category) values (\\''+other+'\\',\\''+secondKey+'\\',\\'No access\\',\\'other\\')'),/permission denied/);
+  await assert.rejects(()=>db.query('insert into public.matmove_support_conversations(customer_id,request_key,subject,category) values ($1,$2,$3,$4)',[other,secondKey,'No access','other']),/permission denied/);
 
   await as(db,other);
   const otherCount=(await db.query('select count(*)::int n from public.matmove_support_conversations')).rows[0].n;
