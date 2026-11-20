@@ -112,7 +112,7 @@ export default function CashCollectionsManager() {
         throw new Error('Cash collection report returned an invalid response.');
       }
       setRecords(result.records);
-      setSummary(result.summary);
+      if (!bookingReference) setSummary(result.summary);
       setCashEnabled(result.cashEnabled === true);
       setProviderEnvironment(typeof result.providerEnvironment === 'string' ? result.providerEnvironment : null);
       const configured = result.feeAccounts;
