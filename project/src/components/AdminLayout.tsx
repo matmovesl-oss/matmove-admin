@@ -76,6 +76,7 @@ export default function AdminLayout({
   });
   const [networkOnline, setNetworkOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
   const mainRef = useRef<HTMLElement | null>(null);
+  const sidebarNavRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const online = () => setNetworkOnline(true);
@@ -105,6 +106,26 @@ export default function AdminLayout({
     element.addEventListener('scroll', persist, { passive: true });
     return () => { window.cancelAnimationFrame(frame); persist(); observer?.disconnect(); element.removeEventListener('scroll', persist); };
   }, [location.pathname, location.search]);
+  useEffect(() => {
+    const element = sidebarNavRef.current;
+    if (!element) return;
+    const key = 'matmove-admin-sidebar-scroll-position';
+    let saved = 0;
+    try { saved = Math.max(0, Number(sessionStorage.getItem(key) || 0)); } catch { /* Scroll restoration is best-effort. */ }
+    const restore = () => {
+      if (!element.isConnected) return;
+      const max = Math.max(0, element.scrollHeight - element.clientHeight);
+      element.scrollTop = Math.min(saved, max);
+    };
+    const frame = window.requestAnimationFrame(restore);
+    const persist = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* Ignore unavailable storage. */ } };
+    element.addEventListener('scroll', persist, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      persist();
+      element.removeEventListener('scroll', persist);
+    };
+  }, []);
   const [gamesExpanded, setGamesExpanded] = useState(location.pathname === '/games');
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
@@ -197,7 +218,7 @@ export default function AdminLayout({
         </div>
 
         {/* NAVIGATION */}
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4 custom-scrollbar">
+        <nav ref={sidebarNavRef} className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4 custom-scrollbar">
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const isActive =
