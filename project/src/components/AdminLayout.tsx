@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Activity,
+  MessageCircle,
   ChevronDown,
   ArrowRightLeft,
   Car,
@@ -38,7 +39,8 @@ interface AdminLayoutProps {
 
 const navItems = [
   { key: 'dashboard', name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
-  { key: 'notifications', name: 'Customer Messages', path: '/notifications', icon: Send },
+  { key: 'support', name: 'Customer Support', path: '/support', icon: MessageCircle },
+  { key: 'notifications', name: 'Customer Notifications', path: '/notifications', icon: Send },
   { key: 'notifications', name: 'Homepage Posts', path: '/homepage-posts', icon: Megaphone },
   { key: 'concierge', name: 'Concierge', path: '/concierge', icon: ClipboardCheck },
   { key: 'dispatch', name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
