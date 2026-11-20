@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Search, X, Eye } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -56,7 +56,7 @@ function State({ value }: { value: string }) {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{value.replace(/_/g, ' ')}</span>;
 }
 
-function Detail({ label, value }: { label: string; value: React.ReactNode }) {
+function Detail({ label, value }: { label: string; value: ReactNode }) {
   return <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
     <div className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</div>
@@ -145,7 +145,7 @@ export default function CashCollectionsManager() {
     ].some(value => String(value || '').toLowerCase().includes(term)));
   }, [records, search]);
 
-  function submitSearch(event: React.FormEvent<HTMLFormElement>) {
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const term = search.trim();
     if (!term) {
