@@ -69,7 +69,7 @@ test('additive SQL accepts notification grants without reviving removed staff or
    await f.session(target,'authenticated');await assert.rejects(()=>f.rpc('matmove_staff_save',[owner,target,'staff@example.com','Forged',['notifications'],'Communications',true,false]),/permission denied/);
    await assert.rejects(()=>save(['staff'],other),/Only the active owner/);await assert.rejects(()=>save(['notifications','super_admin']),/Invalid assignments/);await assert.rejects(()=>save(['notifications','notifications']),/Invalid assignments/);
   });
-  await t.test('all twenty-six checked assignments are accepted, while malformed values fail atomically',async()=>{
+  await t.test('all twenty-seven checked assignments are accepted, while malformed values fail atomically',async()=>{
    await save(PERMISSION_KEYS);await f.pg.exec('reset role');assert.equal((await f.pg.query('select jsonb_array_length(permissions) n from matmove_staff_access where id=$1',[target])).rows[0].n,27);
    await assert.rejects(()=>save({permissions:['notifications']}),/Invalid assignments/);await assert.rejects(()=>save(null),/Invalid assignments/);await assert.rejects(()=>save([]),/Invalid assignments/);
   });
