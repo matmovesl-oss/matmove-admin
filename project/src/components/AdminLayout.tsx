@@ -40,7 +40,7 @@ interface AdminLayoutProps {
 const navItems = [
   { key: 'dashboard', name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
   { key: 'support', name: 'Customer Support', path: '/support', icon: MessageCircle },
-  { key: 'notifications', name: 'Customer Notifications', path: '/notifications', icon: Send },
+  { key: 'notifications', name: 'Customer Messages', path: '/notifications', icon: Send },
   { key: 'notifications', name: 'Homepage Posts', path: '/homepage-posts', icon: Megaphone },
   { key: 'concierge', name: 'Concierge', path: '/concierge', icon: ClipboardCheck },
   { key: 'dispatch', name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
