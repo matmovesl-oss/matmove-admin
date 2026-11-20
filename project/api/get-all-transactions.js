@@ -1,6 +1,7 @@
 import { requireAdmin } from '../server/admin-auth.js';
 
 const EVENT_ID = /^wke-[A-Za-z0-9_-]{1,120}$/;
+const CASH_BOOKING_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function missingReviewQueue(error) {
   const message = String(error?.message || '');
@@ -42,6 +43,11 @@ export function createHandler({
       );
 
       if (view === 'cash-collections') {
+        const bookingReference = req.query?.bookingReference;
+        if (bookingReference !== undefined &&
+          (typeof bookingReference !== 'string' || !CASH_BOOKING_ID.test(bookingReference.trim()))) {
+          return res.status(400).json({ available: false, error: 'Enter a complete valid booking reference.' });
+        }
         const settings = await client
           .from('matmove_cash_ride_settings')
           .select('enabled,provider_environment,fee_hold_account_id,fee_revenue_account_id')
@@ -55,11 +61,12 @@ export function createHandler({
           });
         }
 
-        const payments = await client
+        let paymentQuery = client
           .from('matmove_cash_ride_payments')
           .select('booking_id,rider_id,driver_id,fare_minor,driver_cash_minor,matmove_fee_minor,currency,status,driver_cash_confirmed_at,rider_cash_confirmed_at,created_at,updated_at')
-          .order('created_at', { ascending: false })
-          .limit(100);
+          .order('created_at', { ascending: false });
+        if (bookingReference) paymentQuery = paymentQuery.eq('booking_id', bookingReference.trim());
+        const payments = await paymentQuery.limit(bookingReference ? 1 : 100);
 
         if (payments.error) {
           return res.status(503).json({
@@ -245,7 +252,7 @@ export function createHandler({
             revenueMatchesDeployment
           },
           source: 'matmove_cash_ride_payments',
-          limit: 100,
+          limit: bookingReference ? 1 : 100,
           records,
           summary
         });
