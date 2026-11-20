@@ -111,3 +111,37 @@ test('refund recipients and executions exclude active Admin staff even when thei
  assert.match(api,/profile\.data\.is_payroll_staff===true\|\|staff\.data/);
  assert.match(api,/Staff accounts cannot receive customer refunds/);
 });
+
+
+test('cash collection manager searches exact booking references and opens full read-only payment details', async () => {
+  const [ui, api] = await Promise.all([
+    read('src/components/CashCollectionsManager.tsx'),
+    read('api/get-all-transactions.js')
+  ]);
+  assert.match(ui, /Search payments/);
+  assert.match(ui, /Booking reference, rider, driver or phone ending/);
+  assert.match(ui, /CASH_BOOKING_ID\.test\(term\)/);
+  assert.match(ui, /role="dialog"/);
+  assert.match(ui, /Cash handover confirmations/);
+  assert.match(ui, /Fee reserve, capture and refund/);
+  assert.match(ui, /Audit history/);
+  assert.match(api, /CASH_BOOKING_ID/);
+  assert.match(api, /paymentQuery\.eq\('booking_id', bookingReference\.trim\(\)\)/);
+  assert.match(api, /limit\(bookingReference \? 1 : 100\)/);
+});
+
+test('cash collection search preserves last verified results after an outage and never creates a settlement action', async () => {
+  const ui = await read('src/components/CashCollectionsManager.tsx');
+  assert.match(ui, /Keep the last successful report on screen/);
+  assert.match(ui, /Opening a payment is read-only/);
+  assert.doesNotMatch(ui, /approve|release|capturePayment|refundPayment/i);
+});
+
+test('Admin sidebar remembers its own scroll position while route layouts remount', async () => {
+  const layout = await read('src/components/AdminLayout.tsx');
+  assert.match(layout, /sidebarNavRef/);
+  assert.match(layout, /matmove-admin-sidebar-scroll-position/);
+  assert.match(layout, /element\.scrollTop = Math\.min\(saved, max\)/);
+  assert.match(layout, /element\.addEventListener\('scroll', persist/);
+  assert.match(layout, /return \(\) => \{/);
+});
