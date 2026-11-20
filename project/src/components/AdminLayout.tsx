@@ -138,6 +138,34 @@ export default function AdminLayout({
 
   const [signingOut, setSigningOut] = useState(false);
   const owner = access?.is_active === true && access?.is_owner === true;
+  const supportAllowed = canAccess(access, 'support');
+
+  useEffect(() => {
+    if (!supportAllowed || !access?.id) { setSupportUnreadCount(0); return; }
+    let live = true, inFlight = false;
+    const refreshSupportCount = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const { data, error } = await supabase.rpc('matmove_support_admin_list', { p_status: 'all' });
+        if (error) throw error;
+        if (!live || data?.actor_id !== access.id || !Array.isArray(data.items)) return;
+        const count = data.items.reduce((total: number, ticket: any) => {
+          const unread = Number(ticket?.unread_count);
+          return total + (Number.isSafeInteger(unread) && unread > 0 ? unread : 0);
+        }, 0);
+        setSupportUnreadCount(count);
+      } catch { /* Sidebar badge is informational; the inbox remains the source of truth. */ }
+      finally { inFlight = false; }
+    };
+    void refreshSupportCount();
+    const channel = supabase.channel('matmove-admin-support-sidebar-' + access.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matmove_support_conversations' }, () => void refreshSupportCount())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matmove_support_messages' }, () => void refreshSupportCount())
+      .subscribe();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshSupportCount(); }, 20000);
+    return () => { live = false; window.clearInterval(timer); void supabase.removeChannel(channel); };
+  }, [supportAllowed, access?.id]);
 
   async function handleSignOut() {
     if (signingOut) return;
