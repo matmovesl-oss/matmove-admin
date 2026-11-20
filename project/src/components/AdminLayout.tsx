@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Megaphone,
+  MessageCircle,
   Settings,
   Send,
   ShieldCheck,
@@ -39,6 +40,7 @@ interface AdminLayoutProps {
 const navItems = [
   { key: 'dashboard', name: 'Overview', path: '/dashboard', icon: LayoutDashboard },
   { key: 'notifications', name: 'Customer Messages', path: '/notifications', icon: Send },
+  { key: 'support', name: 'Customer Support', path: '/support', icon: MessageCircle },
   { key: 'notifications', name: 'Homepage Posts', path: '/homepage-posts', icon: Megaphone },
   { key: 'concierge', name: 'Concierge', path: '/concierge', icon: ClipboardCheck },
   { key: 'dispatch', name: 'Dispatch Radar', path: '/dispatch', icon: Activity },
@@ -75,6 +77,7 @@ export default function AdminLayout({
     try { return sessionStorage.getItem('matmove-admin-sidebar-collapsed') === '1'; } catch { return false; }
   });
   const [networkOnline, setNetworkOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const mainRef = useRef<HTMLElement | null>(null);
   const sidebarNavRef = useRef<HTMLElement | null>(null);
 
@@ -112,17 +115,40 @@ export default function AdminLayout({
     const key = 'matmove-admin-sidebar-scroll-position';
     let saved = 0;
     try { saved = Math.max(0, Number(sessionStorage.getItem(key) || 0)); } catch { /* Scroll restoration is best-effort. */ }
-    const restore = () => {
-      if (!element.isConnected) return;
-      const max = Math.max(0, element.scrollHeight - element.clientHeight);
-      element.scrollTop = Math.min(saved, max);
-    };
-    const frame = window.requestAnimationFrame(restore);
+    let restored = false, frames = 0, frame = 0;
+    let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
     const persist = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* Ignore unavailable storage. */ } };
+    const restore = () => {
+      if (restored || !element.isConnected) return;
+      const max = Math.max(0, element.scrollHeight - element.clientHeight);
+      // Wait for the new route's sidebar and expanded submenu to finish layout.
+      if (max >= saved || frames >= 30) {
+        element.scrollTop = Math.min(saved, max);
+        restored = true;
+        resizeObserver?.disconnect();
+        mutationObserver?.disconnect();
+        return;
+      }
+      frames += 1;
+      frame = window.requestAnimationFrame(restore);
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(restore);
+      resizeObserver.observe(element);
+      Array.from(element.children).forEach(child => resizeObserver?.observe(child));
+    }
+    if (typeof MutationObserver !== 'undefined') {
+      mutationObserver = new MutationObserver(restore);
+      mutationObserver.observe(element, { childList: true, subtree: true });
+    }
+    frame = window.requestAnimationFrame(restore);
     element.addEventListener('scroll', persist, { passive: true });
     return () => {
       window.cancelAnimationFrame(frame);
       persist();
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
       element.removeEventListener('scroll', persist);
     };
   }, []);
@@ -135,6 +161,34 @@ export default function AdminLayout({
 
   const [signingOut, setSigningOut] = useState(false);
   const owner = access?.is_active === true && access?.is_owner === true;
+  const supportAllowed = canAccess(access, 'support');
+
+  useEffect(() => {
+    if (!supportAllowed || !access?.id) { setSupportUnreadCount(0); return; }
+    let live = true, inFlight = false;
+    const refreshSupportCount = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const { data, error } = await supabase.rpc('matmove_support_admin_list', { p_status: 'all' });
+        if (error) throw error;
+        if (!live || data?.actor_id !== access.id || !Array.isArray(data.items)) return;
+        const count = data.items.reduce((total: number, ticket: any) => {
+          const unread = Number(ticket?.unread_count);
+          return total + (Number.isSafeInteger(unread) && unread > 0 ? unread : 0);
+        }, 0);
+        setSupportUnreadCount(count);
+      } catch { /* Sidebar badge is informational; the inbox remains the source of truth. */ }
+      finally { inFlight = false; }
+    };
+    void refreshSupportCount();
+    const channel = supabase.channel('matmove-admin-support-sidebar-' + access.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matmove_support_conversations' }, () => void refreshSupportCount())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matmove_support_messages' }, () => void refreshSupportCount())
+      .subscribe();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshSupportCount(); }, 20000);
+    return () => { live = false; window.clearInterval(timer); void supabase.removeChannel(channel); };
+  }, [supportAllowed, access?.id]);
 
   async function handleSignOut() {
     if (signingOut) return;
@@ -174,6 +228,7 @@ export default function AdminLayout({
   };
 
   const closeSidebar = () => setSidebarOpen(false);
+  const persistSidebarScroll = () => { const element = sidebarNavRef.current; if (element) { try { sessionStorage.setItem('matmove-admin-sidebar-scroll-position', String(element.scrollTop)); } catch { /* Scroll preservation is optional. */ } } };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
@@ -218,7 +273,7 @@ export default function AdminLayout({
         </div>
 
         {/* NAVIGATION */}
-        <nav ref={sidebarNavRef} className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4 custom-scrollbar">
+        <nav ref={sidebarNavRef} onClickCapture={persistSidebarScroll} className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4 custom-scrollbar">
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -369,7 +424,8 @@ export default function AdminLayout({
                 }`}
               >
                 <Icon size={18} className={isActive ? 'text-indigo-500' : 'text-slate-500'} />
-                {item.name}
+                <span className="min-w-0 flex-1">{item.name}</span>
+                {item.key === 'support' && supportUnreadCount > 0 && <span aria-label={supportUnreadCount + ' unread support messages'} className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black text-white">{supportUnreadCount > 9 ? '9+' : supportUnreadCount}</span>}
               </Link>
             );
           })}
@@ -378,13 +434,13 @@ export default function AdminLayout({
         {/* ADMIN ACCOUNT */}
         <div className="shrink-0 border-t border-slate-800 p-4">
           {owner ? (
-            <div className="mb-3 rounded-xl border border-amber-700/30 bg-amber-950/20 p-3">
-              <p className="truncate text-xs font-bold text-amber-400">MAIN SUPER ADMIN</p>
-              <p className="mt-1 truncate text-xs text-slate-400">{access?.email || access?.full_name || 'Verified owner'}</p>
-              <p className="mt-1 text-[10px] text-emerald-400">Full administrative access</p>
+            <div className="mb-2 rounded-lg border border-amber-700/30 bg-amber-950/20 px-2.5 py-2">
+              <p className="truncate text-[10px] font-bold text-amber-400">MAIN SUPER ADMIN</p>
+              <p className="truncate text-[10px] text-slate-400">{access?.email || access?.full_name || 'Verified owner'}</p>
+              <p className="text-[9px] text-emerald-400">Full administrative access</p>
             </div>
           ) : access ? (
-            <div className="mb-3 px-2 text-xs text-slate-400">
+            <div className="mb-2 px-2 text-[11px] leading-4 text-slate-400">
               <p className="truncate font-semibold text-slate-200">{access.full_name || access.email}</p>
               {access.department && <p className="mt-0.5 text-slate-500">{access.department}</p>}
             </div>
@@ -428,7 +484,7 @@ export default function AdminLayout({
           </div>
         </header>
 
-        <main ref={mainRef} className="flex-1 overflow-auto scroll-smooth p-4 sm:p-6">
+        <main ref={mainRef} className="flex-1 overflow-auto p-4 sm:p-6">
           {children}
         </main>
       </div>

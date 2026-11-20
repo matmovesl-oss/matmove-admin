@@ -6,6 +6,7 @@ import {CivitasAdministrativePage} from './pages/CivitasAdministrativePage';
 import {AdminTravelPage} from './pages/AdminTravelPage';
 import {AdminEventsPage} from './pages/AdminEventsPage';
 import NotificationsPage from './pages/NotificationsPage';
+import SupportInboxPage from './pages/SupportInboxPage';
 
 
 import ReportsPage from './pages/ReportsPage';
@@ -65,6 +66,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  return <AdminAccessContext.Provider value={access}>{error&&access?.is_active&&<div role="status" className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-lg">{error}</div>}{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
  <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
  <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
+ <Route path="/support" element={<Gate access={access} section="support"><SupportInboxPage/></Gate>}/>
  <Route path="/homepage-posts" element={<Gate access={access} section="notifications"><HomepagePostsPage/></Gate>}/>
  <Route path="/concierge" element={<Gate access={access} section="concierge"><ConciergePage/></Gate>}/>
  <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
