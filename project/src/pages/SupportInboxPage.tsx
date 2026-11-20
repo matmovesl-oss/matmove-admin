@@ -1,5 +1,5 @@
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {MessageCircle,RefreshCw,Search,Send,CheckCircle2,Clock3,UserRound,Inbox} from 'lucide-react';
+import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from 'react';
+import {MessageCircle,RefreshCw,Search,Send,UserRound,Inbox} from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import {canAccess,useAdminAccess} from '@/lib/adminAccess';
 import {supabase} from '@/lib/supabase';
@@ -88,7 +88,7 @@ export default function SupportInboxPage(){
   finally{setBusy(false);}
  }
 
- async function sendReply(e:React.FormEvent){
+ async function sendReply(e:FormEvent){
   e.preventDefault();const current=selectedRef.current,clean=draft.trim();
   if(!current||!clean||busy)return;
   setBusy(true);setError('');setNotice('');
