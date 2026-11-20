@@ -45,6 +45,7 @@ export const SECTION_GROUPS = [
   {
     label: 'Communications',
     items: [
+      ['support', 'Customer Support inbox', '/support'],
       ['notifications', 'Send customer notifications', '/notifications'],
     ],
   },
