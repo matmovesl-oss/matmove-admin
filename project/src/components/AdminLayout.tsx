@@ -235,7 +235,7 @@ export default function AdminLayout({
             if (item.key === 'travel') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div key="travel" className="rounded-xl border border-indigo-900/40 bg-indigo-950/20">
+                <div key="travel" className="rounded-xl border border-emerald-800/70 bg-emerald-900/35">
                   <button
                     type="button"
                     onClick={() => setTravelExpanded((o) => !o)}
@@ -243,13 +243,13 @@ export default function AdminLayout({
                       isActive ? 'text-sky-200' : 'text-emerald-50/90 hover:bg-emerald-900/70'
                     }`}
                   >
-                    <Bus size={18} className="text-indigo-400" />
+                    <Bus size={18} className="text-sky-200" />
                     <span className="flex-1">Travel on Bus</span>
                     <ChevronDown size={16} className={travelExpanded ? 'rotate-180' : ''} />
                   </button>
 
                   {travelExpanded && (
-                    <div className="mb-2 ml-5 space-y-1 border-l border-indigo-800 pl-3 pr-2">
+                    <div className="mb-2 ml-5 space-y-1 border-l border-sky-400/50 pl-3 pr-2">
                       {[
                         ['overview', 'Bus Capacity & Overview'],
                         ['manifest', 'Manifest & Approvals'],
@@ -263,7 +263,7 @@ export default function AdminLayout({
                           className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
                             isActive && selected === tab
                               ? 'bg-sky-500 text-white shadow-sm'
-                              : 'text-slate-400 hover:bg-indigo-900/40 hover:text-white'
+                              : 'text-slate-400 hover:bg-sky-500/20 hover:text-white'
                           }`}
                         >
                           {label}
@@ -322,7 +322,7 @@ export default function AdminLayout({
             if (item.key === 'games') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div key="games" className="rounded-xl border border-purple-900/40 bg-purple-950/20">
+                <div key="games" className="rounded-xl border border-emerald-800/70 bg-emerald-900/35">
                   <button
                     type="button"
                     onClick={() => setGamesExpanded((o) => !o)}
@@ -336,7 +336,7 @@ export default function AdminLayout({
                   </button>
 
                   {gamesExpanded && (
-                    <div className="mb-2 ml-5 space-y-1 border-l border-purple-800 pl-3 pr-2">
+                    <div className="mb-2 ml-5 space-y-1 border-l border-sky-400/50 pl-3 pr-2">
                       {[
                         ['overview', 'Overview'],
                         ['players', 'Players'],
@@ -352,7 +352,7 @@ export default function AdminLayout({
                           className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
                             isActive && selected === tab
                               ? 'bg-sky-500 text-white shadow-sm'
-                              : 'text-slate-300 hover:bg-purple-900/50 hover:text-white'
+                              : 'text-slate-300 hover:bg-sky-500/20 hover:text-white'
                           }`}
                         >
                           {label}
