@@ -413,7 +413,7 @@ export default function AdminLayout({
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-700"><UserRound size={16}/></span>
               <span className="min-w-0">
                 <span className="block max-w-[180px] truncate text-xs font-bold text-slate-900">{access.full_name || 'MatMove Admin'}</span>
-                <span className="block max-w-[180px] truncate text-[10px] text-slate-500">{owner ? 'Main super admin' : access.department || access.email}</span>
+                <span className="block max-w-[180px] truncate text-[10px] text-slate-500">{owner ? 'MAIN SUPER ADMIN' : access.department || access.email}</span>
               </span>
             </div>}
             <button type="button" disabled={signingOut} onClick={() => void handleSignOut()} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-[#073b2f] px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0b5a45] disabled:opacity-50" aria-label="Sign out">
