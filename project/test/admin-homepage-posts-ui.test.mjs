@@ -67,3 +67,27 @@ test('admin shell uses MatMove green and sky-blue active navigation and restores
  assert.match(layout,/MATMOVE OPERATIONS/);
  assert.match(layout,/access\.full_name/);
 });
+
+test('Edit opens the post editor in the visible viewport and focuses the title field',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/function beginEdit\(post:Post\)/);
+ assert.match(page,/onClick=\{\(\)=>beginEdit\(post\)\}/);
+ assert.match(page,/editorRef\.current\?\.scrollIntoView\(\{behavior:'smooth',block:'start'\}\)/);
+ assert.match(page,/editorTitleRef\.current\?\.focus\(\{preventScroll:true\}\)/);
+});
+test('Delete permanently removes the post and cleans up its uploaded artwork',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/call\(action,id,version,data\)/);
+ assert.match(page,/mutate\('delete',post\.id,post\.version\)/);
+ assert.match(page,/r\.deleted!==true/);
+ assert.match(page,/supabase\.storage\.from\(BUCKET\)\.remove\(\[r\.image_path\]\)/);
+ assert.match(page,/setPosts\(current=>current\.filter\(post=>post\.id!==id\)\)/);
+ assert.match(page,/Permanently delete this post and its uploaded image/);
+ assert.match(page,/row\.deleted_at&&row\.status!=='archived'/);
+});
+test('editing an already-published post saves its new content without unpublishing it',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/const result=await call\('save',draft\.id,draft\.version,data\)/);
+ assert.match(page,/if\(result\.status!=='published'\)/);
+ assert.match(page,/Post updated\. Your changes are live on the customer homepage/);
+});
