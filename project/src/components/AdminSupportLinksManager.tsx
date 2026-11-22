@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useState} from 'react';
-import {CheckCircle2,ExternalLink,Globe,MessageCircle,PencilLine,Plus,RefreshCw,Trash2,X} from 'lucide-react';
+import {CheckCircle2,Globe,MessageCircle,PencilLine,Plus,RefreshCw,Trash2,X} from 'lucide-react';
 import {supabase} from '@/lib/supabase';
 import {useAdminAccess} from '@/lib/adminAccess';
 
