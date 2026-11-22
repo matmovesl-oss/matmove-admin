@@ -51,3 +51,19 @@ test('homepage price validation accepts whole numbers and one or two decimal pla
  assert.match(page,/\^\\d\+\(\?:\\\.\\d\{1,2\}\)\?\$/);
  assert.match(page,/Number\(priceText\)>1000000/);
 });
+
+test('published homepage posts remain editable and saves update the existing post version',async()=>{
+ const page=await read('../src/pages/HomepagePostsPage.tsx');
+ assert.match(page,/post\.status==='archived'/);
+ assert.match(page,/call\('save',draft\.id,draft\.version,data\)/);
+ assert.match(page,/Post updated\. Your changes are live on the customer homepage/);
+ assert.match(page,/setDraft\(\{id:post\.id,[\s\S]*?version:post\.version\}\)/);
+});
+test('admin shell uses MatMove green and sky-blue active navigation and restores sidebar scroll after layout resize',async()=>{
+ const layout=await read('../src/components/AdminLayout.tsx');
+ assert.match(layout,/bg-\[#073b2f\]/);
+ assert.match(layout,/bg-sky-500/);
+ assert.match(layout,/new ResizeObserver\(restore\)/);
+ assert.match(layout,/MATMOVE OPERATIONS/);
+ assert.match(layout,/access\.full_name/);
+});
