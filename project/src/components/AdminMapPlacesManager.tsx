@@ -1,0 +1,68 @@
+import {useEffect,useState} from 'react';
+import {CheckCircle2,Globe,MapPin,PencilLine,Plus,RefreshCw,Trash2,X} from 'lucide-react';
+import {supabase} from '@/lib/supabase';
+import {useAdminAccess} from '@/lib/adminAccess';
+
+type Place={id:string;name:string;category:string;address:string;city:string|null;region:string|null;country_code:string;latitude:number;longitude:number;notes:string;is_active:boolean;display_order:number;version:number};
+type Draft={id:string|null;version:number;name:string;category:string;address:string;city:string;region:string;country_code:string;latitude:string;longitude:string;notes:string;is_active:boolean;display_order:number};
+const categories=[['pickup_hub','Pickup hub'],['terminal','Transport terminal'],['landmark','Landmark'],['collection_point','Collection point'],['depot','Depot / base'],['market','Market'],['service_point','Service point'],['other','Other']];
+const fresh=():Draft=>({id:null,version:0,name:'',category:'pickup_hub',address:'',city:'',region:'',country_code:'SL',latitude:'',longitude:'',notes:'',is_active:true,display_order:0});
+export default function AdminMapPlacesManager(){
+ const access=useAdminAccess(),actor=access?.id;
+ const [items,setItems]=useState<Place[]>([]),[draft,setDraft]=useState<Draft|null>(null),[deleteId,setDeleteId]=useState<string|null>(null);
+ const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ async function load(){
+  if(!actor)return;setLoading(true);setError('');
+  try{const {data,error}=await supabase.rpc('matmove_admin_map_places',{p_actor:actor,p_action:'list',p_id:null,p_expected:0,p_data:{}});
+   if(error)throw error;if(!Array.isArray(data?.items))throw new Error('Place directory response was not confirmed.');
+   setItems(data.items as Place[]);
+  }catch(e){setError(e instanceof Error?e.message:'MatMove places are unavailable.');}
+  finally{setLoading(false);}
+ }
+ useEffect(()=>{void load();},[]);
+ function edit(item:Place){setDraft({id:item.id,version:item.version,name:item.name,category:item.category,address:item.address,city:item.city||'',region:item.region||'',country_code:item.country_code,latitude:String(item.latitude),longitude:String(item.longitude),notes:item.notes||'',is_active:item.is_active,display_order:item.display_order});setDeleteId(null);setError('');setNotice('');}
+ async function save(e:React.FormEvent){
+  e.preventDefault();if(!draft||!actor||busy)return;
+  const lat=Number(draft.latitude),lng=Number(draft.longitude),country=draft.country_code.trim().toUpperCase();
+  if(!draft.name.trim()||!draft.address.trim()||!/^[A-Z]{2}$/.test(country)){setError('Enter a place name, address and two-letter country code.');return;}
+  if(!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lng)||lng < -180||lng>180){setError('Enter valid coordinates: latitude −90 to 90 and longitude −180 to 180.');return;}
+  if(!Number.isInteger(draft.display_order)||draft.display_order<0||draft.display_order>10000){setError('Display order must be between 0 and 10,000.');return;}
+  setBusy(true);setError('');setNotice('');
+  const data={name:draft.name.trim(),category:draft.category,address:draft.address.trim(),city:draft.city.trim()||null,region:draft.region.trim()||null,country_code:country,latitude:lat,longitude:lng,notes:draft.notes.trim(),is_active:draft.is_active,display_order:draft.display_order};
+  try{
+   const {data:result,error}=await supabase.rpc('matmove_admin_map_places',{p_actor:actor,p_action:'save',p_id:draft.id,p_expected:draft.version,p_data:data});
+   if(error)throw error;if(typeof result?.id!=='string'||!Number.isSafeInteger(Number(result.version)))throw new Error('Place save was not confirmed. Refresh and retry.');
+   setDraft(null);setNotice('MatMove place saved. Active places are now available in customer location search.');await load();
+  }catch(e){setError(e instanceof Error?e.message:'Place could not be saved.');}
+  finally{setBusy(false);}
+ }
+ async function remove(item:Place){
+  if(!actor||busy)return;setBusy(true);setError('');setNotice('');
+  try{const {data,error}=await supabase.rpc('matmove_admin_map_places',{p_actor:actor,p_action:'delete',p_id:item.id,p_expected:item.version,p_data:{}});
+   if(error)throw error;if(data?.id!==item.id||data?.deleted!==true)throw new Error('Place deletion was not confirmed.');
+   setItems(current=>current.filter(p=>p.id!==item.id));setDeleteId(null);setNotice('MatMove place permanently deleted.');await load();
+  }catch(e){setError(e instanceof Error?e.message:'Place could not be deleted.');}
+  finally{setBusy(false);}
+ }
+ return <div className="space-y-4">
+  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-emerald-800"><MapPin size={20}/></span><div><h2 className="font-black text-emerald-950">MatMove Places Directory</h2><p className="mt-1 text-xs leading-5 text-emerald-900">Maintain official pickup hubs, transport terminals, landmarks, markets, depots and collection points. These are curated MatMove locations; Google Places continues to provide worldwide address and landmark discovery.</p></div></div></div>
+  {error&&<p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}{notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+  <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-black text-slate-950">Curated locations</h3><p className="mt-1 text-xs text-slate-500">{items.filter(p=>p.is_active).length} active · {items.length} total</p></div><div className="flex gap-2"><button type="button" disabled={loading||busy} onClick={()=>void load()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-bold"><RefreshCw size={14}/> Refresh</button><button type="button" disabled={busy} onClick={()=>{setDraft(fresh());setError('');setNotice('');}} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#073b2f] px-3 text-xs font-bold text-white"><Plus size={14}/> Add place</button></div></div>
+  {loading?<p role="status" className="rounded-xl border bg-white p-4 text-sm text-slate-500">Loading MatMove places…</p>:items.length===0?<p className="rounded-xl border bg-white p-4 text-sm text-slate-500">No official MatMove places have been added. Add hubs, terminals and collection points as they are confirmed.</p>:<div className="space-y-2">{items.map(item=><article key={item.id} className="rounded-xl border border-slate-200 bg-white p-3"><div className="flex flex-wrap items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-50 text-sky-700"><MapPin size={18}/></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-900">{item.name}</p><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold">{categories.find(c=>c[0]===item.category)?.[1]||item.category}</span><span className={item.is_active?'rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800':'rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600'}>{item.is_active?'Published':'Hidden'}</span></div><p className="truncate text-xs text-slate-500">{item.address} · {[item.city,item.region,item.country_code].filter(Boolean).join(', ')}</p><p className="text-[10px] text-slate-400">{Number(item.latitude).toFixed(5)}, {Number(item.longitude).toFixed(5)}</p></div><a href={`https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-lg border px-3 text-xs font-bold text-slate-600">Map ↗</a><button type="button" disabled={busy} onClick={()=>edit(item)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border px-3 text-xs font-bold"><PencilLine size={13}/> Edit</button><button type="button" disabled={busy} onClick={()=>setDeleteId(deleteId===item.id?null:item.id)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-rose-200 px-3 text-xs font-bold text-rose-700"><Trash2 size={13}/> Delete</button></div>{deleteId===item.id&&<div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">Permanently remove {item.name} from MatMove place suggestions?<div className="mt-2 flex gap-2"><button type="button" disabled={busy} onClick={()=>void remove(item)} className="rounded-lg bg-rose-700 px-3 py-2 font-bold text-white">Confirm delete</button><button type="button" onClick={()=>setDeleteId(null)} className="rounded-lg border border-rose-300 px-3 py-2 font-bold">Cancel</button></div></div>}</article>)}</div>}
+  {draft&&<form onSubmit={save} className="space-y-4 rounded-2xl border border-sky-200 bg-white p-4 shadow-sm sm:p-5">
+   <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wider text-sky-700">{draft.id?'Edit MatMove place':'New MatMove place'}</p><h3 className="mt-1 font-black text-slate-950">{draft.name||'Place details'}</h3></div><button type="button" aria-label="Close place editor" onClick={()=>setDraft(null)} className="grid h-10 w-10 place-items-center rounded-xl border"><X size={17}/></button></div>
+   <div className="grid gap-3 sm:grid-cols-2">
+    <label className="block text-xs font-bold text-slate-700">Place name<input required minLength={2} maxLength={100} value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="e.g. Lumley Beach Pickup Point" className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label>
+    <label className="block text-xs font-bold text-slate-700">Category<select value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})} className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm">{categories.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+    <label className="block text-xs font-bold text-slate-700 sm:col-span-2">Full address / location description<input required minLength={2} maxLength={300} value={draft.address} onChange={e=>setDraft({...draft,address:e.target.value})} placeholder="Street, landmark, district or pickup description" className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label>
+    <label className="block text-xs font-bold text-slate-700">City<input value={draft.city} onChange={e=>setDraft({...draft,city:e.target.value})} maxLength={100} className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label>
+    <label className="block text-xs font-bold text-slate-700">Region / State<input value={draft.region} onChange={e=>setDraft({...draft,region:e.target.value})} maxLength={100} className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label>
+    <label className="block text-xs font-bold text-slate-700">Country code (ISO 2-letter)<input required value={draft.country_code} onChange={e=>setDraft({...draft,country_code:e.target.value.toUpperCase().slice(0,2)})} placeholder="SL" maxLength={2} className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label>
+    <div className="grid grid-cols-2 gap-2 sm:col-span-2"><label className="block text-xs font-bold text-slate-700">Latitude<input required type="number" min="-90" max="90" step="any" value={draft.latitude} onChange={e=>setDraft({...draft,latitude:e.target.value})} placeholder="8.4808" className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label><label className="block text-xs font-bold text-slate-700">Longitude<input required type="number" min="-180" max="180" step="any" value={draft.longitude} onChange={e=>setDraft({...draft,longitude:e.target.value})} placeholder="-13.2290" className="mt-1.5 min-h-11 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label></div>
+    <label className="block text-xs font-bold text-slate-700 sm:col-span-2">Notes (optional)<textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})} maxLength={500} rows={2} className="mt-1.5 w-full rounded-xl border bg-slate-50 p-3 text-sm font-normal"/></label>
+   </div>
+   <div className="grid gap-3 sm:grid-cols-2"><label className="flex min-h-11 items-center gap-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={draft.is_active} onChange={e=>setDraft({...draft,is_active:e.target.checked})} className="h-4 w-4 accent-emerald-700"/> Publish in customer place search</label><label className="block text-xs font-bold text-slate-700">Display order<input type="number" min={0} max={10000} value={draft.display_order} onChange={e=>setDraft({...draft,display_order:Number(e.target.value)})} className="mt-1 min-h-10 w-full rounded-xl border bg-slate-50 px-3 text-sm font-normal"/></label></div>
+   <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#073b2f] px-5 text-sm font-bold text-white disabled:opacity-50"><CheckCircle2 size={15}/>{busy?'Saving…':'Save place'}</button><button type="button" disabled={busy} onClick={()=>setDraft(null)} className="min-h-11 rounded-xl border px-4 text-sm font-semibold">Cancel</button></div>
+  </form>}
+ </div>;
+}

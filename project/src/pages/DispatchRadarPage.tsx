@@ -1,4 +1,5 @@
 import AdminTripReview from '@/components/AdminTripReview';
+import AdminMapPlacesManager from '@/components/AdminMapPlacesManager';
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, MapPin, Navigation } from 'lucide-react';
@@ -140,6 +141,7 @@ function StaleRideTickets({enabled,onOpen}:{enabled:boolean;onOpen:(bookingId:st
 
 export default function DispatchRadarPage() {
   const access = useAdminAccess(), allowed = canAccess(access, 'dispatch');
+  const [activeTab,setActiveTab]=useState<'radar'|'places'>('radar');
   const stamp = JSON.stringify([access?.id, access?.is_active, access?.is_owner, [...(access?.permissions || [])].sort()]);
   const current = useRef(stamp);
   current.current = stamp;
@@ -318,6 +320,11 @@ export default function DispatchRadarPage() {
         <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">Access denied. Dispatch has not been assigned.</p>
       ) : (
         <div className="space-y-4">
+          <div role="tablist" aria-label="Dispatch tools" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+            <button type="button" role="tab" aria-selected={activeTab==='radar'} onClick={()=>setActiveTab('radar')} className={activeTab==='radar'?'inline-flex min-h-10 items-center gap-2 rounded-xl bg-sky-500 px-4 text-sm font-bold text-white shadow-sm':'inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold text-slate-600 hover:bg-slate-100'}><Navigation size={16}/> Dispatch Radar</button>
+            <button type="button" role="tab" aria-selected={activeTab==='places'} onClick={()=>setActiveTab('places')} className={activeTab==='places'?'inline-flex min-h-10 items-center gap-2 rounded-xl bg-sky-500 px-4 text-sm font-bold text-white shadow-sm':'inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold text-slate-600 hover:bg-slate-100'}><MapPin size={16}/> MatMove Places</button>
+          </div>
+          {activeTab==='places'?<AdminMapPlacesManager/>:<>
           <StaleRideTickets enabled={allowed} onOpen={(id)=>{setSelected('');setSearchedTrip(id);setNotice('');setActionError('');}}/>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Latest 2,000 requests. Use date filters or search by rider, driver, location or booking ID. Full export remains available in Reports & CSV. Last synced: {ready && feed ? new Date(feed.generatedAt).toLocaleString() : 'Not yet synced'}.</p>
@@ -418,6 +425,7 @@ export default function DispatchRadarPage() {
             </>, document.body)}
             </div>
           ) : null}
+          </>}
         </div>
       )}
     </AdminLayout>
