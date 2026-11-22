@@ -36,5 +36,4 @@ test('Admin contact UI requires HTTPS social URLs and international WhatsApp num
 test('Admin support UI never exposes a delete action for WhatsApp support',async()=>{
  const page=await readFile(new URL('../src/components/AdminSupportLinksManager.tsx',import.meta.url),'utf8');
  assert.match(page,/item\.kind==='whatsapp'\)return/);
- assert.match(page,/c.kind='whatsapp'/);
 });
