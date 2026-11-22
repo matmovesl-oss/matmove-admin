@@ -16,9 +16,9 @@ test('Dispatch Radar provides a permission-gated MatMove Places tab without repl
 });
 
 test('Admin MatMove place directory uses the dispatch-authorized versioned Supabase RPC',async()=>{
- const [page,access]=await Promise.all([
+ const [page,registry]=await Promise.all([
   readFile(new URL('../src/components/AdminMapPlacesManager.tsx',import.meta.url),'utf8'),
-  readFile(new URL('../src/lib/adminAccess.tsx',import.meta.url),'utf8')
+  readFile(new URL('../shared/admin-permissions.js',import.meta.url),'utf8')
  ]);
  assert.match(page,/matmove_admin_map_places/);
  assert.match(page,/p_actor:actor/);
@@ -30,5 +30,5 @@ test('Admin MatMove place directory uses the dispatch-authorized versioned Supab
  assert.match(page,/longitude/);
  assert.match(page,/country_code/);
  assert.match(page,/Publish in customer place search/);
- assert.match(access,/dispatch/);
+ assert.match(registry,/\['dispatch',\s*'Dispatch Radar',\s*'\/dispatch'\]/);
 });
