@@ -25,6 +25,7 @@ import {
   BarChart3,
   ClipboardCheck,
   Percent,
+  UserRound,
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase';
@@ -120,11 +121,14 @@ export default function AdminLayout({
       element.scrollTop = Math.min(saved, max);
     };
     const frame = window.requestAnimationFrame(restore);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(restore) : null;
+    observer?.observe(element);
     const persist = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* Ignore unavailable storage. */ } };
     element.addEventListener('scroll', persist, { passive: true });
     return () => {
       window.cancelAnimationFrame(frame);
       persist();
+      observer?.disconnect();
       element.removeEventListener('scroll', persist);
     };
   }, []);
@@ -178,12 +182,12 @@ export default function AdminLayout({
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">
+    <div className="flex h-screen overflow-hidden bg-[#f5f9f8] font-sans">
       {sidebarOpen && (
         <button
           type="button"
           aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden"
+          className="fixed inset-0 z-40 bg-[#062b24]/70 lg:hidden"
           onClick={closeSidebar}
         />
       )}
@@ -191,10 +195,10 @@ export default function AdminLayout({
       {/* SIDEBAR */}
       <aside
         id="admin-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-slate-950 text-slate-300 transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-[#073b2f] text-emerald-50 transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
       >
         {/* BRAND */}
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-emerald-900/70 px-6">
           <div className="flex items-center">
             <img
               src="/logo.png"
@@ -204,7 +208,7 @@ export default function AdminLayout({
             <span className="text-lg font-bold tracking-wide text-white">
               MatMove
             </span>
-            <span className="ml-2 mt-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <span className="ml-2 mt-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-100/60">
               Admin
             </span>
           </div>
@@ -213,7 +217,7 @@ export default function AdminLayout({
             type="button"
             onClick={closeSidebar}
             aria-label="Close sidebar"
-            className="text-slate-400 hover:text-white lg:hidden"
+            className="text-emerald-100/70 hover:text-white lg:hidden"
           >
             <X size={20} />
           </button>
@@ -231,21 +235,21 @@ export default function AdminLayout({
             if (item.key === 'travel') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div key="travel" className="rounded-xl border border-indigo-900/40 bg-indigo-950/20">
+                <div key="travel" className="rounded-xl border border-emerald-800/70 bg-emerald-900/35">
                   <button
                     type="button"
                     onClick={() => setTravelExpanded((o) => !o)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${
-                      isActive ? 'text-indigo-400' : 'text-slate-300 hover:bg-slate-900'
+                      isActive ? 'text-sky-200' : 'text-emerald-50/90 hover:bg-emerald-900/70'
                     }`}
                   >
-                    <Bus size={18} className="text-indigo-400" />
+                    <Bus size={18} className="text-sky-200" />
                     <span className="flex-1">Travel on Bus</span>
                     <ChevronDown size={16} className={travelExpanded ? 'rotate-180' : ''} />
                   </button>
 
                   {travelExpanded && (
-                    <div className="mb-2 ml-5 space-y-1 border-l border-indigo-800 pl-3 pr-2">
+                    <div className="mb-2 ml-5 space-y-1 border-l border-sky-400/50 pl-3 pr-2">
                       {[
                         ['overview', 'Bus Capacity & Overview'],
                         ['manifest', 'Manifest & Approvals'],
@@ -258,8 +262,8 @@ export default function AdminLayout({
                           onClick={closeSidebar}
                           className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
                             isActive && selected === tab
-                              ? 'bg-indigo-700 text-white'
-                              : 'text-slate-400 hover:bg-indigo-900/40 hover:text-white'
+                              ? 'bg-sky-500 text-white shadow-sm'
+                              : 'text-slate-400 hover:bg-sky-500/20 hover:text-white'
                           }`}
                         >
                           {label}
@@ -280,7 +284,7 @@ export default function AdminLayout({
                     type="button"
                     onClick={() => setEventsExpanded((o) => !o)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${
-                      isActive ? 'text-sky-400' : 'text-slate-300 hover:bg-slate-900'
+                      isActive ? 'text-sky-400' : 'text-emerald-50/90 hover:bg-emerald-900/70'
                     }`}
                   >
                     <Ticket size={18} className="text-sky-400" />
@@ -301,7 +305,7 @@ export default function AdminLayout({
                           onClick={closeSidebar}
                           className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
                             isActive && selected === tab
-                              ? 'bg-sky-700 text-white'
+                              ? 'bg-sky-500 text-white shadow-sm'
                               : 'text-slate-400 hover:bg-sky-900/40 hover:text-white'
                           }`}
                         >
@@ -318,12 +322,12 @@ export default function AdminLayout({
             if (item.key === 'games') {
               const selected = new URLSearchParams(location.search).get('tab') || 'overview';
               return (
-                <div key="games" className="rounded-xl border border-purple-900/40 bg-purple-950/20">
+                <div key="games" className="rounded-xl border border-emerald-800/70 bg-emerald-900/35">
                   <button
                     type="button"
                     onClick={() => setGamesExpanded((o) => !o)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${
-                      isActive ? 'text-amber-300' : 'text-purple-200 hover:bg-slate-900'
+                      isActive ? 'text-sky-200' : 'text-emerald-50/90 hover:bg-emerald-900/70'
                     }`}
                   >
                     <Activity size={18} />
@@ -332,7 +336,7 @@ export default function AdminLayout({
                   </button>
 
                   {gamesExpanded && (
-                    <div className="mb-2 ml-5 space-y-1 border-l border-purple-800 pl-3 pr-2">
+                    <div className="mb-2 ml-5 space-y-1 border-l border-sky-400/50 pl-3 pr-2">
                       {[
                         ['overview', 'Overview'],
                         ['players', 'Players'],
@@ -347,8 +351,8 @@ export default function AdminLayout({
                           onClick={closeSidebar}
                           className={`block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
                             isActive && selected === tab
-                              ? 'bg-purple-700 text-white'
-                              : 'text-slate-300 hover:bg-purple-900/50 hover:text-white'
+                              ? 'bg-sky-500 text-white shadow-sm'
+                              : 'text-slate-300 hover:bg-sky-500/20 hover:text-white'
                           }`}
                         >
                           {label}
@@ -367,40 +371,18 @@ export default function AdminLayout({
                 to={item.path}
                 onClick={closeSidebar}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  isActive ? 'bg-indigo-600/15 font-bold text-indigo-400' : 'hover:bg-slate-900 hover:text-white'
+                  isActive ? 'bg-sky-500 font-bold text-white shadow-sm' : 'hover:bg-slate-900 hover:text-white'
                 }`}
               >
-                <Icon size={18} className={isActive ? 'text-indigo-500' : 'text-slate-500'} />
+                <Icon size={18} className={isActive ? 'text-sky-300' : 'text-slate-500'} />
                 {item.name}
               </Link>
             );
           })}
         </nav>
 
-        {/* ADMIN ACCOUNT */}
-        <div className="shrink-0 border-t border-slate-800 p-4">
-          {owner ? (
-            <div className="mb-3 rounded-xl border border-amber-700/30 bg-amber-950/20 p-3">
-              <p className="truncate text-xs font-bold text-amber-400">MAIN SUPER ADMIN</p>
-              <p className="mt-1 truncate text-xs text-slate-400">{access?.email || access?.full_name || 'Verified owner'}</p>
-              <p className="mt-1 text-[10px] text-emerald-400">Full administrative access</p>
-            </div>
-          ) : access ? (
-            <div className="mb-3 px-2 text-xs text-slate-400">
-              <p className="truncate font-semibold text-slate-200">{access.full_name || access.email}</p>
-              {access.department && <p className="mt-0.5 text-slate-500">{access.department}</p>}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            disabled={signingOut}
-            onClick={() => void handleSignOut()}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-400 transition hover:bg-slate-900 hover:text-rose-400 disabled:opacity-50"
-          >
-            <LogOut size={18} />
-            {signingOut ? 'Signing out...' : 'Sign Out'}
-          </button>
+        <div className="shrink-0 border-t border-emerald-900/70 px-4 py-3 text-[10px] font-semibold tracking-wide text-emerald-100/60">
+          MATMOVE OPERATIONS · SECURE ACCESS
         </div>
       </aside>
 
@@ -424,13 +406,23 @@ export default function AdminLayout({
               {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-flex ${networkOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{networkOnline ? 'Online' : 'Offline · showing last view'}</span>
             <AdminAssistance key={access?.id || 'signed-out'} />
+            {access && <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm md:flex">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-700"><UserRound size={16}/></span>
+              <span className="min-w-0">
+                <span className="block max-w-[180px] truncate text-xs font-bold text-slate-900">{access.full_name || 'MatMove Admin'}</span>
+                <span className="block max-w-[180px] truncate text-[10px] text-slate-500">{owner ? 'MAIN SUPER ADMIN' : access.department || access.email}</span>
+              </span>
+            </div>}
+            <button type="button" disabled={signingOut} onClick={() => void handleSignOut()} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-[#073b2f] px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0b5a45] disabled:opacity-50" aria-label="Sign out">
+              <LogOut size={15}/><span className="hidden sm:inline">{signingOut ? 'Signing out…' : 'Sign out'}</span>
+            </button>
           </div>
         </header>
 
-        <main ref={mainRef} className="flex-1 overflow-auto scroll-smooth p-4 sm:p-6">
+        <main ref={mainRef} className="flex-1 overflow-auto p-4 sm:p-6">
           {children}
         </main>
       </div>
