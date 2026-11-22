@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useState} from 'react';
+import {useEffect,useState} from 'react';
 import {CheckCircle2,Globe,MapPin,PencilLine,Plus,RefreshCw,Trash2,X} from 'lucide-react';
 import {supabase} from '@/lib/supabase';
 import {useAdminAccess} from '@/lib/adminAccess';
@@ -11,15 +11,15 @@ export default function AdminMapPlacesManager(){
  const access=useAdminAccess(),actor=access?.id;
  const [items,setItems]=useState<Place[]>([]),[draft,setDraft]=useState<Draft|null>(null),[deleteId,setDeleteId]=useState<string|null>(null);
  const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
- const load=useCallback(async()=>{
+ async function load(){
   if(!actor)return;setLoading(true);setError('');
   try{const {data,error}=await supabase.rpc('matmove_admin_map_places',{p_actor:actor,p_action:'list',p_id:null,p_expected:0,p_data:{}});
    if(error)throw error;if(!Array.isArray(data?.items))throw new Error('Place directory response was not confirmed.');
    setItems(data.items as Place[]);
   }catch(e){setError(e instanceof Error?e.message:'MatMove places are unavailable.');}
   finally{setLoading(false);}
- },[actor]);
- useEffect(()=>{void load();},[load]);
+ }
+ useEffect(()=>{void load();},[]);
  function edit(item:Place){setDraft({id:item.id,version:item.version,name:item.name,category:item.category,address:item.address,city:item.city||'',region:item.region||'',country_code:item.country_code,latitude:String(item.latitude),longitude:String(item.longitude),notes:item.notes||'',is_active:item.is_active,display_order:item.display_order});setDeleteId(null);setError('');setNotice('');}
  async function save(e:React.FormEvent){
   e.preventDefault();if(!draft||!actor||busy)return;
