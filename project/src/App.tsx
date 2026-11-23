@@ -1,42 +1,42 @@
-import ConciergePage from './pages/ConciergePage';
-import HomepagePostsPage from './pages/HomepagePostsPage';
-import {SpecialOperationsPage} from './pages/SpecialOperationsPage';
-import {AdministrativePayrollPage} from './pages/AdministrativePayrollPage';
-import {CivitasAdministrativePage} from './pages/CivitasAdministrativePage';
-import {AdminTravelPage} from './pages/AdminTravelPage';
-import {AdminEventsPage} from './pages/AdminEventsPage';
-import NotificationsPage from './pages/NotificationsPage';
-import CustomerSupportPage from './pages/CustomerSupportPage';
 
 
-import ReportsPage from './pages/ReportsPage';
 
 
 
 import {loadAdminSession} from './lib/adminSession';
-import { GamesPage } from './pages/GamesPage';
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+const ConciergePage = lazy(() => import('./pages/ConciergePage'));
+const HomepagePostsPage = lazy(() => import('./pages/HomepagePostsPage'));
+const SpecialOperationsPage = lazy(() => import('./pages/SpecialOperationsPage').then(m => ({default: m.SpecialOperationsPage})));
+const AdministrativePayrollPage = lazy(() => import('./pages/AdministrativePayrollPage').then(m => ({default: m.AdministrativePayrollPage})));
+const CivitasAdministrativePage = lazy(() => import('./pages/CivitasAdministrativePage').then(m => ({default: m.CivitasAdministrativePage})));
+const AdminTravelPage = lazy(() => import('./pages/AdminTravelPage').then(m => ({default: m.AdminTravelPage})));
+const AdminEventsPage = lazy(() => import('./pages/AdminEventsPage').then(m => ({default: m.AdminEventsPage})));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const CustomerSupportPage = lazy(() => import('./pages/CustomerSupportPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const GamesPage = lazy(() => import('./pages/GamesPage').then(m => ({default: m.GamesPage})));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const KycPage = lazy(() => import('./pages/KycPage').then(m => ({default: m.KycPage})));
+const FinancialsPage = lazy(() => import('./pages/FinancialsPage').then(m => ({default: m.FinancialsPage})));
+const LoadingBonanzaPage = lazy(() => import('./pages/LoadingBonanzaPage'));
+const PayoutsPage = lazy(() => import('./pages/PayoutsPage').then(m => ({default: m.PayoutsPage})));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const StaffGovernancePage = lazy(() => import('./pages/StaffGovernancePage').then(m => ({default: m.StaffGovernancePage})));
+const LogsPage = lazy(() => import('./pages/LogsPage').then(m => ({default: m.LogsPage})));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
+const DispatchRadarPage = lazy(() => import('./pages/DispatchRadarPage'));
+const PricingPage = lazy(() => import('./pages/PricingPage').then(m => ({default: m.PricingPage})));
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage').then(m => ({default: m.TransactionsPage})));
+const CashPaymentsPage = lazy(() => import('./pages/CashPaymentsPage'));
+const StaffPasswordPage = lazy(() => import('./pages/StaffPasswordPage'));
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import LoginPage from './pages/LoginPage';
 
-import DashboardPage from './pages/DashboardPage';
-import { KycPage } from './pages/KycPage';
-import { FinancialsPage } from './pages/FinancialsPage';
-import LoadingBonanzaPage from './pages/LoadingBonanzaPage';
-import { PayoutsPage } from './pages/PayoutsPage';
-import UsersPage from './pages/UsersPage';
-import { StaffGovernancePage } from './pages/StaffGovernancePage';
-import { LogsPage } from './pages/LogsPage';
-import AuditPage from './pages/AuditPage';
-import DispatchRadarPage from './pages/DispatchRadarPage';
-import { PricingPage } from './pages/PricingPage';
-import { TransactionsPage } from './pages/TransactionsPage';
-import CashPaymentsPage from './pages/CashPaymentsPage';
 
 import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
-import StaffPasswordPage from './pages/StaffPasswordPage';
 
 function Denied({message='Access denied. This section has not been assigned to your staff account.',retry}:{message?:string;retry?:()=>void}){return <AdminLayout title="Access denied"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">{message}</p>{retry&&<button type="button" onClick={retry} className="mt-4 rounded-xl border bg-white px-5 py-3 font-bold">Retry permission check</button>}</AdminLayout>;}
 function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
@@ -63,7 +63,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  async function finished(){const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
 
  if(loading)return <p className="p-8">Checking staff assignments…</p>;
- return <AdminAccessContext.Provider value={access}>{error&&access?.is_active&&<div role="status" className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-lg">{error}</div>}{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
+ return <AdminAccessContext.Provider value={access}>{error&&access?.is_active&&<div role="status" className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-lg">{error}</div>}{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:<Suspense fallback={<div role="status" aria-live="polite" className="mx-auto max-w-4xl p-8 text-sm font-semibold text-slate-600">Loading your MatMove Admin section…</div>}>{recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
  <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
  <Route path="/support" element={<Gate access={access} section="support"><CustomerSupportPage/></Gate>}/>
  <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
@@ -91,7 +91,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage/></Gate>}/>
  <Route path="/wallets" element={<Navigate to="/financials" replace/>}/><Route path="/withdrawals" element={<Navigate to="/payouts" replace/>}/><Route path="/users" element={<Navigate to="/customers" replace/>}/>
  <Route path="*" element={<Denied/>}/>
- </Routes>}</AdminAccessContext.Provider>;
+ </Routes>}</Suspense>}</AdminAccessContext.Provider>;
 }
 const recoveryKey='matmove_admin_recovery';
 export function validRecoveryMarker(raw:string|null,userId:string,now=Date.now()){
