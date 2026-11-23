@@ -175,8 +175,8 @@ export default function DashboardPage() {
   useEffect(() => {
     let live = true;
     let inFlight = false;
-    const controller = new AbortController();
-    const valid = () => live && current.current === stamp && !controller.signal.aborted;
+    let activeController: AbortController | null = null;
+    const valid = () => live && current.current === stamp;
 
     const identityChanged = snapshotStamp.current !== stamp;
     if (identityChanged) {
@@ -198,7 +198,7 @@ export default function DashboardPage() {
       if (allowed && financial && !hasTreasurySnapshot.current) setBalanceLoading(true);
     }
 
-    if (!allowed) return () => { live = false; controller.abort(); };
+    if (!allowed) return () => { live = false; activeController?.abort(); };
 
     async function refresh() {
       if (inFlight || !valid()) return;
@@ -210,6 +210,9 @@ export default function DashboardPage() {
         return;
       }
       inFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 30_000);
       if (!hasOverviewSnapshot.current) setLoading(true);
       setError('');
 
@@ -263,6 +266,8 @@ export default function DashboardPage() {
       };
 
       await Promise.allSettled([db(), balances()]);
+      window.clearTimeout(timeout);
+      if (activeController === controller) activeController = null;
       inFlight = false;
     }
 
@@ -283,7 +288,7 @@ export default function DashboardPage() {
 
     return () => {
       live = false;
-      controller.abort();
+      activeController?.abort();
       window.clearInterval(timer);
       window.removeEventListener?.('online', onOnline);
       window.removeEventListener?.('offline', onOffline);

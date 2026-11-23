@@ -111,6 +111,8 @@ export function FinancialsPage() {
     setError('');
     setGatewayError('');
 
+    const databaseController = new AbortController();
+    const databaseTimeout = window.setTimeout(() => databaseController.abort(), 25_000);
     try {
       const {
         data,
@@ -118,7 +120,8 @@ export function FinancialsPage() {
       } = await supabase
         .from('wallets')
         .select('*,profiles(full_name,phone,email,role)')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .abortSignal(databaseController.signal);
 
       if (dbError) throw dbError;
       if(!Array.isArray(data))throw new Error('Customer wallet response is invalid.');
@@ -133,8 +136,12 @@ export function FinancialsPage() {
         err.message ||
         'Customer wallets could not be loaded.'
       );
+    } finally {
+      window.clearTimeout(databaseTimeout);
     }
 
+    const gatewayController = new AbortController();
+    const gatewayTimeout = window.setTimeout(() => gatewayController.abort(), 25_000);
     try {
       const {
         data: sessionData,
@@ -156,6 +163,7 @@ export function FinancialsPage() {
               `Bearer ${sessionData.session.access_token}`,
           },
           cache: 'no-store',
+          signal: gatewayController.signal,
         }
       );
 
@@ -198,6 +206,7 @@ export function FinancialsPage() {
         err.message || 'Monime balances unavailable.'
       );
     } finally {
+      window.clearTimeout(gatewayTimeout);
       if(valid())setLoading(false);
     }
   },[stamp,allowed,access?.id]);
@@ -223,6 +232,7 @@ export function FinancialsPage() {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           cache: 'no-store',
+          signal: AbortSignal.timeout(25_000),
           body: JSON.stringify({ action: 'sync_account_labels', offset, limit: 25 })
         });
         const result = await response.json().catch(() => null);
