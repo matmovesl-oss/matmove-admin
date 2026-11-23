@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { Script } from 'node:vm';
 
 test('Admin offline shell caches only the static app shell and fingerprinted assets', async () => {
   const [worker, entry, html, offline, manifest, app] = await Promise.all([
@@ -15,9 +16,10 @@ test('Admin offline shell caches only the static app shell and fingerprinted ass
   assert.match(html, /rel="manifest"/);
   assert.match(worker, /CACHE_PREFIX = 'matmove-admin-static-'/);
   assert.match(worker, /HASHED_ASSET/);
+  assert.doesNotThrow(() => new Script(worker));
   assert.match(worker, /request\.mode === 'navigate'/);
   assert.match(worker, /url\.origin !== self\.location\.origin/);
-  assert.match(worker, /\/(?:api|auth|rest|storage|functions|realtime)/);
+  assert.ok(worker.includes('api|auth|rest|storage|functions|realtime'));
   assert.doesNotMatch(worker, /cache\.put\([^\n]*(?:wallet|staff|customer|transaction|payment)/i);
   assert.match(offline, /permissions and live information must be verified online/);
   assert.equal(JSON.parse(manifest).display, 'standalone');
