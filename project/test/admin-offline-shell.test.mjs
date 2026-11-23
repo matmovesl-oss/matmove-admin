@@ -13,6 +13,9 @@ test('Admin offline shell caches only the static app shell and fingerprinted ass
     readFile('src/App.tsx', 'utf8')
   ]);
   assert.match(entry, /serviceWorker\.register\('\/sw\.js'/);
+  assert.match(entry, /document\.addEventListener\('error'/);
+  assert.match(entry, /image-unavailable\.svg/);
+  assert.match(entry, /mapboxgl-map, \.gm-style/);
   assert.match(html, /rel="manifest"/);
   assert.match(worker, /CACHE_PREFIX = 'matmove-admin-static-'/);
   assert.match(worker, /HASHED_ASSET/);
