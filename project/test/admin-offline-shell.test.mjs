@@ -16,7 +16,7 @@ test('Admin offline shell caches only the static app shell and fingerprinted ass
   assert.match(html, /rel="manifest"/);
   assert.match(worker, /CACHE_PREFIX = 'matmove-admin-static-'/);
   assert.match(worker, /HASHED_ASSET/);
-  assert.match(worker, /image-unavailable\\.svg/);
+  assert.ok(worker.includes('image-unavailable.svg'));
   assert.doesNotThrow(() => new Script(worker));
   assert.match(worker, /request\.mode === 'navigate'/);
   assert.match(worker, /url\.origin !== self\.location\.origin/);
