@@ -105,6 +105,22 @@ test('legacy review failure is reported without hiding live gateway results', as
   assert.match(res.body.legacyMoneyReviewError,/could not be verified/i);
 });
 
+test('historical review stays available when the live Monime gateway is offline', async()=>{
+  const {client}=makeClient();
+  const handler=createHandler({
+    requireAdminFn:async()=>({client,user:actor}),
+    fetcher:async()=>{throw new Error('gateway timeout');},
+    env
+  });
+  const res=responseRecorder();
+  await handler({method:'GET',headers:{authorization:'Bearer test'},query:{}},res);
+  assert.equal(res.statusCode,200);
+  assert.deepEqual(res.body.transactions,[]);
+  assert.match(res.body.gatewayError,/temporarily unavailable/i);
+  assert.equal(res.body.legacyMoneyReviewAvailable,true);
+  assert.equal(res.body.legacyMoneyReview.topups.length,1);
+});
+
 test('Admin legacy reconciliation UI never offers a funds-moving action', async()=>{
   const source=await readFile(new URL('../src/pages/TransactionsPage.tsx',import.meta.url),'utf8');
   assert.match(source,/Historical Monime records — read-only review/);
