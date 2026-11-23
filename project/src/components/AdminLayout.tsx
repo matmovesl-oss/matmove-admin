@@ -182,7 +182,7 @@ export default function AdminLayout({
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f9f8] font-sans">
+    <div className="mm-admin-shell flex h-screen overflow-hidden bg-[#f5f9f8] font-sans">
       {sidebarOpen && (
         <button
           type="button"
@@ -195,7 +195,7 @@ export default function AdminLayout({
       {/* SIDEBAR */}
       <aside
         id="admin-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-[#073b2f] text-emerald-50 transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
+        className={`mm-admin-sidebar fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-[#073b2f] text-emerald-50 transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'}`}
       >
         {/* BRAND */}
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-emerald-900/70 px-6">
@@ -388,7 +388,7 @@ export default function AdminLayout({
 
       {/* MAIN CONTENT */}
       <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-300 ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-[260px]"}`}>
-        <header className="z-10 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+        <header className="mm-admin-header z-10 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -422,7 +422,7 @@ export default function AdminLayout({
           </div>
         </header>
 
-        <main ref={mainRef} className="flex-1 overflow-auto p-4 sm:p-6">
+        <main ref={mainRef} className="mm-admin-main flex-1 overflow-auto p-4 sm:p-6">
           {children}
         </main>
       </div>
