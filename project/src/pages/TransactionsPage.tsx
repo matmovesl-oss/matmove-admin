@@ -20,6 +20,9 @@ export function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
   const [reviewEvents, setReviewEvents] = useState<any[]>([]);
+  const [legacyMoneyReview, setLegacyMoneyReview] = useState<any>({
+    available: false, error: null, topups: [], withdrawals: []
+  });
   const [reviewAvailable, setReviewAvailable] = useState(false);
   const [reviewQueueError, setReviewQueueError] = useState('');
   const [reviewNotes, setReviewNotes] = useState<Record<string,string>>({});
@@ -49,6 +52,12 @@ export function TransactionsPage() {
         setReviewAvailable(data.webhookReviewAvailable === true);
         setReviewEvents(Array.isArray(data.webhookReviewEvents) ? data.webhookReviewEvents : []);
         setReviewQueueError(typeof data.webhookReviewError === 'string' ? data.webhookReviewError : '');
+        setLegacyMoneyReview({
+          available: data.legacyMoneyReviewAvailable === true,
+          error: typeof data.legacyMoneyReviewError === 'string' ? data.legacyMoneyReviewError : null,
+          topups: Array.isArray(data.legacyMoneyReview?.topups) ? data.legacyMoneyReview.topups : [],
+          withdrawals: Array.isArray(data.legacyMoneyReview?.withdrawals) ? data.legacyMoneyReview.withdrawals : []
+        });
       }
     } catch (error: any) {
       if (mounted.current && token === generation.current) setLoadError(error.message || 'Could not load this section. Please retry.');
@@ -166,6 +175,52 @@ export function TransactionsPage() {
         )}
         {reviewActionError&&<p role="alert" className="rounded-lg border border-red-200 bg-white p-3 text-xs text-red-800">{reviewActionError}</p>}
         {reviewNotice&&<p role="status" className="rounded-lg border border-emerald-200 bg-white p-3 text-xs text-emerald-800">{reviewNotice}</p>}
+      </section>
+      <section aria-label="Historical Monime records requiring reconciliation" className="my-5 space-y-3 rounded-2xl border border-amber-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Historical Monime records — read-only review</h2>
+            <p className="mt-1 text-xs text-slate-600">Older wallet top-ups and withdrawals are checked against the MatMove ledger. Confirm every provider reference in Monime before any financial correction.</p>
+          </div>
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase text-amber-900">No funds moved</span>
+        </div>
+        {!legacyMoneyReview.available ? (
+          <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{legacyMoneyReview.error || 'Historical reconciliation records are unavailable. Retry before taking action.'}</p>
+        ) : legacyMoneyReview.topups.length === 0 && legacyMoneyReview.withdrawals.length === 0 ? (
+          <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">No historical pending Monime wallet records require review.</p>
+        ) : (
+          <div className="grid gap-3 xl:grid-cols-2">
+            {legacyMoneyReview.topups.map((item: any) => (
+              <article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-900">Wallet top-up · {item.currency || 'SLE'} {Number.isFinite(item.amount) ? item.amount.toFixed(2) : 'Amount unavailable'}</p>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-amber-900">Pending</span>
+                </div>
+                <dl className="mt-2 grid gap-2 text-[11px] sm:grid-cols-2">
+                  <div className="min-w-0"><dt className="text-slate-500">Monime reference</dt><dd className="mt-1 break-all font-mono text-slate-800">{item.providerReference || 'Not supplied'}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">MatMove ledger</dt><dd className="mt-1 font-semibold text-slate-800">{item.ledgerRecorded ? 'Ledger entry found — investigate state mismatch' : 'No wallet ledger entry — provider confirmation required'}</dd></div>
+                  <div><dt className="text-slate-500">Initiated</dt><dd className="mt-1 text-slate-700">{item.initiatedAt && Number.isFinite(Date.parse(item.initiatedAt)) ? new Date(item.initiatedAt).toLocaleString() : 'Time unavailable'}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">MatMove record</dt><dd className="mt-1 break-all font-mono text-slate-500">{item.id}</dd></div>
+                </dl>
+              </article>
+            ))}
+            {legacyMoneyReview.withdrawals.map((item: any) => (
+              <article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-900">Withdrawal · {item.currency || 'SLE'} {Number.isFinite(item.amount) ? item.amount.toFixed(2) : 'Amount unavailable'}</p>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-amber-900">Pending</span>
+                </div>
+                <dl className="mt-2 grid gap-2 text-[11px] sm:grid-cols-2">
+                  <div className="min-w-0"><dt className="text-slate-500">MatMove reference</dt><dd className="mt-1 break-all font-mono text-slate-800">{item.referenceCode || item.id}</dd></div>
+                  <div><dt className="text-slate-500">Linked payment</dt><dd className="mt-1 font-semibold text-slate-800">{item.linkedPaymentExists ? 'Payment record found' : 'Missing linked payment — investigate manually'}</dd></div>
+                  <div><dt className="text-slate-500">Created</dt><dd className="mt-1 text-slate-700">{item.createdAt && Number.isFinite(Date.parse(item.createdAt)) ? new Date(item.createdAt).toLocaleString() : 'Time unavailable'}</dd></div>
+                  <div className="min-w-0"><dt className="text-slate-500">MatMove record</dt><dd className="mt-1 break-all font-mono text-slate-500">{item.id}</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-slate-500">This queue is read-only. It does not settle, refund, retry, or change wallet balances. Resolve each item only after matching the exact provider receipt and the MatMove ledger.</p>
       </section>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 mt-6">
         <div className="flex flex-1 flex-wrap gap-3 w-full max-w-xl">
