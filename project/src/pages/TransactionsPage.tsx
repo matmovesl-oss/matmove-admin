@@ -17,6 +17,7 @@ export function TransactionsPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [gatewayError, setGatewayError] = useState('');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
   const [reviewEvents, setReviewEvents] = useState<any[]>([]);
@@ -48,6 +49,7 @@ export function TransactionsPage() {
       if (!response.ok || !Array.isArray(data.transactions)) throw new Error(data.error || 'Could not load gateway transactions.');
       if (mounted.current && token === generation.current) {
         setTransactions(data.transactions);
+        setGatewayError(typeof data.gatewayError === 'string' ? data.gatewayError : '');
         hasSnapshot.current = true;
         setReviewAvailable(data.webhookReviewAvailable === true);
         setReviewEvents(Array.isArray(data.webhookReviewEvents) ? data.webhookReviewEvents : []);
@@ -128,6 +130,7 @@ export function TransactionsPage() {
 
   return (
     <AdminLayout title="Gateway Transactions" subtitle="Master audit trail of all Monime ledger movements across all wallets">
+      {gatewayError&&<p role="status" className="my-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{gatewayError} The historical review queue remains available separately.</p>}
       <section aria-label="CSV export" className="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4">
         <div><p className="text-sm font-bold">Export displayed records</p><p className="text-xs text-slate-600">Exports the currently loaded records matching your filters. Gateway results are a limited batch, not the complete payment history.</p></div>
         <button type="button" onClick={()=>void downloadDisplayed()} disabled={exporting||loading||!!loadError||!filteredTxns.length||!canAccess(access,'transactions')} className="min-h-11 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{exporting?'Exporting…':'Export displayed CSV'}</button>
