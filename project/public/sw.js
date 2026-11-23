@@ -1,8 +1,37 @@
 /* MatMove Admin: static app shell only. Never cache API, auth, staff or financial data. */
 const CACHE_PREFIX = 'matmove-admin-static-';
-const CACHE_NAME = CACHE_PREFIX + 'v1';
+const CACHE_NAME = CACHE_PREFIX + 'v2';
 const SHELL = ['/', '/index.html', '/offline.html', '/logo.png', '/manifest.webmanifest', '/image-unavailable.svg'];
-const HASHED_ASSET = /\/assets\/[A-Za-z0-9._-]+\.(?:js|css|woff2?|svg)$/i;
+const HASHED_ASSET = /^\/assets\/[A-Za-z0-9._/-]+\.(?:js|mjs|css|woff2?|ttf|otf|svg|png|jpe?g|webp|avif|gif)$/i;
+
+async function precacheBuildAssets(cache) {
+  try {
+    const manifestResponse = await fetch('/manifest.json', { cache: 'reload' });
+    if (!manifestResponse.ok) return;
+    await cache.put('/manifest.json', manifestResponse.clone());
+    const manifest = await manifestResponse.json();
+    const assets = new Set();
+    for (const entry of Object.values(manifest)) {
+      if (!entry || typeof entry !== 'object') continue;
+      for (const file of [entry.file, ...(entry.css || []), ...(entry.assets || [])]) {
+        if (typeof file === 'string' &&
+            /^assets\/(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+\.(?:js|mjs|css|woff2?|ttf|otf|svg|png|jpe?g|webp|avif|gif)$/i.test(file)) {
+          assets.add('/' + file);
+        }
+      }
+    }
+    await Promise.all([...assets].map(async path => {
+      try {
+        const response = await fetch(path, { cache: 'reload' });
+        if (response.ok && response.type === 'basic') await cache.put(path, response.clone());
+      } catch {
+        // A single optional static asset must not block offline-shell installation.
+      }
+    }));
+  } catch {
+    // Live functionality remains available online if the build manifest cannot be cached.
+  }
+}
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -15,6 +44,7 @@ self.addEventListener('install', event => {
         // A missing optional icon or offline page must not block installation.
       }
     }));
+    await precacheBuildAssets(cache);
     await self.skipWaiting();
   })());
 });
@@ -53,7 +83,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Only immutable, fingerprinted build assets are eligible for cache-first reuse.
   if (HASHED_ASSET.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
