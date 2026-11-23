@@ -309,27 +309,36 @@ export function createHandler({
         });
       }
 
-      // Monime credentials must remain server-only. Never fall back to VITE_ keys.
+      // Provider outages must not hide private, read-only reconciliation queues.
+      // Credentials remain server-only; never fall back to VITE_ keys.
       const apiKey = env.MONIME_API_KEY;
       const spaceId = env.MONIME_SPACE_ID;
+      let gatewayError = null;
+      let transactions = [];
+
       if (!apiKey || !spaceId) {
-        return res.status(503).json({ error: 'Monime server configuration is missing.' });
-      }
-
-      const monimeRes = await fetcher('https://api.monime.io/v1/financial-transactions?limit=50', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Monime-Space-Id': spaceId,
-          'Monime-Version': 'caph.2025-08-23',
-          Accept: 'application/json'
-        },
-        signal: AbortSignal.timeout(15000)
-      });
-
-      const rawData = await monimeRes.json().catch(() => null);
-      if (!monimeRes.ok || !rawData || !Array.isArray(rawData.result)) {
-        return res.status(502).json({ error: 'Monime transactions are temporarily unavailable.' });
+        gatewayError = 'Monime server configuration is missing.';
+      } else {
+        try {
+          const monimeRes = await fetcher('https://api.monime.io/v1/financial-transactions?limit=50', {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Monime-Space-Id': spaceId,
+              'Monime-Version': 'caph.2025-08-23',
+              Accept: 'application/json'
+            },
+            signal: AbortSignal.timeout(15000)
+          });
+          const rawData = await monimeRes.json().catch(() => null);
+          if (!monimeRes.ok || !rawData || !Array.isArray(rawData.result)) {
+            gatewayError = 'Monime transactions are temporarily unavailable. Historical review data is shown separately.';
+          } else {
+            transactions = rawData.result;
+          }
+        } catch {
+          gatewayError = 'Monime transactions are temporarily unavailable. Historical review data is shown separately.';
+        }
       }
 
       const review = await client
@@ -340,13 +349,12 @@ export function createHandler({
         .order('received_at', { ascending: true })
         .limit(100);
 
-      if (review.error && !missingReviewQueue(review.error)) {
-        return res.status(503).json({
-          error: 'The private Monime manual-review queue is temporarily unavailable.',
-          transactions: rawData.result,
-          webhookReviewAvailable: false
-        });
-      }
+      const webhookReviewAvailable = !review.error;
+      const webhookReviewError = review.error
+        ? (missingReviewQueue(review.error)
+          ? 'The manual-review migration is not installed in this database yet.'
+          : 'The private Monime manual-review queue is temporarily unavailable. Retry before taking action.')
+        : null;
 
       // Historical wallet_topup and withdrawal_requests records pre-date the
       // current Monime webhook/leg ledger. Expose only safe metadata to staff;
@@ -424,12 +432,11 @@ export function createHandler({
       }
 
       return res.status(200).json({
-        transactions: rawData.result,
-        webhookReviewAvailable: !review.error,
+        transactions,
+        gatewayError,
+        webhookReviewAvailable,
         webhookReviewEvents: review.error ? [] : (Array.isArray(review.data) ? review.data : []),
-        webhookReviewError: review.error
-          ? 'The manual-review migration is not installed in this database yet.'
-          : null,
+        webhookReviewError,
         legacyMoneyReviewAvailable,
         legacyMoneyReviewError,
         legacyMoneyReview: legacyMoneyReviewAvailable
