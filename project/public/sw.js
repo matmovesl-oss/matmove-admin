@@ -1,7 +1,7 @@
 /* MatMove Admin: static app shell only. Never cache API, auth, staff or financial data. */
 const CACHE_PREFIX = 'matmove-admin-static-';
 const CACHE_NAME = CACHE_PREFIX + 'v1';
-const SHELL = ['/', '/index.html', '/offline.html', '/logo.png', '/manifest.webmanifest'];
+const SHELL = ['/', '/index.html', '/offline.html', '/logo.png', '/manifest.webmanifest', '/image-unavailable.svg'];
 const HASHED_ASSET = /\/assets\/[A-Za-z0-9._-]+\.(?:js|css|woff2?|svg)$/i;
 
 self.addEventListener('install', event => {

@@ -52,5 +52,16 @@
         }
       ]
     }
-  ]
+  ],
+  "regions": [
+    "dub1"
+  ],
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30
+    },
+    "api/*.ts": {
+      "maxDuration": 30
+    }
+  }
 }
