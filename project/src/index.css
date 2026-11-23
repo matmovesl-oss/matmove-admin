@@ -198,3 +198,31 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .mm-admin-main button[class*="rounded-"]:active,
   .mm-admin-main a[class*="rounded-"]:active { transform: none !important; }
 }
+
+
+/* MatMove Admin compact glass typography — preserve dense operational tables and controls. */
+.mm-admin-shell h1 {
+  font-size: clamp(1.15rem, 1.7vw, 1.5rem) !important;
+  line-height: 1.18;
+  letter-spacing: -.035em;
+}
+.mm-admin-shell h2 {
+  font-size: clamp(1rem, 1.25vw, 1.22rem);
+  line-height: 1.22;
+}
+.mm-admin-shell h3 {
+  font-size: clamp(.92rem, 1.05vw, 1.05rem);
+  line-height: 1.25;
+}
+.mm-admin-header h1 {
+  font-size: clamp(1rem, 1.35vw, 1.22rem) !important;
+}
+.mm-admin-shell :is(input, select, textarea) {
+  font-size: max(16px, 1rem);
+}
+@media (max-width: 640px) {
+  .mm-admin-shell h1 { font-size: 1.2rem !important; }
+  .mm-admin-shell h2 { font-size: 1.02rem; }
+  .mm-admin-shell h3 { font-size: .94rem; }
+  .mm-admin-header { min-height: 58px; }
+}
