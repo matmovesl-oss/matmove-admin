@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const read=path=>readFile(new URL(path,import.meta.url),'utf8');
+const css=await read('../src/index.css');
 test('Admin login uses the MatMove animated Freetown route and keeps staff password recovery',async()=>{
  const login=await read('../src/pages/LoginPage.tsx');
  assert.match(login,/animateMotion/);assert.match(login,/FREETOWN ROUTE PREVIEW/);
@@ -90,4 +91,21 @@ test('editing an already-published post saves its new content without unpublishi
  assert.match(page,/const result=await call\('save',draft\.id,draft\.version,data\)/);
  assert.match(page,/if\(result\.status!=='published'\)/);
  assert.match(page,/Post updated\. Your changes are live on the customer homepage/);
+});
+
+
+test('Admin operations workspace uses the shared MatMove glass palette, panels and responsive motion rules',()=>{
+ assert.match(css,/--mm-admin-glass:\s*rgba\(255,255,255/);
+ assert.match(css,/--mm-admin-green:\s*#0e946b/);
+ assert.match(css,/--mm-admin-blue:\s*#1769e0/);
+ assert.match(css,/backdrop-filter:\s*blur\(17px\) saturate\(148%\)/);
+ assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);
+});
+test('Admin shell exposes stable glass styling hooks without changing its navigation access model',async()=>{
+ const layout=await read('../src/components/AdminLayout.tsx');
+ assert.match(layout,/mm-admin-shell/);
+ assert.match(layout,/mm-admin-sidebar/);
+ assert.match(layout,/mm-admin-header/);
+ assert.match(layout,/mm-admin-main/);
+ assert.match(layout,/canAccess\(access, item\.key\)/);
 });
