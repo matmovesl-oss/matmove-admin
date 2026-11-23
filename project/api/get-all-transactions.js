@@ -348,13 +348,93 @@ export function createHandler({
         });
       }
 
+      // Historical wallet_topup and withdrawal_requests records pre-date the
+      // current Monime webhook/leg ledger. Expose only safe metadata to staff;
+      // never settle, refund, reserve or mutate a historical row from this view.
+      const [legacyTopups, legacyWithdrawals] = await Promise.all([
+        client.from('payment_transactions')
+          .select('id,provider_reference,amount,currency,status,initiated_at,updated_at')
+          .eq('provider', 'monime')
+          .eq('transaction_type', 'wallet_topup')
+          .eq('status', 'pending')
+          .order('initiated_at', { ascending: true })
+          .limit(100),
+        client.from('withdrawal_requests')
+          .select('id,reference_code,amount,currency,status,provider,payment_transaction_id,created_at,updated_at')
+          .eq('provider', 'monime')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true })
+          .limit(100)
+      ]);
+
+      let legacyMoneyReviewAvailable = !legacyTopups.error && !legacyWithdrawals.error;
+      let legacyMoneyReviewError = legacyMoneyReviewAvailable
+        ? null
+        : 'Historical payment records could not be verified. Retry before taking action.';
+      let legacyTopupRows = [];
+      let legacyWithdrawalRows = [];
+
+      if (legacyMoneyReviewAvailable) {
+        const topupRows = Array.isArray(legacyTopups.data) ? legacyTopups.data : [];
+        const withdrawalRows = Array.isArray(legacyWithdrawals.data) ? legacyWithdrawals.data : [];
+        const topupIds = topupRows.map(row => row.id).filter(Boolean);
+        const paymentIds = withdrawalRows.map(row => row.payment_transaction_id).filter(Boolean);
+
+        const [ledgerResult, linkedPaymentResult] = await Promise.all([
+          topupIds.length
+            ? client.from('ledger_transactions')
+                .select('payment_transaction_id')
+                .eq('transaction_type', 'wallet_topup')
+                .in('payment_transaction_id', topupIds)
+            : Promise.resolve({ data: [], error: null }),
+          paymentIds.length
+            ? client.from('payment_transactions')
+                .select('id')
+                .in('id', paymentIds)
+            : Promise.resolve({ data: [], error: null })
+        ]);
+
+        if (ledgerResult.error || linkedPaymentResult.error) {
+          legacyMoneyReviewAvailable = false;
+          legacyMoneyReviewError = 'Historical payment ledger links could not be verified. Retry before taking action.';
+        } else {
+          const ledgerIds = new Set((ledgerResult.data || []).map(row => row.payment_transaction_id));
+          const linkedPaymentIds = new Set((linkedPaymentResult.data || []).map(row => row.id));
+          legacyTopupRows = topupRows.map(row => ({
+            id: row.id,
+            providerReference: row.provider_reference || null,
+            amount: Number(row.amount),
+            currency: row.currency,
+            status: row.status,
+            initiatedAt: row.initiated_at,
+            updatedAt: row.updated_at,
+            ledgerRecorded: ledgerIds.has(row.id)
+          }));
+          legacyWithdrawalRows = withdrawalRows.map(row => ({
+            id: row.id,
+            referenceCode: row.reference_code || null,
+            amount: Number(row.amount),
+            currency: row.currency,
+            status: row.status,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            linkedPaymentExists: Boolean(row.payment_transaction_id && linkedPaymentIds.has(row.payment_transaction_id))
+          }));
+        }
+      }
+
       return res.status(200).json({
         transactions: rawData.result,
         webhookReviewAvailable: !review.error,
         webhookReviewEvents: review.error ? [] : (Array.isArray(review.data) ? review.data : []),
         webhookReviewError: review.error
           ? 'The manual-review migration is not installed in this database yet.'
-          : null
+          : null,
+        legacyMoneyReviewAvailable,
+        legacyMoneyReviewError,
+        legacyMoneyReview: legacyMoneyReviewAvailable
+          ? { topups: legacyTopupRows, withdrawals: legacyWithdrawalRows }
+          : { topups: [], withdrawals: [] }
       });
     } catch (error) {
       return res.status(error.status || 502).json({
