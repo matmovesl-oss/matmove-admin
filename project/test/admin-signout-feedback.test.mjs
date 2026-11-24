@@ -40,5 +40,5 @@ test('KYC document download failures use the existing inline admin feedback bann
 
 test('Admin build explicitly approves only the Vite esbuild install script', async () => {
   const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
-  assert.deepEqual(packageJson.allowScripts, { 'esbuild@0.21.5': true });
+  assert.deepEqual(packageJson.allowScripts, { 'esbuild@0.28.2': true });
 });
