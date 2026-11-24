@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+
 function run(label, args, timeout = 180000) {
   const result = spawnSync(npm, args, {
     encoding: "utf8",
@@ -10,9 +11,9 @@ function run(label, args, timeout = 180000) {
     maxBuffer: 12 * 1024 * 1024,
     windowsHide: true
   });
-  console.log(\`MATMOVE_VITE8_COMMAND \${label} status=\${result.status} signal=\${result.signal || "none"}\`);
-  if (result.error) console.log(\`MATMOVE_VITE8_ERROR \${label} \${result.error.message}\`);
-  if (result.stderr) console.log(\`MATMOVE_VITE8_STDERR \${label} \${result.stderr.slice(-3000)}\`);
+  console.log("MATMOVE_VITE8_COMMAND " + label + " status=" + result.status + " signal=" + (result.signal || "none"));
+  if (result.error) console.log("MATMOVE_VITE8_ERROR " + label + " " + result.error.message);
+  if (result.stderr) console.log("MATMOVE_VITE8_STDERR " + label + " " + result.stderr.slice(-3000));
   return result;
 }
 
@@ -45,20 +46,33 @@ function audit(label, args) {
   try {
     report = JSON.parse(result.stdout || "");
   } catch {
-    reports.push({ label, available: false, exitStatus: result.status, error: (result.stderr || result.stdout || "").slice(-3000) });
-    console.log(\`MATMOVE_VITE8_AUDIT_UNAVAILABLE \${label}\`);
+    reports.push({
+      label,
+      available: false,
+      exitStatus: result.status,
+      error: (result.stderr || result.stdout || "").slice(-3000)
+    });
+    console.log("MATMOVE_VITE8_AUDIT_UNAVAILABLE " + label);
     return;
   }
+
   reports.push({ label, available: true, exitStatus: result.status, report });
-  console.log(\`MATMOVE_VITE8_AUDIT_COUNTS \${label} \${JSON.stringify(report.metadata?.vulnerabilities || {})}\`);
+  console.log("MATMOVE_VITE8_AUDIT_COUNTS " + label + " " + JSON.stringify(report.metadata?.vulnerabilities || {}));
   for (const [name, item] of Object.entries(report.vulnerabilities || {})) {
     console.log("MATMOVE_VITE8_AUDIT_ITEM " + JSON.stringify({
-      label, name, severity:item.severity, direct:item.isDirect,
-      range:item.range, fixAvailable:item.fixAvailable,
-      advisories:(item.via||[]).filter(v=>typeof v==="object").map(v=>({title:v.title,range:v.range,url:v.url}))
+      label,
+      name,
+      severity: item.severity,
+      direct: item.isDirect,
+      range: item.range,
+      fixAvailable: item.fixAvailable,
+      advisories: (item.via || [])
+        .filter(v => typeof v === "object")
+        .map(v => ({ title: v.title, range: v.range, url: v.url }))
     }));
   }
 }
+
 audit("all-after-safe-fix", ["audit", "--json"]);
 audit("production-after-safe-fix", ["audit", "--omit=dev", "--json"]);
 await writeFile(
