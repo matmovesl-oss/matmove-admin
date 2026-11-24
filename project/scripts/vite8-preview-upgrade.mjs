@@ -22,6 +22,7 @@ const install = run("install-vite8", [
   "--save-dev",
   "vite@^8.3.8",
   "@vitejs/plugin-react@^6.3.0",
+  "esbuild@^0.28.2",
   "--no-audit",
   "--no-fund"
 ]);
