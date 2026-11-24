@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function SecureAdminPreviewDisconnected() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-5 py-10">
