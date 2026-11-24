@@ -22,3 +22,18 @@ test('Admin sign-out displays returned Supabase errors inline and remains retrya
   const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
   assert.match(packageJson.scripts.build, /test\/admin-signout-feedback\.test\.mjs/);
 });
+
+test('KYC document download failures use the existing inline admin feedback banner', async () => {
+  const dashboard = await readFile('src/pages/AdminDashboard.tsx', 'utf8');
+  const helperStart = dashboard.indexOf('const downloadSecureFile =');
+  const helperEnd = dashboard.indexOf('export default function AdminDashboard', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, 'secure download helper should be present');
+
+  const helper = dashboard.slice(helperStart, helperEnd);
+  assert.match(helper, /if \(!response\.ok\)/, 'HTTP failures must not be treated as successful downloads');
+  assert.match(helper, /Promise<string \| null>/, 'download errors are returned to the UI');
+  assert.doesNotMatch(helper, /\balert\s*\(/, 'download errors must not use a blocking browser alert');
+  assert.match(dashboard, /onDownloadError=\{setErrorMessage\}/, 'download feedback uses the existing inline error state');
+  assert.match(dashboard, /onDownloadError\(message\)/, 'the document card forwards failed downloads to the banner');
+  assert.match(dashboard, /Admin action requires attention/, 'the inline feedback banner remains available');
+});
