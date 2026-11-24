@@ -31,9 +31,12 @@ function humanizeDocumentType(value: string) { const normalized = value.replace(
 function formatSleAmount(value: number) { return `SLE ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`; }
 function formatUsdAmount(value: number) { return `USD ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0))}`; }
 
-const downloadSecureFile = async (url: string, filename: string) => {
+const downloadSecureFile = async (url: string, filename: string): Promise<string | null> => {
   try {
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Document download failed (HTTP ${response.status}). Please retry.`);
+    }
     const blob = await response.blob();
     const blobUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -43,8 +46,11 @@ const downloadSecureFile = async (url: string, filename: string) => {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(blobUrl);
-  } catch (err) {
-    alert('Failed to download document.');
+    return null;
+  } catch (error) {
+    return error instanceof Error && error.message
+      ? error.message
+      : 'Failed to download document. Check your connection and try again.';
   }
 };
 
@@ -463,7 +469,7 @@ export default function AdminDashboard() {
                     {selectedDocuments.map((document) => {
                       const url = documentUrls[document.id];
                       return (
-                        <DocumentCard key={document.id} document={document} signedUrl={url} />
+                        <DocumentCard key={document.id} document={document} signedUrl={url} onDownloadError={setErrorMessage} />
                       );
                     })}
                   </div>
@@ -539,7 +545,7 @@ function InfoCard({ label, value, icon }: { label: string; value?: string; icon?
   return (<div className="bg-slate-50 border border-slate-100 rounded-xl p-4"><div className="flex items-center gap-2 text-xs text-slate-400 font-medium">{icon}<span>{label}</span></div><div className="text-sm font-bold text-slate-800 mt-2 break-words">{value || '—'}</div></div>);
 }
 
-function DocumentCard({ document, signedUrl }: { document: KycDocument; signedUrl?: string; }) {
+function DocumentCard({ document, signedUrl, onDownloadError }: { document: KycDocument; signedUrl?: string; onDownloadError: (message: string) => void; }) {
   return (
     <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 flex flex-col justify-between h-full">
       <div>
@@ -553,7 +559,7 @@ function DocumentCard({ document, signedUrl }: { document: KycDocument; signedUr
       </div>
       <div className="mt-4 pt-4 border-t border-slate-200">
         {signedUrl ? (
-          <button type="button" onClick={() => downloadSecureFile(signedUrl, document.file_name || 'document')} className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 py-2.5 rounded-lg text-xs font-bold transition shadow-sm">
+          <button type="button" onClick={() => { void downloadSecureFile(signedUrl, document.file_name || 'document').then(message => { if (message) onDownloadError(message); }); }} className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700 py-2.5 rounded-lg text-xs font-bold transition shadow-sm">
             <Download size={14} /> Download to Device
           </button>
         ) : (
