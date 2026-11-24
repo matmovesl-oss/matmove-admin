@@ -28,7 +28,7 @@ async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
  globalThis.__loadingAccess=grants;
  globalThis.__loadingFetch=async(url,options)=>{calls.push({kind:'api',url,options});const result=await api(url,options);return{ok:result.ok,json:async()=>result.body};};
  const originalFetch=globalThis.fetch,originalWindow=globalThis.window;globalThis.fetch=globalThis.__loadingFetch;globalThis.window={setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,clearInterval:()=>{}};
- globalThis.__loadingDb={auth:{getSession:async()=>({data:{session:{user:{id:uid},access_token:'test-token'}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});return await db(name,args);},from(table){const chain={select:()=>chain,in:()=>chain,eq:()=>chain,order:()=>chain,limit:()=>chain,then:(yes,no)=>{calls.push({kind:'db',table});return Promise.resolve(db(table)).then(yes,no);}};return chain;}};
+ globalThis.__loadingDb={auth:{getSession:async()=>({data:{session:{user:{id:uid},access_token:'test-token'}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});return await db(name,args);},from(table){const chain={select:()=>chain,in:()=>chain,eq:()=>chain,order:()=>chain,limit:()=>chain,abortSignal:()=>chain,then:(yes,no)=>{calls.push({kind:'db',table});return Promise.resolve(db(table)).then(yes,no);}};return chain;}};
  try{
   await build({entryPoints:[`src/pages/${name}.tsx`],tsconfig:'tsconfig.app.json',outfile:out,bundle:true,platform:'node',format:'esm',jsx:'automatic',external:['react/*','lucide-react'],plugins:[{name:'loading-mocks',setup(b){
    b.onResolve({filter:/^react$/},()=>({path:'hooks',namespace:'mock'}));
