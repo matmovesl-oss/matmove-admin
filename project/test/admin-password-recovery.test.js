@@ -12,7 +12,7 @@ const text=n=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):Arr
 const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 async function harness(file,fn,options={}){
  const original={window:globalThis.window,sessionStorage:globalThis.sessionStorage},store=new Map(),calls={reset:[],login:[],update:[],rpc:[],complete:0,assign:[]};let index=0,dirty=true,tree;const slots=[],effects=[];
- const location={origin:'https://matmove-admin.vercel.app',pathname:options.path||'/',search:options.search||'',hash:options.hash||'',assign:p=>calls.assign.push(p)};
+ const location={origin:'https://matmove-admin.vercel.app',pathname:options.path||'/',search:options.search||'',hash:options.hash||'',assign:p=>calls.assign.push(p),replace:p=>calls.assign.push(p)};
  globalThis.window={location,history:{replaceState(){}}};globalThis.sessionStorage={getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};
  if(options.marker)store.set('matmove_admin_recovery',JSON.stringify(options.marker));
  let session=options.session===null?null:{user:{id:user},access_token:'test-token'},listener;
@@ -56,7 +56,7 @@ test('12-digit-only and short passwords stop before Auth writes; valid strong pa
  h.passwords('123456789012');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);assert.match(h.text,/12-digit-only password is not accepted/);
  h.passwords('short');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);
  h.passwords('MatMove!Secure2026','MatMove!Secure2027');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,0);assert.match(h.text,/do not match/);
- h.passwords('MatMove!Secure2026');await h.settle();const work=h.submit();h.submit();await work;await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,1);assert.equal(h.calls.rpc.length,0);assert.doesNotMatch(h.text,/MatMove!Secure2026/);
+ h.passwords('MatMove!Secure2026');await h.settle();const work=h.submit();h.submit();await work;await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);assert.deepEqual(h.calls.assign,['/login']);assert.equal(h.calls.rpc.length,0);assert.doesNotMatch(h.text,/MatMove!Secure2026/);
 }));
 test('Removed staff and changed sessions cannot submit a new password',async()=>{
  for(const kind of ['removed','identity'])await harness('src/pages/StaffPasswordPage.tsx',async h=>{
@@ -65,7 +65,7 @@ test('Removed staff and changed sessions cannot submit a new password',async()=>
 });
 test('A failed post-save permission check preserves saved state and Continue never changes the password twice',async()=>{
  let reads=0;await harness('src/pages/StaffPasswordPage.tsx',async h=>{
-  h.passwords('MatMove!Secure2026');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);assert.match(h.text,/password was saved/i);await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,1);
+  h.passwords('MatMove!Secure2026');await h.settle();await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);assert.match(h.text,/password was saved/i);await h.submit();await h.settle();assert.equal(h.calls.update.length,1);assert.equal(h.calls.complete,0);assert.deepEqual(h.calls.assign,['/login']);
  },{load:async()=>{if(++reads===2)throw Error('Permissions unavailable.');return access;}});
 });
 test('Invitation setup still finishes only the current active staff record',()=>harness('src/pages/StaffPasswordPage.tsx',async h=>{
