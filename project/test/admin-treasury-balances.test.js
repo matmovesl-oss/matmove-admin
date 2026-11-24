@@ -27,8 +27,8 @@ async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
  };
  globalThis.__loadingAccess=grants;
  globalThis.__loadingFetch=async(url,options)=>{calls.push({kind:'api',url,options});const result=await api(url,options);return{ok:result.ok,json:async()=>result.body};};
- const originalFetch=globalThis.fetch;globalThis.fetch=globalThis.__loadingFetch;
- globalThis.__loadingDb={auth:{getSession:async()=>({data:{session:{user:{id:uid},access_token:'test-token'}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});return await db(name,args);},from(table){const chain={select:()=>chain,in:()=>chain,eq:()=>chain,order:()=>chain,limit:()=>chain,then:(yes,no)=>{calls.push({kind:'db',table});return Promise.resolve(db(table)).then(yes,no);}};return chain;}};
+ const originalFetch=globalThis.fetch,originalWindow=globalThis.window;globalThis.fetch=globalThis.__loadingFetch;globalThis.window={setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,clearInterval:()=>{}};
+ globalThis.__loadingDb={auth:{getSession:async()=>({data:{session:{user:{id:uid},access_token:'test-token'}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});return await db(name,args);},from(table){const chain={select:()=>chain,in:()=>chain,eq:()=>chain,order:()=>chain,limit:()=>chain,abortSignal:()=>chain,then:(yes,no)=>{calls.push({kind:'db',table});return Promise.resolve(db(table)).then(yes,no);}};return chain;}};
  try{
   await build({entryPoints:[`src/pages/${name}.tsx`],tsconfig:'tsconfig.app.json',outfile:out,bundle:true,platform:'node',format:'esm',jsx:'automatic',external:['react/*','lucide-react'],plugins:[{name:'loading-mocks',setup(b){
    b.onResolve({filter:/^react$/},()=>({path:'hooks',namespace:'mock'}));
@@ -50,7 +50,7 @@ async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
   const button=label=>{const node=nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);assert.ok(node,`Missing ${label}: ${text(tree)}`);return node;};
   const h={calls,button,settle,get text(){return text(tree);},get nodes(){return nodes(tree);},get writes(){return writes;},get cards(){return nodes(tree).filter(n=>n.props.label&&Object.hasOwn(n.props,'value')).map(n=>({label:n.props.label,value:n.props.value}));},setAccess(value){globalThis.__loadingAccess=value;dirty=true;},setApi:fn=>api=fn,setDb:fn=>db=fn,unmount(){unmounted=true;for(const s of slots)s?.cleanup?.();},async click(label){const node=button(label);assert.ok(!node.props.disabled);node.props.onClick();await settle();}};
   await settle();await fn(h);
- }finally{globalThis.fetch=originalFetch;if(!unmounted)for(const s of slots)s?.cleanup?.();await rm(dir,{recursive:true,force:true});for(const k of ['__loadingHooks','__loadingAccess','__loadingFetch','__loadingDb'])delete globalThis[k];}
+ }finally{globalThis.fetch=originalFetch;if(originalWindow!==undefined)globalThis.window=originalWindow;if(!unmounted)for(const s of slots)s?.cleanup?.();await rm(dir,{recursive:true,force:true});for(const k of ['__loadingHooks','__loadingAccess','__loadingFetch','__loadingDb'])delete globalThis[k];}
 }
 
 import {createHandler as createBalances} from '../api/admin-wallet-balances.js';
@@ -104,7 +104,7 @@ async function page(fn,{access=globalOwner,fetcher}={}){
  let i=0,dirty=true,tree,unmounted=false;const oldWindow=globalThis.window;
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,j)=>!Object.is(v,b[j]));
  globalThis.__monitor={access,fetch:async(url,options)=>{calls.push({url,options});const result=await (fetcher?fetcher(url,options):{ok:true,body:url.includes('view=report-overview')?overviewBody():{accounts:[],platform:{}}});return {ok:result.ok,json:async()=>result.body};},db:{auth:{getSession:async()=>({data:{session:{user:{id:uid}}}})}},hooks:{useState(initial){const n=i++;if(!(n in slots))slots[n]={value:typeof initial==='function'?initial():initial};return[slots[n].value,v=>{slots[n].value=typeof v==='function'?v(slots[n].value):v;dirty=true;}];},useRef(initial){const n=i++;if(!(n in slots))slots[n]={current:initial};return slots[n];},useEffect(fn,deps){const n=i++,old=slots[n];if(!old||changed(old.deps,deps)){const next={deps,cleanup:old?.cleanup};slots[n]=next;effects.push(()=>{next.cleanup?.();next.cleanup=fn();});}}}};
- globalThis.window={setInterval:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearInterval:id=>{if(timers[id-1])timers[id-1].cleared=true;}};
+ globalThis.window={setTimeout:()=>1,clearTimeout:()=>{},setInterval:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearInterval:id=>{if(timers[id-1])timers[id-1].cleared=true;}};
  try{
  await build({entryPoints:['src/pages/DashboardPage.tsx'],tsconfig:'tsconfig.app.json',outfile:out,bundle:true,platform:'node',format:'esm',jsx:'automatic',external:['react/*','lucide-react'],plugins:[{name:'monitor-mocks',setup(b){
   b.onResolve({filter:/^react$/},()=>({path:'hooks',namespace:'mock'}));b.onResolve({filter:/^react-router-dom$/},()=>({path:'router',namespace:'mock'}));

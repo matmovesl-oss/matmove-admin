@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && node --test test/admin-homepage-posts-ui.test.mjs test/admin-map-places.test.mjs test/admin-support-links.test.mjs test/admin-route-code-splitting.test.mjs test/admin-network-timeouts.test.mjs test/admin-legacy-payment-review.test.mjs test/admin-support-polling.test.mjs test/admin-money-and-operations-ui.test.mjs test/dispatch-admin-cancel.test.mjs test/ride-investigation-workflow.test.mjs test/admin-cash-return-resolution.test.mjs test/cash-investigation-review-ui.test.mjs test/admin-password-recovery.test.js test/admin-monime-account-label-sync.test.mjs test/admin-offline-stale-data.test.mjs test/admin-offline-shell.test.mjs test/admin-compact-typography.test.mjs test/loading-bonanza-admin.test.mjs test/admin-offline-build-precache.test.mjs && vite build",
+    "build": " npm run typecheck && node --test test/admin-homepage-posts-ui.test.mjs test/admin-map-places.test.mjs test/admin-support-links.test.mjs test/admin-route-code-splitting.test.mjs test/admin-network-timeouts.test.mjs test/admin-legacy-payment-review.test.mjs test/admin-support-polling.test.mjs test/admin-money-and-operations-ui.test.mjs test/dispatch-admin-cancel.test.mjs test/ride-investigation-workflow.test.mjs test/admin-cash-return-resolution.test.mjs test/cash-investigation-review-ui.test.mjs test/admin-password-recovery.test.js test/admin-monime-account-label-sync.test.mjs test/admin-offline-stale-data.test.mjs test/admin-offline-shell.test.mjs test/admin-compact-typography.test.mjs test/loading-bonanza-admin.test.mjs test/admin-offline-build-precache.test.mjs test/admin-signout-feedback.test.mjs test/admin-preview-no-supabase.test.mjs && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
@@ -19,11 +19,13 @@
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.9",
     "@eslint/js": "^9.9.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^6.3.0",
     "autoprefixer": "^10.4.18",
+    "esbuild": "^0.28.2",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
@@ -32,12 +34,14 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2",
-    "@electric-sql/pglite": "0.5.9"
+    "vite": "^8.3.8"
   },
   "overrides": {
     "sucrase": {
       "glob": "14.0.6"
     }
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

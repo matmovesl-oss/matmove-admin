@@ -13,7 +13,9 @@ function nodes(n){if(!n||typeof n!=='object')return[];if(Array.isArray(n))return
 function text(n){if(n==null||typeof n==='boolean')return'';if(typeof n!=='object')return String(n);if(Array.isArray(n))return n.map(text).join('');return text(n.props?.children);}
 const apiEmpty=()=>({ok:true,body:{accounts:[],businessAccountIds:[],payouts:[],transactions:[]}});
 const dbEmpty=()=>({data:[],count:0,error:null});
+let pageQueue=Promise.resolve();
 async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
+ let releasePage;const previousPage=pageQueue;pageQueue=new Promise(resolve=>{releasePage=resolve;});await previousPage;
  const dir=await mkdtemp(join(process.cwd(),'.admin-loading-')),out=join(dir,'ui.mjs');
  const slots=[],effects=[],calls=[];let i=0,dirty=true,tree,unmounted=false,writes=0;
  const changed=(a,b)=>!a||a.length!==b?.length||a.some((v,j)=>!Object.is(v,b[j]));
@@ -26,8 +28,8 @@ async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
  };
  globalThis.__loadingAccess=grants;
  globalThis.__loadingFetch=async(url,options)=>{calls.push({kind:'api',url,options});const result=await api(url,options);return{ok:result.ok,json:async()=>result.body};};
- const originalFetch=globalThis.fetch,originalWindow=globalThis.window,originalDocument=globalThis.document;globalThis.fetch=globalThis.__loadingFetch;globalThis.window={setInterval:()=>1,clearInterval:()=>{}};globalThis.document={visibilityState:'visible'};
- globalThis.__loadingDb={channel(){const c={on:()=>c,subscribe:()=>{calls.push({kind:'subscription'});return c;}};return c;},removeChannel:async()=>{},auth:{getSession:async()=>({data:{session:{user:{id:uid},access_token:'test-token'}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});return await db(name,args);},from(table){const chain={select:()=>chain,in:()=>chain,eq:()=>chain,order:()=>chain,limit:()=>chain,then:(yes,no)=>{calls.push({kind:'db',table});return Promise.resolve(db(table)).then(yes,no);}};return chain;}};
+ const originalFetch=globalThis.fetch,originalWindow=globalThis.window,originalDocument=globalThis.document;globalThis.fetch=globalThis.__loadingFetch;globalThis.window={setTimeout:()=>1,clearTimeout:()=>{},setInterval:()=>1,clearInterval:()=>{}};globalThis.document={visibilityState:'visible'};
+ globalThis.__loadingDb={channel(){const c={on:()=>c,subscribe:()=>{calls.push({kind:'subscription'});return c;}};return c;},removeChannel:async()=>{},auth:{getSession:async()=>({data:{session:{user:{id:uid},access_token:'test-token'}},error:null})},rpc:async(name,args)=>{calls.push({kind:'rpc',name,args});return await db(name,args);},from(table){const chain={select:()=>chain,in:()=>chain,eq:()=>chain,order:()=>chain,limit:()=>chain,abortSignal:()=>chain,then:(yes,no)=>{calls.push({kind:'db',table});return Promise.resolve(db(table)).then(yes,no);}};return chain;}};
  try{
   await build({entryPoints:[`src/pages/${name}.tsx`],tsconfig:'tsconfig.app.json',outfile:out,bundle:true,platform:'node',format:'esm',jsx:'automatic',external:['react/*','lucide-react'],plugins:[{name:'loading-mocks',setup(b){
    b.onResolve({filter:/^react$/},()=>({path:'hooks',namespace:'mock'}));
@@ -49,7 +51,7 @@ async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
   const button=label=>{const node=nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);assert.ok(node,`Missing ${label}: ${text(tree)}`);return node;};
   const h={calls,button,settle,get text(){return text(tree);},get nodes(){return nodes(tree);},get writes(){return writes;},get cards(){return nodes(tree).filter(n=>n.props.label&&Object.hasOwn(n.props,'value')).map(n=>({label:n.props.label,value:n.props.value}));},setAccess(value){globalThis.__loadingAccess=value;dirty=true;},setApi:fn=>api=fn,setDb:fn=>db=fn,unmount(){unmounted=true;for(const s of slots)s?.cleanup?.();},async click(label){const node=button(label);assert.ok(!node.props.disabled);node.props.onClick();await settle();}};
   await settle();await fn(h);
- }finally{globalThis.fetch=originalFetch;if(!unmounted)for(const s of slots)s?.cleanup?.();globalThis.window=originalWindow;globalThis.document=originalDocument;await rm(dir,{recursive:true,force:true});for(const k of ['__loadingHooks','__loadingAccess','__loadingFetch','__loadingDb'])delete globalThis[k];}
+ }finally{globalThis.fetch=originalFetch;if(!unmounted)for(const s of slots)s?.cleanup?.();globalThis.window=originalWindow;globalThis.document=originalDocument;await rm(dir,{recursive:true,force:true});for(const k of ['__loadingHooks','__loadingAccess','__loadingFetch','__loadingDb'])delete globalThis[k];releasePage();}
 }
 
 const pages=[

@@ -19,7 +19,7 @@ function responseRecorder() {
 }
 
 function mockClient({ rpcData = null, rpcError = null, reviewRows = [], reviewError = null } = {}) {
-  const calls = { rpc: [], query: null };
+  const calls = { rpc: [], query: null, webhookReviewQuery: null };
   const client = {
     async rpc(name, args) {
       calls.rpc.push({ name, args });
@@ -44,6 +44,9 @@ function mockClient({ rpcData = null, rpcError = null, reviewRows = [], reviewEr
             sort: this.sort,
             maxRows: this.maxRows
           };
+          if (this.table === 'matmove_admin_monime_webhook_events') {
+            calls.webhookReviewQuery = calls.query;
+          }
           return Promise.resolve({ data: reviewRows, error: reviewError }).then(resolve, reject);
         }
       };
@@ -159,9 +162,9 @@ test('GET returns only safe failed-event metadata and filters to unreviewed reco
   assert.equal(res.body.transactions.length, 1);
   assert.equal(res.body.webhookReviewAvailable, true);
   assert.equal(res.body.webhookReviewEvents[0].event_id, eventId);
-  assert.deepEqual(calls.query.filters, [['status', 'failed'], ['review_state', 'unreviewed']]);
-  assert.equal(calls.query.maxRows, 100);
-  assert.equal(calls.query.columns.includes('payload'), false);
+  assert.deepEqual(calls.webhookReviewQuery.filters, [['status', 'failed'], ['review_state', 'unreviewed']]);
+  assert.equal(calls.webhookReviewQuery.maxRows, 100);
+  assert.equal(calls.webhookReviewQuery.columns.includes('payload'), false);
   assert.equal(calls.query.columns.includes('review_note'), false);
 });
 
