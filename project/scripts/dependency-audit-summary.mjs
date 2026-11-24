@@ -11,54 +11,41 @@ function runAudit(label, args) {
   });
 
   if (result.error) {
-    return { label, available: false, error: result.error.message };
+    console.log(`MATMOVE_NPM_AUDIT_UNAVAILABLE ${label} ${result.error.message}`);
+    return;
   }
 
   let report;
   try {
     report = JSON.parse(result.stdout || "");
   } catch {
-    return {
-      label,
-      available: false,
-      exitStatus: result.status,
-      error: (result.stderr || result.stdout || "npm audit returned no JSON").slice(0, 1200)
-    };
+    console.log(`MATMOVE_NPM_AUDIT_UNAVAILABLE ${label} ${(result.stderr || result.stdout || "npm audit returned no JSON").slice(0, 800)}`);
+    return;
   }
 
-  const vulnerabilities = Object.entries(report.vulnerabilities || {}).map(([name, item]) => ({
-    name,
-    severity: item.severity,
-    direct: item.isDirect,
-    range: item.range,
-    effects: item.effects || [],
-    fixAvailable: item.fixAvailable,
-    advisories: (item.via || [])
+  const counts = report.metadata?.vulnerabilities || {};
+  console.log(`MATMOVE_NPM_AUDIT_COUNTS ${label} ${JSON.stringify(counts)}`);
+
+  for (const [name, item] of Object.entries(report.vulnerabilities || {})) {
+    const advisories = (item.via || [])
       .filter((via) => typeof via === "object")
       .map((via) => ({
         title: via.title,
         severity: via.severity,
         range: via.range,
         url: via.url
-      }))
-  }));
-
-  return {
-    label,
-    available: true,
-    exitStatus: result.status,
-    counts: report.metadata?.vulnerabilities || null,
-    vulnerablePackageCount: vulnerabilities.length,
-    vulnerabilities
-  };
+      }));
+    console.log("MATMOVE_NPM_AUDIT_ITEM " + JSON.stringify({
+      label,
+      name,
+      severity: item.severity,
+      direct: item.isDirect,
+      range: item.range,
+      fixAvailable: item.fixAvailable,
+      advisories
+    }));
+  }
 }
 
-const reports = [
-  runAudit("all-dependencies", ["audit", "--json"]),
-  runAudit("production-dependencies", ["audit", "--omit=dev", "--json"])
-];
-
-console.log("MATMOVE_NPM_AUDIT_REPORT " + JSON.stringify({
-  generatedAt: new Date().toISOString(),
-  reports
-}));
+runAudit("all-dependencies", ["audit", "--json"]);
+runAudit("production-dependencies", ["audit", "--omit=dev", "--json"]);
