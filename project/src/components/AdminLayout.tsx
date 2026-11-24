@@ -140,15 +140,21 @@ export default function AdminLayout({
   }, [sidebarCollapsed]);
 
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
   const owner = access?.is_active === true && access?.is_owner === true;
 
   async function handleSignOut() {
     if (signingOut) return;
     setSigningOut(true);
+    setSignOutError('');
     try {
-      await supabase.auth.signOut({ scope: 'local' });
-    } catch (error) {
-      console.error('Sign out failed:', error);
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+    } catch (error: unknown) {
+      const message = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'Unable to sign out. Check your connection and try again.';
+      setSignOutError(message);
     } finally {
       setSigningOut(false);
     }
@@ -421,6 +427,15 @@ export default function AdminLayout({
             </button>
           </div>
         </header>
+
+        {signOutError && (
+          <div role="alert" className="flex shrink-0 items-start justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:px-6">
+            <p className="min-w-0">{signOutError}</p>
+            <button type="button" onClick={() => setSignOutError('')} aria-label="Dismiss sign-out error" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         <main ref={mainRef} className="mm-admin-main flex-1 overflow-auto p-4 sm:p-6">
           {children}
