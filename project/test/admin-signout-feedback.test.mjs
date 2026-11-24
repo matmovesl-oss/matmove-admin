@@ -37,3 +37,8 @@ test('KYC document download failures use the existing inline admin feedback bann
   assert.match(dashboard, /onDownloadError\(message\)/, 'the document card forwards failed downloads to the banner');
   assert.match(dashboard, /Admin action requires attention/, 'the inline feedback banner remains available');
 });
+
+test('Admin build explicitly approves only the Vite esbuild install script', async () => {
+  const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.deepEqual(packageJson.allowScripts, { 'esbuild@0.21.5': true });
+});
