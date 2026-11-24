@@ -50,7 +50,7 @@ async function withPage(name,fn,{api=apiEmpty,db=dbEmpty,grants=access}={}){
   const button=label=>{const node=nodes(tree).find(n=>n.type==='button'&&text(n).trim()===label);assert.ok(node,`Missing ${label}: ${text(tree)}`);return node;};
   const h={calls,button,settle,get text(){return text(tree);},get nodes(){return nodes(tree);},get writes(){return writes;},get cards(){return nodes(tree).filter(n=>n.props.label&&Object.hasOwn(n.props,'value')).map(n=>({label:n.props.label,value:n.props.value}));},setAccess(value){globalThis.__loadingAccess=value;dirty=true;},setApi:fn=>api=fn,setDb:fn=>db=fn,unmount(){unmounted=true;for(const s of slots)s?.cleanup?.();},async click(label){const node=button(label);assert.ok(!node.props.disabled);node.props.onClick();await settle();}};
   await settle();await fn(h);
- }finally{globalThis.fetch=originalFetch;if(originalWindow===undefined)delete globalThis.window;else globalThis.window=originalWindow;if(!unmounted)for(const s of slots)s?.cleanup?.();await rm(dir,{recursive:true,force:true});for(const k of ['__loadingHooks','__loadingAccess','__loadingFetch','__loadingDb'])delete globalThis[k];}
+ }finally{globalThis.fetch=originalFetch;if(originalWindow!==undefined)globalThis.window=originalWindow;if(!unmounted)for(const s of slots)s?.cleanup?.();await rm(dir,{recursive:true,force:true});for(const k of ['__loadingHooks','__loadingAccess','__loadingFetch','__loadingDb'])delete globalThis[k];}
 }
 
 import {createHandler as createBalances} from '../api/admin-wallet-balances.js';
