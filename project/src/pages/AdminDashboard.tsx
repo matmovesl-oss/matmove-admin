@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useWallets, useWithdrawals } from '../lib/hooks';
-import AdminLayout from '../components/AdminLayout'; 
 import { AdminRowsSkeleton, SkeletonBlock } from '../components/Skeleton';
-import { CheckCircle2, XCircle, Search, RefreshCw, FileText, Truck, Store, User, ShieldCheck, Download, X, Clock3, Users, AlertTriangle, Activity, MapPin, Phone, Mail, CalendarDays, BadgeCheck, Ban, Wallet, LockKeyhole, UnlockKeyhole, ArrowDownToLine, ArrowUpFromLine, CircleDollarSign, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Search, RefreshCw, FileText, Truck, Store, User, ShieldCheck, Download, X, Clock3, Users, AlertTriangle, Activity, Phone, Mail, Wallet, LockKeyhole, UnlockKeyhole, ArrowDownToLine, ArrowUpFromLine, CircleDollarSign, Loader2 } from 'lucide-react';
 
 type CustomerRole = 'rider' | 'driver' | 'merchant';
 type AccountRole = CustomerRole | 'admin' | 'corporate' | string;
@@ -23,7 +22,6 @@ function isCustomerRole(role?: string): role is CustomerRole { const normalized 
 function operationalStatus(status?: string): OperationalKycStatus { if (status === 'approved') return 'approved'; if (status === 'rejected') return 'rejected'; return 'pending'; }
 function statusLabel(status?: string) { switch (operationalStatus(status)) { case 'approved': return 'Approved'; case 'rejected': return 'Declined'; default: return 'Pending'; } }
 function statusClasses(status?: string) { switch (operationalStatus(status)) { case 'approved': return 'bg-emerald-100 text-emerald-700 border-emerald-200'; case 'rejected': return 'bg-red-100 text-red-700 border-red-200'; default: return 'bg-amber-100 text-amber-700 border-amber-200'; } }
-function formatDate(value?: string) { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
 function formatDateTime(value?: string) { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 function getLatestSubmission(submissions: KycSubmission[], userId: string) { return submissions.filter((submission) => submission.profile_id === userId).sort((a, b) => { const aDate = new Date(a.submitted_at || a.created_at || 0).getTime(); const bDate = new Date(b.submitted_at || b.created_at || 0).getTime(); return bDate - aDate; })[0] || null; }
 function getEffectiveKycStatus(profile?: UserProfile | null, submission?: KycSubmission | null) { return operationalStatus(submission?.status || profile?.kyc_status); }
