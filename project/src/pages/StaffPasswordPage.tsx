@@ -31,7 +31,12 @@ export default function StaffPasswordPage({onComplete,userId,mode='invite'}:{onC
    if(!saved){const changed=await supabase.auth.updateUser({password});if(changed.error){const authError=changed.error as {status?:number;message?:string};if(authError.status===422||/password.*(character|each|strength|weak|required)/i.test(authError.message||''))throw new Error('Supabase rejected this password. Use 12–128 characters with lowercase, uppercase, a number and a symbol. A 12-digit-only password is not accepted.');throw new Error('The password could not be saved. Your session is still protected. If this email link was already used or has expired, ask the Admin owner to send a fresh login email.');}if(!mounted.current||actor.current!==expected)return;setPassword('');setConfirm('');setSaved(true);}
    const after=await verified(current.id);if(!mounted.current||actor.current!==expected)return;
    if(after.access.requires_password_setup){const done=await supabase.rpc('matmove_staff_finish_setup');if(done.error)throw new Error('Your password was saved, but staff setup needs another check. Select Continue.');}
-   await verified(current.id);if(mounted.current&&actor.current===expected)await onComplete();
+   await verified(current.id);if(!mounted.current||actor.current!==expected)return;
+   if(mode==='recovery'){
+    const signedOut=await supabase.auth.signOut({scope:'local'});if(signedOut.error)throw new Error('Your password was saved, but sign-out was not confirmed. Select Sign out, then return to Admin sign in.');
+    window.location.replace('/login');return;
+   }
+   await onComplete();
   }catch(e){if(mounted.current&&actor.current===expected)setError(e instanceof Error?e.message:'Unable to complete password setup.');}
   finally{mutex.current=false;if(mounted.current&&actor.current===expected)setBusy(false);}
  }
