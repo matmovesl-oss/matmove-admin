@@ -27,6 +27,8 @@ test('Sports workspace uses protected database actions and keeps the actual game
 test('Sports MVP includes the 16-player bracket, match statistics, evidence and payout audit trail', () => {
   const page = read('../src/pages/SportsPage.tsx');
   assert.match(page, /Generate 15-match bracket/);
+  assert.match(page, /registrationOpen/);
+  assert.match(page, /lock after the bracket is generated/);
   assert.match(page, /quarter_final/);
   assert.match(page, /semi_final/);
   assert.match(page, /group_final/);
