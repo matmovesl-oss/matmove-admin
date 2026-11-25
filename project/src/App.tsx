@@ -16,6 +16,7 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const CustomerSupportPage = lazy(() => import('./pages/CustomerSupportPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const GamesPage = lazy(() => import('./pages/GamesPage').then(m => ({default: m.GamesPage})));
+const SportsPage = lazy(() => import('./pages/SportsPage').then(m => ({default: m.SportsPage})));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const KycPage = lazy(() => import('./pages/KycPage').then(m => ({default: m.KycPage})));
 const FinancialsPage = lazy(() => import('./pages/FinancialsPage').then(m => ({default: m.FinancialsPage})));
@@ -74,6 +75,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage/></Gate>}/>
  <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage/></Gate>}/>
  <Route path="/games" element={<GameGate access={access}/>}/>
+ <Route path="/sports" element={<Gate access={access} section="sports"><SportsPage/></Gate>}/>
  <Route path="/kyc" element={<Gate access={access} section="kyc"><KycPage/></Gate>}/>
  <Route path="/civitas" element={<Gate access={access} section="financials"><CivitasAdministrativePage/></Gate>}/>
  <Route path="/special" element={<Gate access={access} section="special"><SpecialOperationsPage/></Gate>}/>
