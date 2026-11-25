@@ -43,6 +43,12 @@ export const SECTION_GROUPS = [
     ],
   },
   {
+    label: 'Sports',
+    items: [
+      ['sports', 'Sports tournament management', '/sports'],
+    ],
+  },
+  {
     label: 'Communications',
     items: [
       ['support', 'Customer Support inbox', '/support'],
