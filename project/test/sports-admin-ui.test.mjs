@@ -33,7 +33,7 @@ test('Sports MVP includes the 16-player bracket, match statistics, evidence and 
   assert.match(page, /Goal difference/);
   assert.match(page, /transaction_reference/);
   assert.match(page, /Share on WhatsApp/);
-  assert.match(page, /image\\/png/);
+  assert.ok(page.includes('image/png'));
   assert.match(page, /Top scorer/);
   assert.match(page, /does not initiate a Monime transfer/);
 });
