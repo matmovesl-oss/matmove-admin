@@ -18,6 +18,8 @@ test('Sports workspace uses protected database actions and keeps the actual game
   assert.match(page, /matmove_sports_admin_snapshot/);
   assert.match(page, /matmove_sports_admin_action/);
   assert.match(page, /game_tournament_id/);
+  assert.match(page, /save only three game IDs/);
+  assert.match(page, /Grand Final Friend Match/);
   assert.match(page, /invitation_url/);
   assert.match(page, /matmove-sports-evidence/);
 });
