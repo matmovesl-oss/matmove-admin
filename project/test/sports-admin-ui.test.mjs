@@ -34,6 +34,8 @@ test('Sports MVP includes the 16-player bracket, match statistics, evidence and 
   assert.match(page, /Goals scored/);
   assert.match(page, /Goal difference/);
   assert.match(page, /transaction_reference/);
+  assert.match(page, /Winner available after Grand Final/);
+  assert.match(page, /Only the overall champion receives the cash prize/);
   assert.match(page, /Share on WhatsApp/);
   assert.ok(page.includes('image/png'));
   assert.match(page, /Top scorer/);
