@@ -70,7 +70,7 @@ test('additive SQL accepts notification grants without reviving removed staff or
    await assert.rejects(()=>save(['staff'],other),/Only the active owner/);await assert.rejects(()=>save(['notifications','super_admin']),/Invalid assignments/);await assert.rejects(()=>save(['notifications','notifications']),/Invalid assignments/);
   });
   await t.test('all twenty-eight checked assignments are accepted, while malformed values fail atomically',async()=>{
-   await save(PERMISSION_KEYS);await f.pg.exec('reset role');assert.equal((await f.pg.query('select jsonb_array_length(permissions) n from matmove_staff_access where id=$1',[target])).rows[0].n,27);
+   await save(PERMISSION_KEYS);await f.pg.exec('reset role');assert.equal((await f.pg.query('select jsonb_array_length(permissions) n from matmove_staff_access where id=$1',[target])).rows[0].n,28);
    await assert.rejects(()=>save({permissions:['notifications']}),/Invalid assignments/);await assert.rejects(()=>save(null),/Invalid assignments/);await assert.rejects(()=>save([]),/Invalid assignments/);
   });
   await t.test('removal immediately revokes notifications; legacy save and stale restore stay blocked',async()=>{
