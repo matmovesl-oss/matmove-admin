@@ -84,7 +84,13 @@ const navSections = [
     key: 'customer-governance',
     name: 'Customers & Staff',
     icon: Users,
-    paths: ['/customers', '/kyc', '/staff'],
+    paths: ['/customers', '/kyc'],
+  },
+  {
+    key: 'admin-releases',
+    name: 'Administration & App Releases',
+    icon: ShieldCheck,
+    paths: ['/staff', '/app-releases'],
   },
   {
     key: 'sports',
