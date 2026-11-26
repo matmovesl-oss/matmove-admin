@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+test('Android app release page is owner-gated and uploads the fixed public APK object', async () => {
+  const source = await readFile(new URL('../src/pages/AppReleasePage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /access\?\.is_active === true && access\?\.is_owner === true/);
+  assert.match(source, /matmove-app-releases/);
+  assert.match(source, /android\/MatMove\.apk/);
+  assert.match(source, /upsert: true/);
+  assert.match(source, /application\/vnd\.android\.package-archive/);
+  assert.match(source, /MAX_SIZE = 50 \* 1024 \* 1024/);
+  assert.match(source, /file\.name\.toLowerCase\(\)\.endsWith\('\.apk'\)/);
+  assert.match(source, /header\[0\] !== 0x50/);
+  assert.match(source, /matmove-app-releases/);
+  assert.match(source, /searchParams\.set\('download', 'MatMove\.apk'\)/);
+  assert.match(source, /Only the active MatMove owner account can upload or replace/);
+  assert.match(source, /same Android signing key/);
+});
+
+test('Android release storage migration grants public read and owner-only writes', async () => {
+  const sql = await readFile(new URL('../supabase/migrations/20261126171003_matmove_android_app_releases_storage_v1.sql', import.meta.url), 'utf8');
+  assert.match(sql, /public = true/);
+  assert.match(sql, /matmove_app_releases_public_read/);
+  assert.match(sql, /to public/);
+  assert.match(sql, /matmove_staff_access/);
+  assert.match(sql, /a\.is_owner = true/);
+  assert.match(sql, /matmove_app_releases_owner_insert/);
+  assert.match(sql, /matmove_app_releases_owner_update/);
+  assert.match(sql, /matmove_app_releases_owner_delete/);
+});
