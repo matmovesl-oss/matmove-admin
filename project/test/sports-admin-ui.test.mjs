@@ -75,3 +75,11 @@ test('Gala Admin roster no longer has a separate direct-add intake that bypasses
   assert.doesNotMatch(page, /async function addPlayer/);
   assert.doesNotMatch(page, /onSubmit=\{addPlayer\}/);
 });
+
+test('Gala review exposes live MatMove account activity and still rechecks eligibility server-side', () => {
+  const page = read('../src/pages/SportsPage.tsx');
+  assert.match(page, /account_active:boolean/);
+  assert.match(page, /a\.account_active\?<Pill value="active"\/>/);
+  assert.match(page, /!a\.account_active/);
+  assert.match(page, /matmove_sports_application_admin_action/);
+});
