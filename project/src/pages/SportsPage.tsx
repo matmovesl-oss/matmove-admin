@@ -41,6 +41,7 @@ export function SportsPage(){
  const selected=data.competitions.find(c=>c.id===competitionId)||data.competitions[0]||null;
  const registrationOpen=selected?.status==='registration'||selected?.status==='draft';
  const galaRegistrationOpen=!!selected&&selected.status==='registration'&&new Date(selected.registration_opens_at).getTime()<=Date.now()&&(!selected.registration_closes_at||new Date(selected.registration_closes_at).getTime()>Date.now());
+ const galaReviewOpen=!!selected&&['draft','registration'].includes(selected.status)&&selected.match_count===0;
  useEffect(()=>{setSchedule({opens_at:localDateTime(selected?.registration_opens_at),closes_at:localDateTime(selected?.registration_closes_at)});},[selected?.id,selected?.registration_opens_at,selected?.registration_closes_at]);
  const byId=useMemo(()=>new Map<string,Player>(data.players.map(p=>[p.id,p] as const)),[data.players]);
  const confirmed=data.matches.filter(m=>m.status==='confirmed');
@@ -95,9 +96,9 @@ export function SportsPage(){
       <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-slate-500"><span className={a.terms_accepted?'text-emerald-700':'text-rose-700'}>Terms {a.terms_accepted?'accepted':'not accepted'}</span><span>·</span><span className={a.rules_accepted?'text-emerald-700':'text-rose-700'}>Competition rules {a.rules_accepted?'accepted':'not accepted'}</span><span>·</span><span>Country: {a.country}</span><span>·</span><span>Accepted {dateLabel(a.accepted_at)}</span></div>
       {a.admin_note&&<p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{a.admin_note}</p>}
       {['submitted','needs_info'].includes(a.status)&&<div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
-       <Btn disabled={busy||!galaRegistrationOpen||a.kyc_status!=='approved'||a.wallet_frozen||applicationStats.approved>=16} onClick={()=>void galaAction('approve',{competition_id:a.competition_id,application_id:a.id})}><Check size={13}/> Approve & add to roster</Btn>
-       <Btn kind="light" disabled={busy||!galaRegistrationOpen} onClick={()=>void galaAction('request_info',{competition_id:a.competition_id,application_id:a.id,note:'Please update the requested details and resubmit your Gala application.'})}>Request information</Btn>
-       <Btn kind="red" disabled={busy||!galaRegistrationOpen} onClick={()=>void galaAction('reject',{competition_id:a.competition_id,application_id:a.id,note:'Application not approved. Contact MatMove for assistance.'})}><X size={13}/> Reject</Btn>
+       <Btn disabled={busy||!galaReviewOpen||a.kyc_status!=='approved'||a.wallet_frozen||data.stats.approved_players>=16} onClick={()=>void galaAction('approve',{competition_id:a.competition_id,application_id:a.id})}><Check size={13}/> Approve & add to roster</Btn>
+       <Btn kind="light" disabled={busy||!galaReviewOpen} onClick={()=>void galaAction('request_info',{competition_id:a.competition_id,application_id:a.id,note:'Please update the requested details and resubmit your Gala application.'})}>Request information</Btn>
+       <Btn kind="red" disabled={busy||!galaReviewOpen} onClick={()=>void galaAction('reject',{competition_id:a.competition_id,application_id:a.id,note:'Application not approved. Contact MatMove for assistance.'})}><X size={13}/> Reject</Btn>
       </div>}
       {a.status==='approved'&&a.player_id&&<p className="mt-3 text-xs font-bold text-emerald-700">Player roster record created · {a.player_id}</p>}
      </article>)}
