@@ -137,11 +137,11 @@ test('cash collection search preserves last verified results after an outage and
   assert.doesNotMatch(ui, /approve|release|capturePayment|refundPayment/i);
 });
 
-test('Admin sidebar remembers its own scroll position while route layouts remount', async () => {
+test('Admin sidebar keeps a compact independent grouped scroll area without restoring stale offsets', async () => {
   const layout = await read('src/components/AdminLayout.tsx');
-  assert.match(layout, /sidebarNavRef/);
-  assert.match(layout, /matmove-admin-sidebar-scroll-position/);
-  assert.match(layout, /element\.scrollTop = Math\.min\(saved, max\)/);
-  assert.match(layout, /element\.addEventListener\('scroll', persist/);
-  assert.match(layout, /return \(\) => \{/);
-});
+  assert.match(layout, /mm-admin-nav-list min-h-0 flex-1/);
+  assert.match(layout, /mm-admin-nav-group/);
+  assert.match(layout, /overflow-y-auto overscroll-contain/);
+  assert.doesNotMatch(layout, /sidebarNavRef|matmove-admin-sidebar-scroll-position/);
+  assert.doesNotMatch(layout, /new ResizeObserver\(restore\)/);
+ });
