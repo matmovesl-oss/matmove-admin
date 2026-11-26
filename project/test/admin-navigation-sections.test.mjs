@@ -10,6 +10,7 @@ test('Admin navigation is grouped into compact expandable workspaces', () => {
     'Operations & Support',
     'Finance & Wallets',
     'Customers & Staff',
+    'Administration & App Releases',
     'Sports & Tournaments',
     'Games & Events',
     'Reports & System',
@@ -18,7 +19,7 @@ test('Admin navigation is grouped into compact expandable workspaces', () => {
   for (const route of [
     '/financials', '/civitas', '/loading-bonanza', '/cash-payments',
     '/transactions', '/payouts', '/special', '/payroll',
-    '/sports', '/games', '/events', '/customers', '/kyc', '/staff',
+    '/sports', '/games', '/events', '/customers', '/kyc', '/staff', '/app-releases',
   ]) assert.ok(layout.includes(`'${route}'`), `missing Admin route: ${route}`);
 
   assert.match(layout, /aria-expanded=\{expanded\}/);
