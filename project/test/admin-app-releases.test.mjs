@@ -8,6 +8,8 @@ test('Android app release page is owner-gated and uploads the fixed public APK o
   assert.match(source, /matmove-app-releases/);
   assert.match(source, /android\/MatMove\.apk/);
   assert.match(source, /upsert: true/);
+  assert.match(source, /setSelectedFile\(file\)/);
+  assert.match(source, /upload\(selectedFile\)/);
   assert.match(source, /application\/vnd\.android\.package-archive/);
   assert.match(source, /MAX_SIZE = 50 \* 1024 \* 1024/);
   assert.match(source, /file\.name\.toLowerCase\(\)\.endsWith\('\.apk'\)/);
