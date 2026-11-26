@@ -83,7 +83,7 @@ const navSections = [
   },
   {
     key: 'customer-governance',
-    name: 'Customers & Staff',
+    name: 'Customers & KYC',
     icon: Users,
     paths: ['/customers', '/kyc'],
   },
