@@ -87,10 +87,16 @@ const navSections = [
     paths: ['/customers', '/kyc', '/staff'],
   },
   {
-    key: 'sports-community',
-    name: 'Sports, Games & Events',
+    key: 'sports',
+    name: 'Sports & Tournaments',
     icon: Trophy,
-    paths: ['/sports', '/games', '/events'],
+    paths: ['/sports'],
+  },
+  {
+    key: 'games-events',
+    name: 'Games & Events',
+    icon: Ticket,
+    paths: ['/games', '/events'],
   },
   {
     key: 'insights-system',
