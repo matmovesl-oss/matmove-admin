@@ -62,6 +62,7 @@ const navItems = [
   { key: 'payouts', name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },
   { key: 'customers', name: 'Customer Governance', path: '/customers', icon: Users },
   { key: 'staff', name: 'Staff Governance', path: '/staff', icon: Settings },
+  { key: 'staff', name: 'Android App Releases', path: '/app-releases', icon: ShieldCheck },
   { key: 'reports', name: 'Reports & Analytics', path: '/reports', icon: BarChart3 },
   { key: 'logs', name: 'System Logs', path: '/logs', icon: FileText },
   { key: 'audit', name: 'Audit & Activity Review', path: '/audit', icon: ClipboardCheck },
