@@ -35,4 +35,8 @@ test('Android release storage migration grants public read and owner-only writes
   assert.match(ownerPolicy, /security definer/);
   assert.ok(ownerPolicy.includes('grant execute on function public.matmove_is_active_owner() to authenticated'));
   assert.ok(ownerPolicy.includes('select public.matmove_is_active_owner()'));
+  const privateOwnerPolicy = await readFile(new URL('../supabase/migrations/20261126171920_matmove_android_app_release_private_owner_rls_v1.sql', import.meta.url), 'utf8');
+  assert.ok(privateOwnerPolicy.includes('create or replace function private.matmove_is_active_owner()'));
+  assert.ok(privateOwnerPolicy.includes('select private.matmove_is_active_owner()'));
+  assert.ok(privateOwnerPolicy.includes('drop function if exists public.matmove_is_active_owner()'));
 });
