@@ -21,7 +21,7 @@ test('Admin navigation is grouped into compact expandable workspaces', () => {
   ]) assert.ok(layout.includes(`'${route}'`), `missing Admin route: ${route}`);
 
   assert.match(layout, /aria-expanded=\{expanded\}/);
-  assert.match(layout, /aria-controls=\{\`admin-nav-group-/);
+  assert.ok(layout.includes('aria-controls={`admin-nav-group-${section.key}`}'));
   assert.match(layout, /sectionItems = visibleItems\.filter/);
   assert.match(layout, /setExpandedSection\(\(current\) => current === section\.key \? null : section\.key\)/);
   assert.match(layout, /const activeSection = navSections\.find\(\(section\) => section\.paths\.includes\(location\.pathname\)\)/);
