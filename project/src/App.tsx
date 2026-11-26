@@ -31,6 +31,7 @@ const PricingPage = lazy(() => import('./pages/PricingPage').then(m => ({default
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage').then(m => ({default: m.TransactionsPage})));
 const CashPaymentsPage = lazy(() => import('./pages/CashPaymentsPage'));
 const StaffPasswordPage = lazy(() => import('./pages/StaffPasswordPage'));
+const AppReleasePage = lazy(() => import('./pages/AppReleasePage'));
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import LoginPage from './pages/LoginPage';
@@ -89,6 +90,7 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
  <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
  <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage/></Gate>}/>
  <Route path="/staff" element={<Gate access={access} section="staff"><StaffGovernancePage/></Gate>}/>
+  <Route path="/app-releases" element={<Gate access={access} section="staff"><AppReleasePage/></Gate>}/>
  <Route path="/logs" element={<Gate access={access} section="logs"><LogsPage/></Gate>}/>
  <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage/></Gate>}/>
  <Route path="/wallets" element={<Navigate to="/financials" replace/>}/><Route path="/withdrawals" element={<Navigate to="/payouts" replace/>}/><Route path="/users" element={<Navigate to="/customers" replace/>}/>
