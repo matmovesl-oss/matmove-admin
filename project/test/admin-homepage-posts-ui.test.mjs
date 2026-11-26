@@ -60,14 +60,17 @@ test('published homepage posts remain editable and saves update the existing pos
  assert.match(page,/Post updated\. Your changes are live on the customer homepage/);
  assert.match(page,/setDraft\(\{id:post\.id,[\s\S]*?version:post\.version\}\)/);
 });
-test('admin shell uses MatMove green and sky-blue active navigation and restores sidebar scroll after layout resize',async()=>{
- const layout=await read('../src/components/AdminLayout.tsx');
- assert.match(layout,/bg-\[#073b2f\]/);
- assert.match(layout,/bg-sky-500/);
- assert.match(layout,/new ResizeObserver\(restore\)/);
- assert.match(layout,/MATMOVE OPERATIONS/);
- assert.match(layout,/access\.full_name/);
-});
+test('admin shell uses MatMove active navigation and grouped workspaces without stale scroll restoration',async()=>{
+  const layout=await read('../src/components/AdminLayout.tsx');
+  assert.match(layout,/bg-\[#073b2f\]/);
+  assert.match(layout,/bg-sky-500/);
+  assert.match(layout,/mm-admin-nav-list min-h-0 flex-1/);
+  assert.match(layout,/navSections\.map/);
+  assert.match(layout,/aria-expanded=\{expanded\}/);
+  assert.doesNotMatch(layout,/new ResizeObserver\(restore\)/);
+  assert.match(layout,/MATMOVE OPERATIONS/);
+  assert.match(layout,/access\.full_name/);
+ });
 
 test('Edit opens the post editor in the visible viewport and focuses the title field',async()=>{
  const page=await read('../src/pages/HomepagePostsPage.tsx');

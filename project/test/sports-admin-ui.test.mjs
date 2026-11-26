@@ -83,3 +83,15 @@ test('Gala review exposes live MatMove account activity and still rechecks eligi
   assert.match(page, /!a\.account_active/);
   assert.match(page, /matmove_sports_application_admin_action/);
 });
+
+
+test('Sports Admin explains when competitions appear and disappear from the customer landing page', () => {
+  const page = read('../src/pages/SportsPage.tsx');
+  assert.match(page, /published to the customer landing page automatically/);
+  assert.match(page, /status is Registration or In Progress/);
+  assert.match(page, /after registration closes and before play begins/);
+  assert.match(page, /it becomes Completed/);
+  assert.match(page, /Draft, completed and cancelled competitions are not shown/);
+  assert.match(page, /Visible on customer landing page/);
+  assert.match(page, /Hidden from customer landing page/);
+});

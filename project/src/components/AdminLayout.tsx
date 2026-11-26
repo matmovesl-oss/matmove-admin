@@ -1,5 +1,5 @@
 import AdminAssistance from './AdminAssistance';
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Activity,
@@ -62,9 +62,55 @@ const navItems = [
   { key: 'payouts', name: 'Payouts & Withdrawals', path: '/payouts', icon: CreditCard },
   { key: 'customers', name: 'Customer Governance', path: '/customers', icon: Users },
   { key: 'staff', name: 'Staff Governance', path: '/staff', icon: Settings },
+  { key: 'staff', name: 'Android App Releases', path: '/app-releases', icon: ShieldCheck },
   { key: 'reports', name: 'Reports & Analytics', path: '/reports', icon: BarChart3 },
   { key: 'logs', name: 'System Logs', path: '/logs', icon: FileText },
   { key: 'audit', name: 'Audit & Activity Review', path: '/audit', icon: ClipboardCheck },
+];
+
+const navSections = [
+  {
+    key: 'operations',
+    name: 'Operations & Support',
+    icon: Activity,
+    paths: ['/support', '/notifications', '/homepage-posts', '/concierge', '/dispatch', '/travel', '/pricing'],
+  },
+  {
+    key: 'finance',
+    name: 'Finance & Wallets',
+    icon: Wallet,
+    paths: ['/civitas', '/financials', '/loading-bonanza', '/cash-payments', '/special', '/payroll', '/transactions', '/payouts'],
+  },
+  {
+    key: 'customer-governance',
+    name: 'Customers & KYC',
+    icon: Users,
+    paths: ['/customers', '/kyc'],
+  },
+  {
+    key: 'admin-releases',
+    name: 'Administration & App Releases',
+    icon: ShieldCheck,
+    paths: ['/staff', '/app-releases'],
+  },
+  {
+    key: 'sports',
+    name: 'Sports & Tournaments',
+    icon: Trophy,
+    paths: ['/sports'],
+  },
+  {
+    key: 'games-events',
+    name: 'Games & Events',
+    icon: Ticket,
+    paths: ['/games', '/events'],
+  },
+  {
+    key: 'insights-system',
+    name: 'Reports & System',
+    icon: BarChart3,
+    paths: ['/reports', '/logs', '/audit'],
+  },
 ];
 
 export default function AdminLayout({
@@ -80,8 +126,6 @@ export default function AdminLayout({
     try { return sessionStorage.getItem('matmove-admin-sidebar-collapsed') === '1'; } catch { return false; }
   });
   const [networkOnline, setNetworkOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
-  const mainRef = useRef<HTMLElement | null>(null);
-  const sidebarNavRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const online = () => setNetworkOnline(true);
@@ -91,52 +135,18 @@ export default function AdminLayout({
     return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
   }, []);
 
-  useEffect(() => {
-    const element = mainRef.current;
-    if (!element) return;
-    const key = `matmove-admin-scroll:${location.pathname}${location.search}`;
-    let saved = 0;
-    try { saved = Math.max(0, Number(sessionStorage.getItem(key) || 0)); } catch { /* Scroll restoration is best-effort. */ }
-    let restored = false;
-    let observer: ResizeObserver | null = null;
-    const restore = () => {
-      if (restored || !element.isConnected || element.scrollHeight - element.clientHeight < saved) return;
-      element.scrollTop = saved;
-      restored = true;
-      observer?.disconnect();
-    };
-    if (typeof ResizeObserver !== 'undefined') { observer = new ResizeObserver(restore); observer.observe(element); }
-    const frame = window.requestAnimationFrame(restore);
-    const persist = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* Ignore unavailable storage. */ } };
-    element.addEventListener('scroll', persist, { passive: true });
-    return () => { window.cancelAnimationFrame(frame); persist(); observer?.disconnect(); element.removeEventListener('scroll', persist); };
-  }, [location.pathname, location.search]);
-  useEffect(() => {
-    const element = sidebarNavRef.current;
-    if (!element) return;
-    const key = 'matmove-admin-sidebar-scroll-position';
-    let saved = 0;
-    try { saved = Math.max(0, Number(sessionStorage.getItem(key) || 0)); } catch { /* Scroll restoration is best-effort. */ }
-    const restore = () => {
-      if (!element.isConnected) return;
-      const max = Math.max(0, element.scrollHeight - element.clientHeight);
-      element.scrollTop = Math.min(saved, max);
-    };
-    const frame = window.requestAnimationFrame(restore);
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(restore) : null;
-    observer?.observe(element);
-    const persist = () => { try { sessionStorage.setItem(key, String(element.scrollTop)); } catch { /* Ignore unavailable storage. */ } };
-    element.addEventListener('scroll', persist, { passive: true });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      persist();
-      observer?.disconnect();
-      element.removeEventListener('scroll', persist);
-    };
-  }, []);
   const [gamesExpanded, setGamesExpanded] = useState(location.pathname === '/games');
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
+
+  const [expandedSection, setExpandedSection] = useState<string | null>(() =>
+    navSections.find((section) => section.paths.includes(location.pathname))?.key || null
+  );
+  useEffect(() => {
+    const activeSection = navSections.find((section) => section.paths.includes(location.pathname))?.key || null;
+    if (activeSection) setExpandedSection(activeSection);
+  }, [location.pathname]);
+
   useEffect(() => {
     try { sessionStorage.setItem('matmove-admin-sidebar-collapsed', sidebarCollapsed ? '1' : '0'); } catch { /* Sidebar preference is optional. */ }
   }, [sidebarCollapsed]);
@@ -232,8 +242,45 @@ export default function AdminLayout({
         </div>
 
         {/* NAVIGATION */}
-        <nav ref={sidebarNavRef} className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4 custom-scrollbar">
-          {visibleItems.map((item) => {
+        <nav className="mm-admin-nav-list min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-4 custom-scrollbar" aria-label="Admin workspaces">
+          {visibleItems.filter((item) => item.path === '/dashboard').map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path || location.pathname === '/';
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                onClick={closeSidebar}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition ${isActive ? 'bg-sky-500 text-white shadow-sm' : 'border border-white/10 bg-white/5 text-emerald-50/90 hover:bg-white/10 hover:text-white'}`}
+              >
+                <Icon size={18} className={isActive ? 'text-sky-100' : 'text-emerald-200'} />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+          {navSections.map((section) => {
+            const sectionItems = visibleItems.filter((item) => section.paths.includes(item.path));
+            if (!sectionItems.length) return null;
+            const SectionIcon = section.icon;
+            const expanded = expandedSection === section.key;
+            return (
+              <section key={section.key} className="mm-admin-nav-group overflow-hidden rounded-xl border border-white/10 bg-white/[0.045]">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={`admin-nav-group-${section.key}`}
+                  onClick={() => setExpandedSection((current) => current === section.key ? null : section.key)}
+                  className={`flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left text-sm font-bold transition ${expanded ? 'bg-white/10 text-white' : 'text-emerald-50/85 hover:bg-white/[0.08] hover:text-white'}`}
+                >
+                  <SectionIcon size={18} className="shrink-0 text-emerald-200" />
+                  <span className="min-w-0 flex-1">{section.name}</span>
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold tabular-nums text-emerald-100/75">{sectionItems.length}</span>
+                  <ChevronDown size={16} className={`shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded && (
+                  <div id={`admin-nav-group-${section.key}`} className="mm-admin-nav-group-items space-y-1 px-2 pb-2 pt-1">
+                    {sectionItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               location.pathname === item.path ||
@@ -386,6 +433,12 @@ export default function AdminLayout({
                 {item.name}
               </Link>
             );
+
+                    })}
+                  </div>
+                )}
+              </section>
+            );
           })}
         </nav>
 
@@ -439,7 +492,7 @@ export default function AdminLayout({
           </div>
         )}
 
-        <main ref={mainRef} className="mm-admin-main flex-1 overflow-auto p-4 sm:p-6">
+        <main className="mm-admin-main flex-1 overflow-auto p-4 sm:p-6">
           {children}
         </main>
       </div>
