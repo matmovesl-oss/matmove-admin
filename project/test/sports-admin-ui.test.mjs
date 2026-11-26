@@ -43,3 +43,35 @@ test('Sports MVP includes the 16-player bracket, match statistics, evidence and 
   assert.match(page, /Top scorer/);
   assert.match(page, /does not initiate a Monime transfer/);
 });
+
+
+test('Gala applications use one Sports-admin review queue for landing submissions and manual entries', () => {
+  const page = read('../src/pages/SportsPage.tsx');
+  assert.match(page, /matmove_sports_applications_admin_snapshot/);
+  assert.match(page, /matmove_sports_application_admin_action/);
+  assert.match(page, /id:'applications',label:'Applications'/);
+  assert.match(page, /Gala application queue/);
+  assert.match(page, /source==='admin_manual'\?'Admin entered':'Landing page'/);
+  assert.match(page, /manual_submit/);
+  assert.match(page, /Approve & add to roster/);
+  assert.match(page, /request_info/);
+  assert.match(page, /terms_accepted/);
+  assert.match(page, /rules_accepted/);
+});
+
+test('Gala Admin manual entry collects the complete player application and fixed country', () => {
+  const page = read('../src/pages/SportsPage.tsx');
+  for (const value of ['MatMove SLE Wallet ID','Legal name','Country','Sierra Leone','Contact phone','WhatsApp number','Email address','eFootball User ID','eFootball team name']) {
+    assert.ok(page.includes(value), 'Missing Admin application field: ' + value);
+  }
+  assert.match(page, /galaRegistrationOpen/);
+  assert.match(page, /galaReviewOpen/);
+  assert.match(page, /matmove_sports_update_registration_window/);
+});
+
+test('Gala Admin roster no longer has a separate direct-add intake that bypasses the application record', () => {
+  const page = read('../src/pages/SportsPage.tsx');
+  assert.match(page, /Approved Gala applications appear in this roster automatically/);
+  assert.doesNotMatch(page, /async function addPlayer/);
+  assert.doesNotMatch(page, /onSubmit=\{addPlayer\}/);
+});
