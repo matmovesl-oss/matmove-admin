@@ -90,7 +90,7 @@ test('Sports Admin explains when competitions appear and disappear from the cust
   assert.match(page, /published to the customer landing page automatically/);
   assert.match(page, /status is Registration or In Progress/);
   assert.match(page, /after registration closes and before play begins/);
-  assert.match(page, /the competition becomes Completed/);
+  assert.match(page, /it becomes Completed/);
   assert.match(page, /Draft, completed and cancelled competitions are not shown/);
   assert.match(page, /Visible on customer landing page/);
   assert.match(page, /Hidden from customer landing page/);
