@@ -10,7 +10,8 @@ test('Admin navigation is grouped into compact expandable workspaces', () => {
     'Operations & Support',
     'Finance & Wallets',
     'Customers & Staff',
-    'Sports, Games & Events',
+    'Sports & Tournaments',
+    'Games & Events',
     'Reports & System',
   ]) assert.ok(layout.includes(label), `missing workspace: ${label}`);
 
