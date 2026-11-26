@@ -24,7 +24,7 @@ test('Admin navigation is grouped into compact expandable workspaces', () => {
   assert.match(layout, /aria-controls=\{\`admin-nav-group-/);
   assert.match(layout, /sectionItems = visibleItems\.filter/);
   assert.match(layout, /setExpandedSection\(\(current\) => current === section\.key \? null : section\.key\)/);
-  assert.match(layout, /useEffect\(\(\) => \{\s*const activeSection = activeSectionForPath\(\);/);
+  assert.match(layout, /const activeSection = navSections\.find\(\(section\) => section\.paths\.includes\(location\.pathname\)\)/);
 });
 
 test('Admin navigation no longer restores stale scroll offsets after menu changes', () => {
