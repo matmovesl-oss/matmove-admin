@@ -126,10 +126,11 @@ export default function AdminLayout({
   const [travelExpanded, setTravelExpanded] = useState(location.pathname === '/travel');
   const [eventsExpanded, setEventsExpanded] = useState(location.pathname === '/events');
 
-  const activeSectionForPath = () => navSections.find((section) => section.paths.includes(location.pathname))?.key || null;
-  const [expandedSection, setExpandedSection] = useState<string | null>(() => activeSectionForPath());
+  const [expandedSection, setExpandedSection] = useState<string | null>(() =>
+    navSections.find((section) => section.paths.includes(location.pathname))?.key || null
+  );
   useEffect(() => {
-    const activeSection = activeSectionForPath();
+    const activeSection = navSections.find((section) => section.paths.includes(location.pathname))?.key || null;
     if (activeSection) setExpandedSection(activeSection);
   }, [location.pathname]);
 
