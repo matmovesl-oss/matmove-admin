@@ -9,7 +9,7 @@ test('Admin navigation is grouped into compact expandable workspaces', () => {
   for (const label of [
     'Operations & Support',
     'Finance & Wallets',
-    'Customers & Staff',
+    'Customers & KYC',
     'Administration & App Releases',
     'Sports & Tournaments',
     'Games & Events',
