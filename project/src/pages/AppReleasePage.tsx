@@ -40,6 +40,7 @@ export default function AppReleasePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [copied, setCopied] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const refresh = useCallback(async () => {
     if (!owner) { setLoading(false); return; }
@@ -97,6 +98,7 @@ export default function AppReleasePage() {
           upsert: true,
         });
       if (uploadError) throw uploadError;
+      setSelectedFile(null);
       setNotice('The MatMove Android release has been replaced. The public install address stays the same.');
       await refresh();
     } catch (cause) {
@@ -176,8 +178,12 @@ export default function AppReleasePage() {
             <FileUp size={25} className="text-sky-800"/>
             <span className="mt-2 text-sm font-extrabold text-slate-900">{busy ? 'Uploading release…' : 'Choose APK file'}</span>
             <span className="mt-1 text-xs text-slate-500">APK only · Up to 50 MB · Existing address is preserved</span>
-            <input className="sr-only" type="file" accept=".apk,application/vnd.android.package-archive" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file); }}/>
+            <input className="sr-only" type="file" accept=".apk,application/vnd.android.package-archive" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0] || null; event.currentTarget.value = ''; setSelectedFile(file); setError(''); setNotice(''); }}/>
           </label>
+          {selectedFile && <div className="mt-4 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{selectedFile.name}</p><p className="mt-1 text-xs text-slate-500">{readableSize(selectedFile.size)} · Ready for validation</p></div>
+            <button type="button" disabled={busy} onClick={() => void upload(selectedFile)} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1554a0] px-4 text-sm font-extrabold text-white disabled:opacity-50"><UploadCloud size={16}/>{current ? 'Upload and replace' : 'Publish APK'}</button>
+          </div>}
           {busy && <p role="status" className="mt-3 text-sm font-semibold text-sky-800">Uploading the new APK and replacing the current public file…</p>}
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950">
             <strong>Important for Android updates:</strong> each new APK must use the same Android signing key as the installed app and have a higher version code. After creating a new release in Median, download that APK and upload it here. Updating Median alone does not replace this hosted file or automatically update phones that already have MatMove installed.
