@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, Check, ClipboardList, Copy, Download, ExternalLink, Gamepad2, ImagePlus, Link as LinkIcon, Plus, RefreshCw, ShieldCheck, Trophy, Users, X } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarDays, Check, ClipboardList, Copy, Download, ExternalLink, Gamepad2, ImagePlus, Link as LinkIcon, Plus, RefreshCw, ShieldCheck, Trophy, Users, X } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/lib/supabase';
 
