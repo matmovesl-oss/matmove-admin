@@ -46,8 +46,8 @@ test('Android release storage migration grants public read and owner-only writes
 
   const mimeMigration = await readFile(new URL('../supabase/migrations/20261127222009_allow_octet_stream_mime_for_android_apk.sql', import.meta.url), 'utf8');
   assert.match(mimeMigration, /matmove-app-releases/);
-  assert.match(mimeMigration, /application\\/vnd\\.android\\.package-archive/);
-  assert.match(mimeMigration, /application\\/octet-stream/);
+  assert.ok(mimeMigration.includes('application/vnd.android.package-archive'));
+  assert.ok(mimeMigration.includes('application/octet-stream'));
 });
 
 
