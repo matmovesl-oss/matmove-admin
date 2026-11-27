@@ -35,3 +35,26 @@ test('Admin navigation no longer restores stale scroll offsets after menu change
   assert.match(styles, /\.mm-admin-nav-group/);
   assert.match(styles, /overscroll-behavior: contain/);
 });
+
+test('Admin account identity and sign-out live together inside the collapsible sidebar', () => {
+  const sidebarStart = layout.indexOf('id="admin-sidebar"');
+  const sidebarEnd = layout.indexOf('</aside>', sidebarStart);
+  const headerStart = layout.indexOf('<header className="mm-admin-header');
+  const headerEnd = layout.indexOf('</header>', headerStart);
+  assert.ok(sidebarStart >= 0 && sidebarEnd > sidebarStart, 'admin sidebar should be present');
+  assert.ok(headerStart >= 0 && headerEnd > headerStart, 'admin header should be present');
+
+  const sidebar = layout.slice(sidebarStart, sidebarEnd);
+  const header = layout.slice(headerStart, headerEnd);
+  const accountPanelStart = sidebar.indexOf('aria-label="Signed-in admin account"');
+  const signOutButton = sidebar.indexOf('aria-label="Sign out"', accountPanelStart);
+  const sidebarFooter = sidebar.indexOf('MATMOVE OPERATIONS', accountPanelStart);
+
+  assert.ok(accountPanelStart >= 0, 'signed-in admin card belongs in the sidebar');
+  assert.ok(signOutButton > accountPanelStart, 'sign-out belongs directly after the account card');
+  assert.ok(sidebarFooter > signOutButton, 'account and sign-out stay above the pinned sidebar footer');
+  assert.match(sidebar.slice(accountPanelStart, sidebarFooter), /access\.full_name/);
+  assert.match(sidebar.slice(accountPanelStart, sidebarFooter), /access\.email/);
+  assert.match(sidebar.slice(accountPanelStart, sidebarFooter), /handleSignOut/);
+  assert.doesNotMatch(header, /access\.full_name|access\.email|aria-label="Sign out"|handleSignOut/);
+});
