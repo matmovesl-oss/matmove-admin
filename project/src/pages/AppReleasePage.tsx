@@ -90,9 +90,13 @@ export default function AppReleasePage() {
 
     setBusy(true);
     try {
+      // Browsers may label APK files as application/octet-stream. Wrap the
+      // validated archive with an explicit Android package MIME type so the
+      // outgoing Storage request does not inherit the browser's generic type.
+      const apkPayload = new Blob([file], { type: APK_MIME });
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(OBJECT_PATH, file, {
+        .upload(OBJECT_PATH, apkPayload, {
           cacheControl: '60',
           contentType: APK_MIME,
           upsert: true,
