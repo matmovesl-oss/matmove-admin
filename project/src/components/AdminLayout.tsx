@@ -442,6 +442,39 @@ export default function AdminLayout({
           })}
         </nav>
 
+        <div className="shrink-0 border-t border-emerald-900/70 px-4 py-4">
+          {access && (
+            <div
+              aria-label="Signed-in admin account"
+              className="mb-3 flex min-w-0 items-center gap-3 rounded-xl border border-emerald-800/80 bg-emerald-950/45 px-3 py-3"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-800 text-emerald-100">
+                <UserRound size={19} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-white">
+                  {access.full_name || 'MatMove Admin'}
+                </span>
+                <span className="mt-0.5 block truncate text-[11px] text-emerald-100/75">
+                  {access.email || 'Admin email unavailable'}
+                </span>
+                <span className="mt-1 block truncate text-[9px] font-bold tracking-wider text-emerald-300/80">
+                  {owner ? 'MAIN SUPER ADMIN' : access.department || 'ADMIN ACCOUNT'}
+                </span>
+              </span>
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={signingOut}
+            onClick={() => void handleSignOut()}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white/10 px-3 text-sm font-bold text-white transition hover:bg-rose-500/20 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Sign out"
+          >
+            <LogOut size={16} />
+            <span>{signingOut ? 'Signing out…' : 'Sign out'}</span>
+          </button>
+        </div>
         <div className="shrink-0 border-t border-emerald-900/70 px-4 py-3 text-[10px] font-semibold tracking-wide text-emerald-100/60">
           MATMOVE OPERATIONS · SECURE ACCESS
         </div>
@@ -470,16 +503,7 @@ export default function AdminLayout({
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <span role="status" className={`hidden rounded-full px-2.5 py-1 text-[11px] font-semibold sm:inline-flex ${networkOnline ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{networkOnline ? 'Online' : 'Offline · showing last view'}</span>
             <AdminAssistance key={access?.id || 'signed-out'} />
-            {access && <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm md:flex">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-700"><UserRound size={16}/></span>
-              <span className="min-w-0">
-                <span className="block max-w-[180px] truncate text-xs font-bold text-slate-900">{access.full_name || 'MatMove Admin'}</span>
-                <span className="block max-w-[180px] truncate text-[10px] text-slate-500">{owner ? 'MAIN SUPER ADMIN' : access.department || access.email}</span>
-              </span>
-            </div>}
-            <button type="button" disabled={signingOut} onClick={() => void handleSignOut()} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-[#073b2f] px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#0b5a45] disabled:opacity-50" aria-label="Sign out">
-              <LogOut size={15}/><span className="hidden sm:inline">{signingOut ? 'Signing out…' : 'Sign out'}</span>
-            </button>
+
           </div>
         </header>
 
