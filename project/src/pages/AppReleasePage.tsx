@@ -3,11 +3,12 @@ import { CheckCircle2, Copy, Download, FileUp, RefreshCw, ShieldCheck, Smartphon
 import AdminLayout from '@/components/AdminLayout';
 import { useAdminAccess } from '@/lib/adminAccess';
 import { supabase } from '@/lib/supabase';
+import { ANDROID_APK_MIME, normalizeAndroidApkPayload } from '@/lib/androidApkUpload';
 
 const BUCKET = 'matmove-app-releases';
 const OBJECT_PATH = 'android/MatMove.apk';
 const MAX_SIZE = 50 * 1024 * 1024;
-const APK_MIME = 'application/vnd.android.package-archive';
+const APK_MIME = ANDROID_APK_MIME;
 
 type StoredRelease = {
   name: string;
@@ -90,9 +91,13 @@ export default function AppReleasePage() {
 
     setBusy(true);
     try {
+      // Browsers may label APK files as application/octet-stream. Wrap the
+      // validated archive with an explicit Android package MIME type so the
+      // outgoing Storage request does not inherit the browser's generic type.
+      const apkPayload = normalizeAndroidApkPayload(file);
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(OBJECT_PATH, file, {
+        .upload(OBJECT_PATH, apkPayload, {
           cacheControl: '60',
           contentType: APK_MIME,
           upsert: true,
@@ -178,7 +183,7 @@ export default function AppReleasePage() {
             <FileUp size={25} className="text-sky-800"/>
             <span className="mt-2 text-sm font-extrabold text-slate-900">{busy ? 'Uploading release…' : 'Choose APK file'}</span>
             <span className="mt-1 text-xs text-slate-500">APK only · Up to 50 MB · Existing address is preserved</span>
-            <input className="sr-only" type="file" accept=".apk,application/vnd.android.package-archive" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0] || null; event.currentTarget.value = ''; setSelectedFile(file); setError(''); setNotice(''); }}/>
+            <input className="sr-only" type="file" accept=".apk,application/vnd.android.package-archive,application/octet-stream" disabled={busy} onChange={(event) => { const file = event.currentTarget.files?.[0] || null; event.currentTarget.value = ''; setSelectedFile(file); setError(''); setNotice(''); }}/>
           </label>
           {selectedFile && <div className="mt-4 flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{selectedFile.name}</p><p className="mt-1 text-xs text-slate-500">{readableSize(selectedFile.size)} · Ready for validation</p></div>
