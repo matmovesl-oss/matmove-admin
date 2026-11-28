@@ -123,18 +123,34 @@ export default function AdminSecurityPage() {
       if (!enrolled.data?.id || !enrolled.data.totp?.qr_code || !enrolled.data.totp?.secret) {
         throw new Error('Supabase did not return a complete backup authenticator setup.');
       }
-      const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
-      if (challenge.error || !challenge.data?.id) {
-        throw new Error('Backup authenticator setup started, but its verification challenge could not be created. Contact the owner before retrying.');
-      }
       setBackupFactorId(enrolled.data.id);
       setBackupQrCode(enrolled.data.totp.qr_code);
       setBackupSecret(enrolled.data.totp.secret);
-      setBackupChallengeId(challenge.data.id);
+      setBackupChallengeId('');
       setBackupCode('');
+      const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
+      if (challenge.error || !challenge.data?.id) {
+        throw new Error('The backup setup key is ready, but a verification challenge could not be prepared. Keep this page open and request a new challenge below.');
+      }
+      setBackupChallengeId(challenge.data.id);
       setNotice('Scan the backup QR code on a separate trusted device, then verify its six-digit code to finish registration.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Backup authenticator setup failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function prepareBackupChallenge() {
+    if (!backupFactorId || busy) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const challenge = await supabase.auth.mfa.challenge({ factorId: backupFactorId });
+      if (challenge.error || !challenge.data?.id) throw new Error('A new backup authenticator challenge could not be created. Keep the setup key private and try again.');
+      setBackupChallengeId(challenge.data.id);
+      setNotice('New backup verification challenge is ready. Enter the current six-digit code from the backup device.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'A new backup authenticator challenge could not be created.');
     } finally {
       setBusy(false);
     }
@@ -237,6 +253,7 @@ export default function AdminSecurityPage() {
               <p className="mt-1 text-xs leading-5 text-slate-600">Do not store the primary and backup authenticators only on the same phone. Keep this setup key private and never send it to MatMove support.</p>
               <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Manual backup setup key</p>
               <code className="mt-1 block break-all rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-900">{backupSecret}</code>
+              {!backupChallengeId && <button type="button" disabled={busy} onClick={() => void prepareBackupChallenge()} className="mt-4 min-h-10 rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50">{busy ? 'Preparing challenge…' : 'Prepare verification challenge'}</button>}
               <form onSubmit={verifyBackupAuthenticator} className="mt-4 space-y-3">
                 <label className="block text-sm font-semibold text-slate-700">
                   Six-digit backup authenticator code
