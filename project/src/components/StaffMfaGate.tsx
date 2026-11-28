@@ -6,6 +6,24 @@ type Stage = 'checking' | 'enroll' | 'setup' | 'challenge' | 'blocked' | 'verifi
 
 type Factor = { id: string; status: string; friendly_name?: string };
 
+async function sessionHasTotpAmr(): Promise<boolean> {
+  const current = await supabase.auth.getSession();
+  if (current.error || !current.data?.session?.access_token) return false;
+  try {
+    const payload = current.data.session.access_token.split('.')[1];
+    if (!payload) return false;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+    const claims = JSON.parse(decoded);
+    return Array.isArray(claims.amr) && claims.amr.some(
+      (method: any) => method?.method === 'totp'
+    );
+  } catch {
+    return false;
+  }
+}
+
+
 export default function StaffMfaGate({
   userId,
   onVerified,
@@ -55,7 +73,12 @@ export default function StaffMfaGate({
       if (aal.error || factors.error) {
         throw new Error('Admin security verification is unavailable. Access remains blocked.');
       }
-      if (aal.data?.currentLevel === 'aal2' && aal.data?.nextLevel === 'aal2') {
+      const hasTotpProof = await sessionHasTotpAmr();
+      if (
+        aal.data?.currentLevel === 'aal2' &&
+        aal.data?.nextLevel === 'aal2' &&
+        hasTotpProof
+      ) {
         await onVerified();
         setStage('verified');
         return;
@@ -268,9 +291,10 @@ export default function StaffMfaGate({
       if (
         assurance.error ||
         assurance.data?.currentLevel !== 'aal2' ||
-        assurance.data?.nextLevel !== 'aal2'
+        assurance.data?.nextLevel !== 'aal2' ||
+        !(await sessionHasTotpAmr())
       ) {
-        throw new Error('The second factor was not confirmed. Admin access remains blocked.');
+        throw new Error('The authenticator second factor was not confirmed. Admin access remains blocked.');
       }
       setCanReplaceSetup(false);
       await onVerified();
