@@ -221,7 +221,7 @@ export function createHandler(
         );
       }
 
-      await requireAdmin(req,['kyc'],{client,env});
+      await requireAdmin(req,['kyc'],{client,env,maxTotpAgeSeconds:300});
 
       let body = req.body;
 
