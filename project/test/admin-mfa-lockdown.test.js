@@ -163,3 +163,17 @@ test('sensitive Admin requests open a real TOTP step-up dialog and retry with th
   assert.match(provider,/setAdminStepUpHandler/);
   assert.match(app,/AdminStepUpProvider/);
 });
+
+test('Admin supports a separate backup TOTP authenticator and lets staff choose either verified factor',async()=>{
+  const gate=await readFile(new URL('../src/components/StaffMfaGate.tsx',import.meta.url),'utf8');
+  const security=await readFile(new URL('../src/pages/AdminSecurityPage.tsx',import.meta.url),'utf8');
+  assert.match(gate,/verifiedFactors/);
+  assert.match(gate,/Choose authenticator device/);
+  assert.match(gate,/switchAuthenticator/);
+  assert.match(security,/MatMove Admin backup/);
+  assert.match(security,/supabase\.auth\.mfa\.enroll/);
+  assert.match(security,/supabase\.auth\.mfa\.challenge/);
+  assert.match(security,/supabase\.auth\.mfa\.verify/);
+  assert.match(security,/Verify backup authenticator/);
+  assert.match(security,/separate trusted device/);
+});
