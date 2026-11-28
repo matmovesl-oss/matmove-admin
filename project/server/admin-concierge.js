@@ -10,7 +10,7 @@ export function createConciergeHandler({authorize=requireAdmin,env=process.env}=
    const action=view.replace(/^concierge-/,'');
    if(!['services','enquiries','save','archive','status'].includes(action))throw failure(400,'Invalid Concierge action.');
    if(req.method!==(['services','enquiries'].includes(action)?'GET':'POST'))throw failure(405,'Method not allowed.');
-   const {client,user}=await authorize(req,['concierge'],{env});
+   const {client,user}=await authorize(req,['concierge'],{env,maxTotpAgeSeconds:req.method==='POST'?300:undefined});
    let body={};if(req.method==='POST'){try{body=typeof req.body==='string'?JSON.parse(req.body):req.body;}catch{throw failure(400,'Invalid request.');}
     if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['id','requestKey','expectedVersion','data'].includes(k))||!uuid(body.id)||!uuid(body.requestKey)||!Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<0||!body.data||Array.isArray(body.data)||typeof body.data!=='object')throw failure(400,'Invalid Concierge change.');
    }
