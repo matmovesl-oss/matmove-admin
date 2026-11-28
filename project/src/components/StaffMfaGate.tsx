@@ -224,7 +224,7 @@ export default function StaffMfaGate({
     try {
       const listed = await supabase.auth.mfa.listFactors();
       if (listed.error) throw new Error('Could not verify the pending authenticator status. Nothing was changed.');
-      const pending = (listed.data?.totp || []).find((factor: Factor) => factor.id === factorId);
+      const pending = ((listed.data?.totp || []) as unknown as Factor[]).find((factor: Factor) => factor.id === factorId);
       if (!pending || pending.status !== 'unverified') {
         throw new Error('This action can only replace an unfinished, unverified authenticator setup.');
       }
