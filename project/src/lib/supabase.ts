@@ -10,6 +10,7 @@ export const supabase = createClient(
   key || 'not-configured',
   {
     auth: {
+      experimental: { passkey: true },
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,

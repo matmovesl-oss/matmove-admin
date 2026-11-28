@@ -34,7 +34,7 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   if(view!=null&&view!=='me')throw failure(400,'Invalid staff view.');
   if(view==='me'&&req.method!=='GET')throw failure(405,'Use GET for your staff session.');
   const self=view==='me';
-  const {client,user,access}=await authorize(req,self?PERMISSION_KEYS:['staff'],{env});
+  const {client,user,access}=await authorize(req,self?PERMISSION_KEYS:['staff'],{env,maxTotpAgeSeconds:req.method==='POST'?300:undefined});
   if(self)return res.status(200).json({access:{id:user.id,email:access.email,full_name:access.full_name,department:access.department,is_owner:access.is_owner===true,is_active:access.is_active===true,permissions:Array.isArray(access.permissions)?access.permissions:[],requires_password_setup:access.requires_password_setup===true}});
   if(req.method==='GET'){
    const [result,profileResult]=await Promise.all([
@@ -69,8 +69,15 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   if(access.is_owner!==true)throw failure(403,'Access denied. Only the owner can authorize, remove or change staff.');
   let body;try{body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};}catch{throw failure(400,'Invalid staff request.');}
   const action=body.action;
-  if(!['invite','update','resend','remove','restoreCustomer'].includes(action))throw failure(400,'Invalid staff action.');
+  if(!['invite','update','resend','remove','restoreCustomer','revokeSessions'].includes(action))throw failure(400,'Invalid staff action.');
   let targetId=body.id;
+  if(action==='revokeSessions'){
+   if(!uuid(targetId)||targetId===user.id)throw failure(400,'Select another active Admin staff member.');
+   const result=await client.rpc('matmove_admin_server_revoke_sessions',{p_actor_id:user.id,p_user_id:targetId});
+   if(result.error)throw rpcFailure(result.error);
+   if(result.data?.success!==true||result.data.userId!==targetId||!Number.isInteger(result.data.revokedSessions))throw failure(503,'Session revocation was not confirmed. Refresh the staff directory before retrying.');
+   return res.status(200).json({success:true,emailSent:false,revokedSessions:result.data.revokedSessions,message:`Revoked ${result.data.revokedSessions} active Admin device session(s). The staff member must sign in again with two-step authentication.`});
+  }
   if(action==='restoreCustomer'){
    if(!uuid(targetId)||targetId===user.id)throw failure(400,'Select a valid payroll staff profile.');
    const result=await client.rpc('matmove_admin_restore_customer_role',{p_user_id:targetId});

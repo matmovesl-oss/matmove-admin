@@ -39,7 +39,8 @@ export function createHandler({
 
       const { client, user } = await requireAdminFn(
         req,
-        view === 'cash-collections' ? ['financials'] : ['transactions']
+        view === 'cash-collections' ? ['financials'] : ['transactions'],
+        { maxTotpAgeSeconds: req.method === 'POST' ? 300 : undefined }
       );
 
       if (view === 'cash-collections') {

@@ -184,7 +184,7 @@ export function createHandler(
         });
       }
 
-      const {access} = await requireAdmin(req, ['financials', 'games.settings', 'special'], {client, env});
+      const {access} = await requireAdmin(req, ['financials', 'games.settings', 'special'], {client, env, maxTotpAgeSeconds:req.method==='POST'?300:undefined});
       const financial = canAdminAccess(access, 'financials');
       const special = canAdminAccess(access, 'special');
 

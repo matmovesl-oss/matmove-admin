@@ -164,8 +164,10 @@ test('API displays removed Admin records, blocks removed edits/resends, and requ
 });
 
 test('An existing login token is denied after the authoritative staff record is removed; stale removal returns conflict',async()=>{
- const client={auth:{getUser:async()=>({data:{user:{id:target}}})},rpc:async()=>({data:record({is_active:false,permissions:[],removed_at:version})})};
- await assert.rejects(()=>requireAdmin({headers:{authorization:'Bearer original-token'}},['staff'],{client}),e=>e.status===403);
+ const sessionId='55555555-5555-4555-8555-555555555555';
+ const signed='header.'+Buffer.from(JSON.stringify({sub:target,role:'authenticated',aal:'aal2',amr:[{method:'password',timestamp:1795860000},{method:'totp',timestamp:1795860001}],session_id:sessionId})).toString('base64url')+'.signature';
+ const client={auth:{getUser:async()=>({data:{user:{id:target}}})},rpc:async(name)=>name==='matmove_admin_server_session_valid'?({data:true,error:null}):({data:record({is_active:false,permissions:[],removed_at:version})})};
+ await assert.rejects(()=>requireAdmin({headers:{authorization:'Bearer '+signed}},['staff'],{client}),e=>e.status===403);
  const f=apiFixture({rpcError:{message:'CONFLICT: Staff assignments changed. Refresh first.'}});const r=await f.invoke({action:'remove',id:target,reason:'Assignment ended',expectedUpdatedAt:version});assert.equal(r.code,409);assert.equal(f.emails.length,0);
 });
 

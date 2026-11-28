@@ -6,13 +6,14 @@ import {canAdminAccess,homeFor,validPermissions} from '../shared/admin-permissio
 import {requireAdmin} from '../server/admin-auth.js';
 import {createHandler} from '../api/admin-staff.js';
 const id='33333333-3333-4333-8333-333333333333',ownerId='44444444-4444-4444-8444-444444444444';
-const aal2Token='header.'+Buffer.from(JSON.stringify({sub:id,role:'authenticated',aal:'aal2'})).toString('base64url')+'.signature';
+const sessionId='55555555-5555-4555-8555-555555555555';
+const aal2Token='header.'+Buffer.from(JSON.stringify({sub:id,role:'authenticated',aal:'aal2',amr:[{method:'password',timestamp:1795860000},{method:'totp',timestamp:1795860001}],session_id:sessionId})).toString('base64url')+'.signature';
 const row={id,is_active:true,is_owner:false,permissions:['games.entries']};
 const response=()=>({code:null,body:null,setHeader(){},status(c){this.code=c;return this;},json(b){this.body=b;return this;}});
 test('individual game permissions deny other tabs and choose assigned landing page',()=>{assert.equal(canAdminAccess(row,'games'),true);assert.equal(canAdminAccess(row,'games.entries'),true);assert.equal(canAdminAccess(row,'games.settings'),false);assert.equal(canAdminAccess(row,'games.winnings'),false);assert.equal(homeFor(row),'/games?tab=entries');assert.equal(canAdminAccess(null,'games'),false);assert.equal(canAdminAccess({...row,is_active:false,is_owner:true},'staff'),false);});
 test('owner can access every section; browser cannot invent assignments',()=>{assert.equal(canAdminAccess({...row,is_owner:true},'games.settings'),true);assert.throws(()=>validPermissions(['super_admin']));assert.throws(()=>validPermissions(['games.secret']));assert.deepEqual(validPermissions(['games.entries','games.entries']),['games.entries']);});
-test('API verifies token and reads authoritative permissions, ignoring client claims',async()=>{let read=0;const client={auth:{getUser:async()=>({data:{user:{id}},error:null})},rpc:async(name,args)=>{read++;assert.equal(name,'matmove_admin_access');assert.equal(args.p_id,id);return {data:row,error:null};}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer '+aal2Token},body:{is_owner:true}},['games.settings'],{client}),e=>e.status===403);assert.equal((await requireAdmin({headers:{authorization:'Bearer '+aal2Token}},['games.entries'],{client})).user.id,id);assert.equal(read,2);await assert.rejects(requireAdmin({headers:{}},['games.entries'],{client}),e=>e.status===401);});
-test('expired sessions and deactivated staff cannot reach APIs',async()=>{const client={auth:{getUser:async()=>({data:{user:null},error:new Error()})}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer expired'}},['staff'],{client}),e=>e.status===401);const inactive={auth:{getUser:async()=>({data:{user:{id}}})},rpc:async()=>({data:{...row,is_active:false}})};await assert.rejects(requireAdmin({headers:{authorization:'Bearer '+aal2Token}},['games.entries'],{client:inactive}),e=>e.status===403);});
+test('API verifies token and reads authoritative permissions, ignoring client claims',async()=>{let read=0;const client={auth:{getUser:async()=>({data:{user:{id}},error:null})},rpc:async(name,args)=>{read++;if(name==='matmove_admin_server_session_valid'){assert.deepEqual(args,{p_user_id:id,p_session_id:sessionId});return {data:true,error:null};}assert.equal(name,'matmove_admin_access');assert.equal(args.p_id,id);return {data:row,error:null};}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer '+aal2Token},body:{is_owner:true}},['games.settings'],{client}),e=>e.status===403);assert.equal((await requireAdmin({headers:{authorization:'Bearer '+aal2Token}},['games.entries'],{client})).user.id,id);assert.equal(read,4);await assert.rejects(requireAdmin({headers:{}},['games.entries'],{client}),e=>e.status===401);});
+test('expired sessions and deactivated staff cannot reach APIs',async()=>{const client={auth:{getUser:async()=>({data:{user:null},error:new Error()})}};await assert.rejects(requireAdmin({headers:{authorization:'Bearer expired'}},['staff'],{client}),e=>e.status===401);const inactive={auth:{getUser:async()=>({data:{user:{id}}})},rpc:async(name)=>name==='matmove_admin_server_session_valid'?({data:true,error:null}):({data:{...row,is_active:false}})};await assert.rejects(requireAdmin({headers:{authorization:'Bearer '+aal2Token}},['games.entries'],{client:inactive}),e=>e.status===403);});
 test('directory-only staff cannot send invitation or grant privileges',async()=>{let sent=0;const handler=createHandler({authorize:async()=>({client:{auth:{admin:{inviteUserByEmail:async()=>{sent++;}}}},user:{id},access:{...row,permissions:['staff']}})});const res=response();await handler({method:'POST',headers:{},body:{action:'invite',email:'new@example.com',fullName:'New Staff',permissions:['games.settings']}},res);assert.equal(res.code,403);assert.equal(sent,0);});
 function fixture(existing=false){let sent=0,saved=0,resets=0;const client={auth:{admin:{inviteUserByEmail:async(email,options)=>{assert.equal(options.redirectTo,'https://admin.example.com/accept-invite');assert.equal(options.data.role,undefined);sent++;return {data:{user:{id,email}}};}},resetPasswordForEmail:async()=>{resets++;return {error:null};}},rpc:async(name,args)=>{if(name==='matmove_staff_find_user')return {data:existing?id:null};if(name==='matmove_staff_save'){saved++;assert.equal(args.p_actor,ownerId);assert.deepEqual(args.p_permissions,['games.entries']);return {error:null};}throw new Error(name);},from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:null})})};return {client,get sent(){return sent;},get saved(){return saved;},get resets(){return resets;}};}
 test('owner invitation sends email with configured callback and narrow assignments',async()=>{const f=fixture();const handler=createHandler({authorize:async()=>({client:f.client,user:{id:ownerId},access:{is_owner:true}}),env:{ADMIN_APP_URL:'https://admin.example.com'}});const res=response();await handler({method:'POST',headers:{},body:{action:'invite',email:'staff@example.com',fullName:'Staff Member',permissions:['games.entries']}},res);assert.equal(res.code,200);assert.equal(f.sent,1);assert.equal(f.saved,1);assert.equal(f.resets,0);});
@@ -55,4 +56,25 @@ test('full operational administrator can open every section but cannot invite, u
 test('legacy role label cannot create owner privileges without the verified owner flag',()=>{
  assert.equal(canAdminAccess({...row,role:'super_admin'},'staff'),false);
  assert.equal(canAdminAccess({...row,role:'super_admin'},'games.settings'),false);
+});
+
+test('Only the owner can revoke another active Admin member’s device sessions',async()=>{
+ const calls=[];
+ const client={rpc:async(name,args)=>{
+  calls.push({name,args});
+  return {data:{success:true,userId:id,revokedSessions:2},error:null};
+ }};
+ const ownerHandler=createHandler({authorize:async()=>({client,user:{id:ownerId},access:{is_owner:true,is_active:true}})});
+ const ownerRes=response();
+ await ownerHandler({method:'POST',headers:{},body:{action:'revokeSessions',id}},ownerRes);
+ assert.equal(ownerRes.code,200);
+ assert.equal(ownerRes.body.revokedSessions,2);
+ assert.equal(calls[0].name,'matmove_admin_server_revoke_sessions');
+ assert.deepEqual(calls[0].args,{p_actor_id:ownerId,p_user_id:id});
+
+ const denied=createHandler({authorize:async()=>({client,user:{id},access:{is_owner:false,is_active:true,permissions:['staff']}})});
+ const deniedRes=response();
+ await denied({method:'POST',headers:{},body:{action:'revokeSessions',id:ownerId}},deniedRes);
+ assert.equal(deniedRes.code,403);
+ assert.equal(calls.length,1);
 });
