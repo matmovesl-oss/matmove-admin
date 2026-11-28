@@ -199,6 +199,8 @@ function AdminSessionGuard({children}:{children:React.ReactNode}){
    lastActivityRef.current=now;
    lastTouchRef.current=now;
    setWarning(false);
+  }catch{
+   await supabase.auth.signOut({scope:'local'});
   }finally{setChecking(false);}
  }
  return <>{children}{warning&&<div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/70 p-4"><section role="dialog" aria-modal="true" aria-labelledby="admin-idle-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><h2 id="admin-idle-title" className="text-lg font-bold text-slate-900">Your Admin session is about to expire</h2><p className="mt-2 text-sm leading-6 text-slate-600">You have been inactive for 13 minutes. MatMove Admin will sign you out after 15 minutes of inactivity.</p><div className="mt-5 flex flex-wrap gap-3"><button type="button" disabled={checking} onClick={()=>void continueSession()} className="min-h-11 rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-50">{checking?'Checking…':'Continue working'}</button><button type="button" disabled={checking} onClick={()=>void supabase.auth.signOut({scope:'local'})} className="min-h-11 rounded-xl border px-4 py-2 font-semibold">Sign out</button></div></section></div>}</>;
