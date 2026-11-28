@@ -5,8 +5,22 @@ import {Loader2,Mail,Lock} from 'lucide-react';
 export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[mode,setMode]=useState<'login'|'reset'>(recoveryError?'reset':'login'),[busy,setBusy]=useState(false),[error,setError]=useState(recoveryError),[notice,setNotice]=useState('');
  const mounted=useRef(true),mutex=useRef(false),epoch=useRef(0);
- useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;epoch.current++;};},[]);
+ useEffect(()=>{mounted.current=true;setPasskeySupported(window.isSecureContext&&'PublicKeyCredential' in window);return()=>{mounted.current=false;epoch.current++;};},[]);
  function changeMode(next:'login'|'reset'){if(mutex.current)return;epoch.current++;setMode(next);setPassword('');setError('');setNotice('');if(next==='login'&&window.location.pathname==='/reset-password')window.location.assign('/');}
+ async function signInWithPasskey(){
+  if(mutex.current)return;mutex.current=true;setBusy(true);setError('');setNotice('');
+  try{
+   const result=await supabase.auth.signInWithPasskey();
+   if(result.error)throw result.error;
+  }catch(e:any){
+   if(mounted.current){
+    const code=String(e?.code||'');
+    setError(code==='passkey_disabled'
+     ? 'Passkey sign-in has not been enabled in MatMove authentication settings yet. Use your email and password instead.'
+     : 'This device could not complete passkey sign-in. Use your email and password, then your authenticator code.');
+   }
+  }finally{mutex.current=false;if(mounted.current)setBusy(false);}
+ }
  async function submit(e:React.FormEvent){
   e.preventDefault();if(mutex.current)return;const address=email.trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)){setError('Enter your email address.');return;}
   mutex.current=true;setBusy(true);setError('');setNotice('');const token=epoch.current;
@@ -59,6 +73,12 @@ export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
       {mode==='login'&&<label className="block text-xs font-bold text-slate-700">Password<div className="relative mt-2"><Lock size={17} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-400"/><input type="password" autoComplete="current-password" required disabled={busy} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Enter your password" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-3 text-base outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-100"/></div></label>}
       <button type="submit" disabled={busy||!!notice} className="flex min-h-12 w-full items-center justify-center rounded-xl bg-[#1554a0] p-3 font-bold text-white transition hover:bg-[#10427f] disabled:opacity-60">{busy?<><Loader2 size={18} className="mr-2 animate-spin"/>Please wait…</>:mode==='reset'?'Send reset link':'Sign in to Admin'}</button>
      </form>
+     {mode==='login'&&passkeySupported&&<div className="mt-4 space-y-2">
+      <button type="button" disabled={busy} onClick={()=>void signInWithPasskey()} className="flex min-h-12 w-full items-center justify-center rounded-xl border border-emerald-800 bg-white px-4 py-3 font-bold text-emerald-900 transition hover:bg-emerald-50 disabled:opacity-60">
+       {busy?'Please wait…':'Use device passkey / biometrics'}
+      </button>
+      <p className="text-center text-[11px] leading-5 text-slate-500">Your registered device may use Face ID, fingerprint or its secure PIN. MatMove still requires the Admin authenticator check.</p>
+     </div>}
      <button type="button" disabled={busy} onClick={()=>changeMode(mode==='reset'?'login':'reset')} className="mt-4 min-h-11 w-full text-sm font-bold text-emerald-700 hover:text-emerald-800">{mode==='reset'?'Back to sign in':'Forgot password?'}</button>
      <p className="mt-5 border-t border-slate-100 pt-4 text-[11px] leading-5 text-slate-500">Only active staff can access Admin. Resetting a password does not change permissions or restore removed staff access.</p>
     </div>
