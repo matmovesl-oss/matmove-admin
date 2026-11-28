@@ -17,6 +17,7 @@ type PasskeyRow = {
   created_at?: string | null;
   last_used_at?: string | null;
 };
+type TotpFactor = { id: string; status: string; friendly_name?: string | null };
 function dateLabel(value?: string | null) {
   if (!value) return 'Not available';
   const date = new Date(value);
@@ -27,6 +28,12 @@ export default function AdminSecurityPage() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [passkeys, setPasskeys] = useState<PasskeyRow[]>([]);
   const [totpReady, setTotpReady] = useState(false);
+  const [backupTotpReady, setBackupTotpReady] = useState(false);
+  const [backupFactorId, setBackupFactorId] = useState('');
+  const [backupQrCode, setBackupQrCode] = useState('');
+  const [backupSecret, setBackupSecret] = useState('');
+  const [backupChallengeId, setBackupChallengeId] = useState('');
+  const [backupCode, setBackupCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
@@ -55,7 +62,11 @@ export default function AdminSecurityPage() {
       setPasskeys(Array.isArray(passkeyResult.data) ? passkeyResult.data : []);
     }
     if (!factorResult.error) {
-      setTotpReady((factorResult.data?.totp || []).some((factor: any) => factor.status === 'verified'));
+      const totp = (factorResult.data?.totp || []) as unknown as TotpFactor[];
+      setTotpReady(totp.some(factor => factor.status === 'verified'));
+      setBackupTotpReady(totp.some(factor =>
+        factor.status === 'verified' && factor.friendly_name === 'MatMove Admin backup'
+      ));
     }
     setLoading(false);
   }, []);
@@ -88,6 +99,80 @@ export default function AdminSecurityPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'This passkey could not be removed.');
     } finally { setBusy(false); }
+  }
+
+  async function addBackupAuthenticator() {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const listed = await supabase.auth.mfa.listFactors();
+      if (listed.error) throw new Error('Existing authenticator devices could not be checked.');
+      const factors = (listed.data?.totp || []) as unknown as TotpFactor[];
+      if (factors.some(factor => factor.friendly_name === 'MatMove Admin backup' && factor.status === 'verified')) {
+        setBackupTotpReady(true);
+        setNotice('A verified backup authenticator is already registered on this account.');
+        return;
+      }
+      if (factors.some(factor => factor.friendly_name === 'MatMove Admin backup' && factor.status === 'unverified')) {
+        throw new Error('An unfinished backup authenticator setup already exists. Refresh the page and complete or contact the owner to recover it.');
+      }
+      const enrolled = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'MatMove Admin backup',
+      });
+      if (enrolled.error) throw enrolled.error;
+      if (!enrolled.data?.id || !enrolled.data.totp?.qr_code || !enrolled.data.totp?.secret) {
+        throw new Error('Supabase did not return a complete backup authenticator setup.');
+      }
+      const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
+      if (challenge.error || !challenge.data?.id) {
+        throw new Error('Backup authenticator setup started, but its verification challenge could not be created. Contact the owner before retrying.');
+      }
+      setBackupFactorId(enrolled.data.id);
+      setBackupQrCode(enrolled.data.totp.qr_code);
+      setBackupSecret(enrolled.data.totp.secret);
+      setBackupChallengeId(challenge.data.id);
+      setBackupCode('');
+      setNotice('Scan the backup QR code on a separate trusted device, then verify its six-digit code to finish registration.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Backup authenticator setup failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyBackupAuthenticator(event: React.FormEvent) {
+    event.preventDefault();
+    if (!backupFactorId || !backupChallengeId || !/^\\d{6}$/.test(backupCode)) {
+      setError('Enter the current six-digit code from the backup authenticator.');
+      return;
+    }
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const verified = await supabase.auth.mfa.verify({
+        factorId: backupFactorId,
+        challengeId: backupChallengeId,
+        code: backupCode,
+      });
+      if (verified.error) throw new Error('The backup authenticator code was not accepted. Check the device time and try again.');
+      const listed = await supabase.auth.mfa.listFactors();
+      if (listed.error) throw new Error('The backup was verified, but its final status could not be confirmed. Refresh this page.');
+      const backup = ((listed.data?.totp || []) as unknown as TotpFactor[]).find(factor =>
+        factor.id === backupFactorId && factor.status === 'verified'
+      );
+      if (!backup) throw new Error('Supabase did not confirm the backup authenticator as verified.');
+      setBackupTotpReady(true);
+      setBackupQrCode('');
+      setBackupSecret('');
+      setBackupChallengeId('');
+      setBackupCode('');
+      setNotice('Your backup authenticator is verified. Keep it on a separate trusted device in case your primary device is lost.');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Backup authenticator verification failed.');
+      setBackupCode('');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function revokeAllDevices() {
@@ -128,6 +213,43 @@ export default function AdminSecurityPage() {
       </div>
 
       <section className="mt-5 rounded-2xl border bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold">Backup authenticator</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Register a second authenticator on a separate trusted phone or device. If your primary device is lost, this verified backup can provide the same six-digit second step.</p>
+          </div>
+          <span className={backupTotpReady ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800" : "rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800"}>
+            {backupTotpReady ? 'Backup verified' : 'No backup registered'}
+          </span>
+        </div>
+        {!backupTotpReady && !backupQrCode && (
+          <button type="button" disabled={busy} onClick={() => void addBackupAuthenticator()} className="mt-4 min-h-11 rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+            {busy ? 'Preparing backup…' : 'Add backup authenticator'}
+          </button>
+        )}
+        {backupQrCode && (
+          <div className="mt-4 grid gap-4 md:grid-cols-[220px_1fr]">
+            <div className="flex items-center justify-center rounded-xl border bg-slate-50 p-3">
+              <img src={backupQrCode} alt="MatMove backup authenticator QR code" className="h-48 w-48 bg-white object-contain"/>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Set this up on a separate trusted device</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">Do not store the primary and backup authenticators only on the same phone. Keep this setup key private and never send it to MatMove support.</p>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Manual backup setup key</p>
+              <code className="mt-1 block break-all rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-900">{backupSecret}</code>
+              <form onSubmit={verifyBackupAuthenticator} className="mt-4 space-y-3">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Six-digit backup authenticator code
+                  <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={backupCode} onChange={event => setBackupCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="mt-2 min-h-12 w-full rounded-xl border px-4 text-center text-2xl tracking-[0.35em]" placeholder="000000"/>
+                </label>
+                <button type="submit" disabled={busy || backupCode.length !== 6 || !backupChallengeId} className="min-h-11 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busy ? 'Verifying backup…' : 'Verify backup authenticator'}</button>
+              </form>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-5 rounded-2xl border bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="font-bold">Registered passkeys</h2><p className="mt-1 text-xs text-slate-500">Remove a passkey if a device is lost or no longer trusted.</p></div>
           <button type="button" disabled={loading || busy} onClick={() => void refresh()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold"><RefreshCw size={15}/>Refresh</button>
@@ -141,7 +263,7 @@ export default function AdminSecurityPage() {
           ))}
           {!loading && !passkeys.length && <p className="py-3 text-sm text-slate-500">No passkeys registered on this account.</p>}
         </div>
-        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">Keep your TOTP authenticator as the required second step. For recovery, register a backup authenticator on a separate trusted device as well as a passkey. MatMove does not collect or store your fingerprint or face data.</p>
+        <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">Keep your TOTP authenticator as the required second step. Keep a verified backup authenticator on a separate trusted device. MatMove does not collect or store your fingerprint or face data.</p>
       </section>
 
       <section className="mt-5 rounded-2xl border bg-white p-5">
