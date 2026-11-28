@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-type Stage = 'checking' | 'enroll' | 'setup' | 'challenge' | 'blocked';
+type Stage = 'checking' | 'enroll' | 'setup' | 'challenge' | 'verified' | 'blocked';
 
 type Factor = { id: string; status: string; friendly_name?: string };
 
@@ -22,6 +22,8 @@ export default function StaffMfaGate({
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyMessage, setPasskeyMessage] = useState('');
 
   async function issueChallenge(id: string) {
     const result = await supabase.auth.mfa.challenge({ factorId: id });
@@ -44,7 +46,7 @@ export default function StaffMfaGate({
         throw new Error('Admin security verification is unavailable. Access remains blocked.');
       }
       if (aal.data?.currentLevel === 'aal2' && aal.data?.nextLevel === 'aal2') {
-        await onVerified();
+        setStage('verified');
         return;
       }
       const totp = factors.data?.totp || [];
@@ -206,6 +208,37 @@ export default function StaffMfaGate({
     }
   }
 
+  async function addPasskey() {
+    setPasskeyBusy(true);
+    setPasskeyMessage('');
+    try {
+      const result = await supabase.auth.registerPasskey();
+      if (result.error) {
+        if (String((result.error as any).code || '') === 'passkey_disabled') {
+          throw new Error('Device biometrics are not enabled in MatMove authentication settings yet. Continue with your authenticator; passkey sign-in can be enabled by the owner.');
+        }
+        throw result.error;
+      }
+      setPasskeyMessage('This device passkey has been registered. Your device may use Face ID, fingerprint or its secure PIN when you sign in.');
+    } catch (e) {
+      setPasskeyMessage(e instanceof Error ? e.message : 'This device could not register a passkey. You can continue with your authenticator.');
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+
+  async function continueToAdmin() {
+    setBusy(true);
+    setError('');
+    try {
+      await onVerified();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Your secure Admin session could not be started.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function signOutToAdminLogin() {
     setBusy(true);
     setError('');
@@ -260,7 +293,8 @@ export default function StaffMfaGate({
         throw new Error('The second factor was not confirmed. Admin access remains blocked.');
       }
       setCanReplaceSetup(false);
-      await onVerified();
+      setCode('');
+      setStage('verified');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Authenticator verification failed.');
       setCode('');
@@ -356,6 +390,23 @@ export default function StaffMfaGate({
                 {busy ? 'Replacing unfinished setup…' : 'Cancel this setup and generate a fresh key'}
               </button>
             )}
+          </div>
+        )}
+
+        {stage === 'verified' && (
+          <div className="mt-6 space-y-4">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="font-bold text-emerald-900">Two-step verification complete</p>
+              <p className="mt-1 text-sm leading-6 text-emerald-800">Your password and authenticator have been verified. MatMove will now register this device's secure Admin session.</p>
+            </div>
+            {passkeyMessage && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{passkeyMessage}</p>}
+            <button type="button" disabled={passkeyBusy || busy} onClick={addPasskey} className="min-h-11 w-full rounded-xl border border-emerald-700 px-4 py-3 font-semibold text-emerald-800 disabled:opacity-60">
+              {passkeyBusy ? 'Preparing device passkey…' : 'Set up Face ID / fingerprint / device PIN'}
+            </button>
+            <p className="text-xs leading-5 text-slate-500">Passkeys keep the biometric or device PIN on your device. MatMove does not receive or store your fingerprint or face scan. This step is optional on devices that do not support passkeys.</p>
+            <button type="button" disabled={busy || passkeyBusy} onClick={continueToAdmin} className="min-h-11 w-full rounded-xl bg-indigo-700 px-4 py-3 font-bold text-white disabled:opacity-60">
+              {busy ? 'Opening secure Admin…' : 'Continue to Admin'}
+            </button>
           </div>
         )}
 
