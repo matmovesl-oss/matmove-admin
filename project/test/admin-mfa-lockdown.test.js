@@ -96,6 +96,25 @@ test('verified sessions still require active staff membership and exact section 
   await assert.rejects(requireAdmin(request(f.token),['financials'],{client:f.client}),e=>e.status===403);
 });
 
+
+test('high-impact Admin writes require a TOTP verification from the last five minutes',async()=>{
+  const now=Math.floor(Date.now()/1000);
+  const stale=clientFixture({claims:validClaims({
+    amr:[{method:'password',timestamp:now-400},{method:'totp',timestamp:now-301}]
+  })});
+  await assert.rejects(
+    requireAdmin(request(stale.token),['financials'],{client:stale.client,maxTotpAgeSeconds:300}),
+    e=>e.status===401&&/verify your MatMove Admin authenticator again/i.test(e.message)
+  );
+  assert.equal(stale.calls.length,0);
+
+  const recent=clientFixture({claims:validClaims({
+    amr:[{method:'password',timestamp:now-20},{method:'totp',timestamp:now-20}]
+  })});
+  await requireAdmin(request(recent.token),['financials'],{client:recent.client,maxTotpAgeSeconds:300});
+  assert.deepEqual(recent.calls.map(call=>call.name),['matmove_admin_server_session_valid','matmove_admin_access']);
+});
+
 test('Admin UI wires the mandatory TOTP gate, live session guard and 13/15 minute inactivity policy',async()=>{
   const app=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
   const gate=await readFile(new URL('../src/components/StaffMfaGate.tsx',import.meta.url),'utf8');
