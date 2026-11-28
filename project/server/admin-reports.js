@@ -44,7 +44,7 @@ export function createReportHandler({authorize=requireAdmin,env=process.env,now=
    if(req.method!=='GET')throw failure(405,'Use GET for reports.');
    const q=query(req);
    if(!['report-catalog','report-page','report-overview'].includes(q.view))throw failure(400,'Unknown report view.');
-   const {client,user,access}=await authorize(req,PERMISSION_KEYS,{env});
+   const {client,user,access}=await authorize(req,PERMISSION_KEYS,{env,maxTotpAgeSeconds:req.method==='POST'?300:undefined});
    if(q.actor&&q.actor!==user.id)throw failure(409,'Your signed-in account changed. Reopen Reports.');
    const catalog=await client.rpc('matmove_admin_report_catalog',{p_actor:user.id});if(catalog.error)rpcError(catalog.error);
    // Check authoritative assignments again; never use a requested permission as a grant.
