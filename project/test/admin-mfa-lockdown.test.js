@@ -93,7 +93,7 @@ test('Admin app enforces TOTP, backend session registration and the 13/15-minute
   assert.match(app,/24\*60\*60\*1000/);
   assert.match(app,/setAccess\(null\);setMfaReady\(false\)/);
   assert.match(gate,/getClaims\(\)/);
-  assert.match(gate,/method\?\.method === 'totp'/);
+  assert.match(gate,/item\\?\\.method === 'totp'/);
   assert.match(gate,/Add a backup authenticator/);
   assert.match(gate,/registerPasskey\(\)/);
 });
