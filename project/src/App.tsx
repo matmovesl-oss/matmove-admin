@@ -99,6 +99,35 @@ function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean
   return()=>{live=false;clearInterval(timer);window.removeEventListener('online',online);window.removeEventListener('offline',offline);};
  },[session.user.id,session.access_token,reload]);
 
+ useEffect(()=>{
+  if(!mfaReady)return;
+  let live=true,inFlight=false;
+  const verifyRegisteredSession=async()=>{
+   if(inFlight||typeof navigator!=='undefined'&&!navigator.onLine)return;
+   inFlight=true;
+   try{
+    const result=await supabase.rpc('matmove_admin_session_valid');
+    if(!live)return;
+    if(result.error||result.data!==true){
+     setMfaReady(false);setAccess(null);
+     setError('This Admin device session has expired or has been revoked. Sign in again.');
+     await supabase.auth.signOut({scope:'local'}).catch(()=>undefined);
+    }
+   }catch{
+    if(live){
+     setMfaReady(false);setAccess(null);
+     setError('The active Admin session could not be verified. Sign in again.');
+     await supabase.auth.signOut({scope:'local'}).catch(()=>undefined);
+    }
+   }finally{inFlight=false;}
+  };
+  void verifyRegisteredSession();
+  const timer=window.setInterval(()=>void verifyRegisteredSession(),5000);
+  const online=()=>void verifyRegisteredSession();
+  window.addEventListener('online',online);
+  return()=>{live=false;window.clearInterval(timer);window.removeEventListener('online',online);};
+ },[mfaReady,session.user.id]);
+
  async function beginVerifiedSession(){
   const result=await supabase.rpc('matmove_admin_session_touch',{
    p_device_label:typeof navigator!=='undefined'?(navigator.platform||'Browser device'):'Browser device',
