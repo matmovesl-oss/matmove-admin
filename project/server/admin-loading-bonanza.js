@@ -44,7 +44,7 @@ export function createLoadingBonanzaAdminHandler({ authorize = requireAdmin, env
       if (!['loading-bonanza-overview', 'loading-bonanza-settings', 'loading-bonanza-fund'].includes(view)) throw failure(400, 'Invalid Loading Bonanza view.');
       const write = view !== 'loading-bonanza-overview';
       if (req.method !== (write ? 'POST' : 'GET')) throw failure(405, 'Method not allowed.');
-      const { client, user, access } = await authorize(req, ['financials'], { env });
+      const { client, user, access } = await authorize(req, ['financials'], { env,maxTotpAgeSeconds:req.method==='POST'?300:undefined });
       const actor = req.query?.actor || new URL(req.url || '/api/admin-staff', 'https://admin.invalid').searchParams.get('actor');
       if (actor !== user.id) throw failure(409, 'Your signed-in account changed. Reopen Loading Bonanza.');
 
