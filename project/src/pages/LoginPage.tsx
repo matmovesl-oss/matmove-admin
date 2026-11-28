@@ -1,7 +1,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
-import {Loader2,Mail,Lock} from 'lucide-react';
+import {Loader2,Mail,Lock,Fingerprint} from 'lucide-react';
 export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
  const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[mode,setMode]=useState<'login'|'reset'>(recoveryError?'reset':'login'),[busy,setBusy]=useState(false),[error,setError]=useState(recoveryError),[notice,setNotice]=useState('');
  const mounted=useRef(true),mutex=useRef(false),epoch=useRef(0);
@@ -21,6 +21,26 @@ export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
    }
   }catch{if(mounted.current&&epoch.current===token)setError(mode==='reset'?'The reset request could not be confirmed. Please wait before trying again.':'Unable to sign in. Check your work email and password. If password setup was not completed, use Forgot password to create a new password that meets the Admin security requirements.');}
   finally{mutex.current=false;if(mounted.current&&epoch.current===token)setBusy(false);}
+ }
+ async function signInWithPasskey(){
+  if(mutex.current||mode!=='login')return;
+  mutex.current=true;setBusy(true);setError('');setNotice('');
+  try{
+   const result=await supabase.auth.signInWithPasskey();
+   if(result.error)throw result.error;
+   if(!result.data?.session)throw new Error('Passkey sign-in did not create an Admin session.');
+   // StaffMfaGate still requires a separate TOTP authenticator verification.
+  }catch(e){
+   if(mounted.current){
+    const message=e instanceof Error?e.message:'Passkey sign-in failed.';
+    setError(/passkey_disabled|passkey.*disabled/i.test(message)
+      ?'Biometric sign-in is not enabled for MatMove Admin yet. Use your password and authenticator code for now.'
+      :'Passkey sign-in was not completed. Try again or use your password.');
+   }
+  }finally{
+   mutex.current=false;
+   if(mounted.current)setBusy(false);
+  }
  }
  return <main className="min-h-screen bg-[#f5f8f7] text-slate-900 lg:grid lg:grid-cols-[1.05fr_.95fr]">
   <aside className="relative hidden min-h-screen overflow-hidden bg-[#0b263c] p-10 text-white lg:flex lg:flex-col lg:justify-between xl:p-16">
@@ -59,6 +79,11 @@ export default function LoginPage({recoveryError=''}:{recoveryError?:string}){
       {mode==='login'&&<label className="block text-xs font-bold text-slate-700">Password<div className="relative mt-2"><Lock size={17} className="pointer-events-none absolute left-3.5 top-3.5 text-slate-400"/><input type="password" autoComplete="current-password" required disabled={busy} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Enter your password" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-3 text-base outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-100"/></div></label>}
       <button type="submit" disabled={busy||!!notice} className="flex min-h-12 w-full items-center justify-center rounded-xl bg-[#1554a0] p-3 font-bold text-white transition hover:bg-[#10427f] disabled:opacity-60">{busy?<><Loader2 size={18} className="mr-2 animate-spin"/>Please wait…</>:mode==='reset'?'Send reset link':'Sign in to Admin'}</button>
      </form>
+     {mode==='login'&&<div className="mt-4">
+      <div className="relative my-2 flex items-center"><span className="h-px flex-1 bg-slate-200"/><span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">or use device authentication</span><span className="h-px flex-1 bg-slate-200"/></div>
+      <button type="button" disabled={busy} onClick={()=>void signInWithPasskey()} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-bold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60"><Fingerprint size={18}/>{busy?'Please wait…':'Use passkey (Face ID / fingerprint)'}</button>
+      <p className="mt-2 text-center text-[11px] leading-5 text-slate-500">Your device may use Face ID, fingerprint, screen lock PIN or a security key. Your authenticator code is still required after sign-in.</p>
+     </div>}
      <button type="button" disabled={busy} onClick={()=>changeMode(mode==='reset'?'login':'reset')} className="mt-4 min-h-11 w-full text-sm font-bold text-emerald-700 hover:text-emerald-800">{mode==='reset'?'Back to sign in':'Forgot password?'}</button>
      <p className="mt-5 border-t border-slate-100 pt-4 text-[11px] leading-5 text-slate-500">Only active staff can access Admin. Resetting a password does not change permissions or restore removed staff access.</p>
     </div>
