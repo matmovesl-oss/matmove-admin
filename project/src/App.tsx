@@ -125,8 +125,10 @@ function adminDeviceLabel(){
 function AdminSessionGuard({children}:{children:React.ReactNode}){
  const [warning,setWarning]=useState(false);
  const [checking,setChecking]=useState(false);
+ const lastActivityRef=useRef(Date.now());
+ const lastTouchRef=useRef(Date.now());
  useEffect(()=>{
-  let lastActivity=Date.now(),lastTouch=Date.now(),inFlight=false,expired=false;
+  let inFlight=false,expired=false;
   const idleWarningMs=13*60*1000,idleExpiryMs=15*60*1000;
   const expire=async()=>{
    if(expired)return;
@@ -135,7 +137,7 @@ function AdminSessionGuard({children}:{children:React.ReactNode}){
   };
   const touch=async(force=false)=>{
    const now=Date.now();
-   if(inFlight||(!force&&now-lastTouch<45000)||expired)return;
+   if(inFlight||(!force&&now-lastTouchRef.current<45000)||expired)return;
    inFlight=true;
    try{
     const result=await supabase.rpc('matmove_admin_session_touch',{
@@ -143,15 +145,15 @@ function AdminSessionGuard({children}:{children:React.ReactNode}){
      p_user_agent:typeof navigator!=='undefined'?navigator.userAgent:'',
     });
     if(result.error){await expire();return;}
-    lastTouch=Date.now();
+    lastTouchRef.current=Date.now();
    }catch{await expire();}
    finally{inFlight=false;}
   };
   const activity=()=>{
    if(expired)return;
    const now=Date.now();
-   if(now-lastActivity>=idleExpiryMs){void expire();return;}
-   lastActivity=now;
+   if(now-lastActivityRef.current>=idleExpiryMs){void expire();return;}
+   lastActivityRef.current=now;
    setWarning(false);
    void touch();
   };
@@ -171,7 +173,7 @@ function AdminSessionGuard({children}:{children:React.ReactNode}){
   window.addEventListener('wheel',activity,{passive:true});
   document.addEventListener('visibilitychange',onVisibility);
   const idleTimer=window.setInterval(()=>{
-   const idle=Date.now()-lastActivity;
+   const idle=Date.now()-lastActivityRef.current;
    if(idle>=idleExpiryMs){void expire();return;}
    setWarning(idle>=idleWarningMs);
   },1000);
@@ -193,6 +195,9 @@ function AdminSessionGuard({children}:{children:React.ReactNode}){
     p_user_agent:typeof navigator!=='undefined'?navigator.userAgent:'',
    });
    if(result.error){await supabase.auth.signOut({scope:'local'});return;}
+   const now=Date.now();
+   lastActivityRef.current=now;
+   lastTouchRef.current=now;
    setWarning(false);
   }finally{setChecking(false);}
  }
