@@ -149,3 +149,17 @@ test('staff removal and permission changes revoke registry sessions through the 
   const previous=await readFile(new URL('../supabase/migrations/20261108210500_matmove_staff_removed_access_fail_closed.sql',import.meta.url),'utf8').catch(()=> '');
   assert.ok(previous.length===0||/removed_at|is_active/.test(previous));
 });
+
+test('sensitive Admin requests open a real TOTP step-up dialog and retry with the refreshed token',async()=>{
+  const auth=await readFile(new URL('../server/admin-auth.js',import.meta.url),'utf8');
+  const fetcher=await readFile(new URL('../src/lib/adminFetch.ts',import.meta.url),'utf8');
+  const provider=await readFile(new URL('../src/components/AdminStepUpProvider.tsx',import.meta.url),'utf8');
+  const app=await readFile(new URL('../src/App.tsx',import.meta.url),'utf8');
+  assert.match(auth,/STEP_UP_REQUIRED:/);
+  assert.match(fetcher,/requestAdminStepUp\(\)/);
+  assert.match(fetcher,/verifiedSession\.access_token/);
+  assert.match(provider,/supabase\.auth\.mfa\.challenge/);
+  assert.match(provider,/supabase\.auth\.mfa\.verify/);
+  assert.match(provider,/setAdminStepUpHandler/);
+  assert.match(app,/AdminStepUpProvider/);
+});
