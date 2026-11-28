@@ -15,7 +15,7 @@ export function readVerifiedClaims(token){
  return claims;
 }
 export async function requireAdmin(req,keys,{client,env=process.env,maxTotpAgeSeconds}={}){
- const token=/^Bearer\\s+(\\S+)$/i.exec(req.headers.authorization||'')?.[1];
+ const token=/^Bearer\s+(\S+)$/i.exec(req.headers.authorization||'')?.[1];
  if(!token)throw failure(401,'Sign in to the Admin portal.');
  client=client||serverClient(env);
  const auth=await client.auth.getUser(token);
