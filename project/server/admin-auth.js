@@ -32,7 +32,7 @@ export async function requireAdmin(req,keys,{client,env=process.env,maxTotpAgeSe
   const timestamp=Number(totpMethod.timestamp);
   const now=Math.floor(Date.now()/1000);
   if(!Number.isFinite(timestamp)||timestamp<=0||timestamp>now+60||now-timestamp>maxTotpAgeSeconds){
-   throw failure(401,'For your security, verify your MatMove Admin authenticator again before this sensitive action.');
+   throw failure(401,'STEP_UP_REQUIRED: Verify your MatMove Admin authenticator again before this sensitive action.');
   }
  }
  const sessionId=claims.session_id;
