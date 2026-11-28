@@ -176,4 +176,6 @@ test('Admin supports a separate backup TOTP authenticator and lets staff choose 
   assert.match(security,/supabase\.auth\.mfa\.verify/);
   assert.match(security,/Verify backup authenticator/);
   assert.match(security,/separate trusted device/);
+  assert.match(security,/prepareBackupChallenge/);
+  assert.match(security,/Prepare verification challenge/);
 });
