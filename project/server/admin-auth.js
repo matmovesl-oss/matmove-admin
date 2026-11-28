@@ -27,8 +27,8 @@ export async function requireAdmin(req,keys,{client,env=process.env}={}){
  const auth=await client.auth.getUser(token);
  if(auth.error||!auth.data?.user)throw failure(401,'Session expired. Sign in again.');
  const claims=verifiedClaims(token);
- if(!claims||claims.sub!==auth.data.user.id||claims.aal!=='aal2'){
-  throw failure(403,'Complete password and authenticator verification before accessing MatMove Admin.');
+ if(!claims||claims.sub!==auth.data.user.id||claims.aal!=='aal2'||!Array.isArray(claims.amr)||!claims.amr.some(method=>method?.method==='totp')){
+  throw failure(403,'Complete your password and TOTP authenticator verification before accessing MatMove Admin.');
  }
  const sessionId=claims.session_id;
  if(typeof sessionId!=='string'||!uuid.test(sessionId)){
