@@ -50,10 +50,13 @@ export default function AdminStepUpProvider({ children }: { children: ReactNode 
     setError('');
     setOpen(true);
     setPreparing(true);
+    let resolvePromise!: () => void;
+    let rejectPromise!: (error: Error) => void;
     const promise = new Promise<void>((resolve, reject) => {
-      pendingRef.current = { promise: Promise.resolve(), resolve, reject };
+      resolvePromise = resolve;
+      rejectPromise = reject;
     });
-    pendingRef.current.promise = promise;
+    pendingRef.current = { promise, resolve: resolvePromise, reject: rejectPromise };
 
     void (async () => {
       try {
