@@ -69,8 +69,35 @@ export function createHandler({authorize=requireAdmin,env=process.env}={}){
   if(access.is_owner!==true)throw failure(403,'Access denied. Only the owner can authorize, remove or change staff.');
   let body;try{body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};}catch{throw failure(400,'Invalid staff request.');}
   const action=body.action;
-  if(!['invite','update','resend','remove','restoreCustomer'].includes(action))throw failure(400,'Invalid staff action.');
+  if(!['invite','update','resend','remove','restoreCustomer','revokeSessions'].includes(action))throw failure(400,'Invalid staff action.');
   let targetId=body.id;
+  if(action==='revokeSessions'){
+   if(!uuid(targetId))throw failure(400,'Select a valid staff account.');
+   const target=await client.from('matmove_staff_access').select('id,email,is_owner,is_active,removed_at').eq('id',targetId).maybeSingle();
+   if(target.error)throw failure(503,'The staff account could not be verified before revoking sessions.');
+   if(!target.data)throw failure(404,'The staff account was not found.');
+   if(target.data.is_owner===true&&targetId!==user.id)throw failure(403,'A super-admin session cannot be revoked by another staff account.');
+   const revokedAt=new Date().toISOString();
+   const revoked=await client.from('matmove_admin_sessions')
+    .update({revoked_at:revokedAt})
+    .eq('user_id',targetId)
+    .is('revoked_at',null)
+    .select('session_id');
+   if(revoked.error)throw failure(503,'The active Admin devices could not be revoked. Retry after refreshing the staff directory.');
+   const audit=await client.from('matmove_staff_audit').insert({
+    actor_id:user.id,
+    target_id:targetId,
+    action:'REVOKE_ADMIN_SESSIONS',
+    details:{revokedSessionCount:Array.isArray(revoked.data)?revoked.data.length:0,reason:'Owner requested Sign out all devices'}
+   });
+   if(audit.error)throw failure(503,'Device sessions were revoked, but the security audit entry could not be confirmed. Contact the owner before retrying.');
+   return res.status(200).json({
+    success:true,
+    emailSent:false,
+    revokedSessionCount:Array.isArray(revoked.data)?revoked.data.length:0,
+    message:'All registered Admin device sessions for this account have been revoked.'
+   });
+  }
   if(action==='restoreCustomer'){
    if(!uuid(targetId)||targetId===user.id)throw failure(400,'Select a valid payroll staff profile.');
    const result=await client.rpc('matmove_admin_restore_customer_role',{p_user_id:targetId});
