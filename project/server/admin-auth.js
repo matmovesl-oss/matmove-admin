@@ -14,7 +14,7 @@ export function readVerifiedClaims(token){
  if(!claims||typeof claims!=='object'||typeof claims.sub!=='string')throw failure(401,'Admin sign-in token is invalid.');
  return claims;
 }
-export async function requireAdmin(req,keys,{client,env=process.env}={}){
+export async function requireAdmin(req,keys,{client,env=process.env,maxTotpAgeSeconds}={}){
  const token=/^Bearer\\s+(\\S+)$/i.exec(req.headers.authorization||'')?.[1];
  if(!token)throw failure(401,'Sign in to the Admin portal.');
  client=client||serverClient(env);
@@ -24,9 +24,16 @@ export async function requireAdmin(req,keys,{client,env=process.env}={}){
  // getUser() asks Supabase Auth to validate the bearer token. Only then do we
  // inspect its signed claims for the required TOTP-authenticated AAL2 session.
  const claims=readVerifiedClaims(token);
- if(claims.sub!==auth.data.user.id||claims.aal!=='aal2'||
-    !Array.isArray(claims.amr)||!claims.amr.some(method=>method?.method==='totp')){
+ const totpMethod=Array.isArray(claims.amr)?claims.amr.find(method=>method?.method==='totp'):null;
+ if(claims.sub!==auth.data.user.id||claims.aal!=='aal2'||!totpMethod){
   throw failure(401,'Complete password and authenticator verification to access MatMove Admin.');
+ }
+ if(maxTotpAgeSeconds!==undefined){
+  const timestamp=Number(totpMethod.timestamp);
+  const now=Math.floor(Date.now()/1000);
+  if(!Number.isFinite(timestamp)||timestamp<=0||timestamp>now+60||now-timestamp>maxTotpAgeSeconds){
+   throw failure(401,'For your security, verify your MatMove Admin authenticator again before this sensitive action.');
+  }
  }
  const sessionId=claims.session_id;
  if(typeof sessionId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)){
