@@ -57,3 +57,24 @@ test('legacy role label cannot create owner privileges without the verified owne
  assert.equal(canAdminAccess({...row,role:'super_admin'},'staff'),false);
  assert.equal(canAdminAccess({...row,role:'super_admin'},'games.settings'),false);
 });
+
+test('Only the owner can revoke another active Admin member’s device sessions',async()=>{
+ const calls=[];
+ const client={rpc:async(name,args)=>{
+  calls.push({name,args});
+  return {data:{success:true,userId:id,revokedSessions:2},error:null};
+ }};
+ const ownerHandler=createHandler({authorize:async()=>({client,user:{id:ownerId},access:{is_owner:true,is_active:true}})});
+ const ownerRes=response();
+ await ownerHandler({method:'POST',headers:{},body:{action:'revokeSessions',id}},ownerRes);
+ assert.equal(ownerRes.code,200);
+ assert.equal(ownerRes.body.revokedSessions,2);
+ assert.equal(calls[0].name,'matmove_admin_server_revoke_sessions');
+ assert.deepEqual(calls[0].args,{p_actor_id:ownerId,p_user_id:id});
+
+ const denied=createHandler({authorize:async()=>({client,user:{id},access:{is_owner:false,is_active:true,permissions:['staff']}})});
+ const deniedRes=response();
+ await denied({method:'POST',headers:{},body:{action:'revokeSessions',id:ownerId}},deniedRes);
+ assert.equal(deniedRes.code,403);
+ assert.equal(calls.length,1);
+});
