@@ -41,6 +41,7 @@ import LoginPage from './pages/LoginPage';
 import {AdminAccessContext,canAccess,homeFor,sections,type AdminAccess} from './lib/adminAccess';
 import AdminLayout from './components/AdminLayout';
 import StaffMfaGate from './components/StaffMfaGate';
+import AdminStepUpProvider from './components/AdminStepUpProvider';
 
 function Denied({message='Access denied. This section has not been assigned to your staff account.',retry}:{message?:string;retry?:()=>void}){return <AdminLayout title="Access denied"><p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">{message}</p>{retry&&<button type="button" onClick={retry} className="mt-4 rounded-xl border bg-white px-5 py-3 font-bold">Retry permission check</button>}</AdminLayout>;}
 function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
@@ -235,5 +236,5 @@ export default function App(){
   });
   if(result.error)throw new Error(result.error.message||'Admin session could not be registered. Access remains blocked.');
  }
- return <BrowserRouter>{invalid?<LoginPage recoveryError="This password reset link is expired, incomplete or already used. Request a new link below."/>:session?<StaffMfaGate key={session.user.id} userId={session.user.id} onVerified={startVerifiedAdminSession}><AdminSessionGuard><Console key={session.user.id} session={session} recovery={recovery} onRecoveryDone={recovered}/></AdminSessionGuard></StaffMfaGate>:<LoginPage/>}</BrowserRouter>;
+ return <BrowserRouter>{invalid?<LoginPage recoveryError="This password reset link is expired, incomplete or already used. Request a new link below."/>:session?<StaffMfaGate key={session.user.id} userId={session.user.id} onVerified={startVerifiedAdminSession}><AdminStepUpProvider><AdminSessionGuard><Console key={session.user.id} session={session} recovery={recovery} onRecoveryDone={recovered}/></AdminSessionGuard></AdminStepUpProvider></StaffMfaGate>:<LoginPage/>}</BrowserRouter>;
 }
