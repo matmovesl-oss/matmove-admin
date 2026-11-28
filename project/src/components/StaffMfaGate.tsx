@@ -45,7 +45,13 @@ export default function StaffMfaGate({
       if (aal.error || factors.error) {
         throw new Error('Admin security verification is unavailable. Access remains blocked.');
       }
-      if (aal.data?.currentLevel === 'aal2' && aal.data?.nextLevel === 'aal2') {
+      const claimsResult = await supabase.auth.getClaims();
+      if (claimsResult.error) {
+        throw new Error('Could not verify the authentication methods for this Admin session.');
+      }
+      const methods = claimsResult.data?.claims?.amr;
+      const hasTotpProof = Array.isArray(methods) && methods.some((item: any) => item?.method === 'totp');
+      if (aal.data?.currentLevel === 'aal2' && aal.data?.nextLevel === 'aal2' && hasTotpProof) {
         setStage('verified');
         return;
       }
@@ -203,6 +209,39 @@ export default function StaffMfaGate({
     } catch (e) {
       setStage('blocked');
       setError(e instanceof Error ? e.message : 'The unfinished authenticator setup could not be safely replaced.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addBackupAuthenticator() {
+    setBusy(true);
+    setError('');
+    setPasskeyMessage('');
+    try {
+      const enrolled = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'MatMove Admin backup',
+      });
+      if (enrolled.error) throw enrolled.error;
+      if (!enrolled.data?.id || !enrolled.data.totp?.qr_code || !enrolled.data.totp?.secret) {
+        throw new Error('Supabase did not return the backup authenticator setup details.');
+      }
+      setFactorId(enrolled.data.id);
+      setCanReplaceSetup(true);
+      setQrCode(enrolled.data.totp.qr_code);
+      setSecret(enrolled.data.totp.secret);
+      setChallengeId('');
+      setCode('');
+      setStage('setup');
+      const challenge = await supabase.auth.mfa.challenge({ factorId: enrolled.data.id });
+      if (challenge.error || !challenge.data?.id) {
+        setError('The backup authenticator was created, but its verification challenge could not be prepared. Retry the challenge below.');
+      } else {
+        setChallengeId(challenge.data.id);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'A backup authenticator could not be added.');
     } finally {
       setBusy(false);
     }
@@ -400,6 +439,9 @@ export default function StaffMfaGate({
               <p className="mt-1 text-sm leading-6 text-emerald-800">Your password and authenticator have been verified. MatMove will now register this device's secure Admin session.</p>
             </div>
             {passkeyMessage && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{passkeyMessage}</p>}
+            <button type="button" disabled={busy} onClick={addBackupAuthenticator} className="min-h-11 w-full rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 disabled:opacity-60">
+              Add a backup authenticator
+            </button>
             <button type="button" disabled={passkeyBusy || busy} onClick={addPasskey} className="min-h-11 w-full rounded-xl border border-emerald-700 px-4 py-3 font-semibold text-emerald-800 disabled:opacity-60">
               {passkeyBusy ? 'Preparing device passkey…' : 'Set up Face ID / fingerprint / device PIN'}
             </button>
