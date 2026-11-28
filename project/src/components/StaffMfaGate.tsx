@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-type Stage = 'checking' | 'enroll' | 'setup' | 'challenge' | 'blocked';
+type Stage = 'checking' | 'enroll' | 'setup' | 'challenge' | 'blocked' | 'verified';
 
 type Factor = { id: string; status: string; friendly_name?: string };
 
 export default function StaffMfaGate({
   userId,
   onVerified,
+  children,
 }: {
   userId: string;
   onVerified: () => Promise<void> | void;
+  children: ReactNode;
 }) {
   const [stage, setStage] = useState<Stage>('checking');
   const [factorId, setFactorId] = useState('');
@@ -36,6 +38,16 @@ export default function StaffMfaGate({
     setStage('checking');
     setError('');
     try {
+      // Confirm the account still has an active MatMove Admin assignment before
+      // offering authenticator enrollment or exposing any Admin content.
+      const staff = await supabase.rpc('matmove_admin_me');
+      if (staff.error) throw new Error('Admin staff access could not be verified. Access remains blocked.');
+      if (!staff.data || staff.data.id !== userId || staff.data.is_active !== true) {
+        setStage('blocked');
+        setError('This account no longer has an active MatMove Admin assignment. Contact the company owner.');
+        return;
+      }
+
       const [aal, factors] = await Promise.all([
         supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
         supabase.auth.mfa.listFactors(),
@@ -45,6 +57,7 @@ export default function StaffMfaGate({
       }
       if (aal.data?.currentLevel === 'aal2' && aal.data?.nextLevel === 'aal2') {
         await onVerified();
+        setStage('verified');
         return;
       }
       const totp = factors.data?.totp || [];
@@ -261,6 +274,7 @@ export default function StaffMfaGate({
       }
       setCanReplaceSetup(false);
       await onVerified();
+      setStage('verified');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Authenticator verification failed.');
       setCode('');
@@ -268,6 +282,8 @@ export default function StaffMfaGate({
       setBusy(false);
     }
   }
+
+  if (stage === 'verified') return <>{children}</>;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
