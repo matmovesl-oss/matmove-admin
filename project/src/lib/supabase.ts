@@ -13,6 +13,8 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // Supabase Passkeys currently require the explicit experimental opt-in.
+      experimental: { passkey: true },
     },
   }
 );
