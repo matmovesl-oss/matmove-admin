@@ -63,6 +63,7 @@ const navItems = [
   { key: 'customers', name: 'Customer Governance', path: '/customers', icon: Users },
   { key: 'staff', name: 'Staff Governance', path: '/staff', icon: Settings },
   { key: 'staff', name: 'Android App Releases', path: '/app-releases', icon: ShieldCheck },
+  { key: 'security', name: 'Security & Devices', path: '/security', icon: ShieldCheck },
   { key: 'reports', name: 'Reports & Analytics', path: '/reports', icon: BarChart3 },
   { key: 'logs', name: 'System Logs', path: '/logs', icon: FileText },
   { key: 'audit', name: 'Audit & Activity Review', path: '/audit', icon: ClipboardCheck },
@@ -91,7 +92,7 @@ const navSections = [
     key: 'admin-releases',
     name: 'Administration & App Releases',
     icon: ShieldCheck,
-    paths: ['/staff', '/app-releases'],
+    paths: ['/staff', '/app-releases', '/security'],
   },
   {
     key: 'sports',
@@ -173,6 +174,7 @@ export default function AdminLayout({
   }
 
   const visibleItems = navItems.filter((item) => {
+    if (item.key === 'security') return true;
     if (owner) return true;
 
     if (item.key === 'reports') return sections.some(([key]) => canAccess(access,key));
