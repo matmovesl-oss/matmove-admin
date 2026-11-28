@@ -21,7 +21,7 @@ export function createMoneyHandler(kind,{authorize=requireAdmin,env=process.env,
   if(!['GET','POST'].includes(req.method)){res.setHeader('Allow','GET, POST');return res.status(405).json({error:'Method not allowed.'});}
   let db,actor,key,row,claimed=false;
   try{
-   const admin=await authorize(req,kind==='payroll'?['special']:['financials','special'],{env});db=admin.client;actor=admin.user.id;
+   const admin=await authorize(req,kind==='payroll'?['special']:['financials','special'],{env,maxTotpAgeSeconds:req.method==='POST'?300:undefined});db=admin.client;actor=admin.user.id;
    const url=new URL(req.url||'/','https://admin.invalid');
    for(const k of url.searchParams.keys())if(!['view','q'].includes(k)||url.searchParams.getAll(k).length!==1)throw failure(400,'Invalid query.');
    const view=url.searchParams.get('view')||'balance';
