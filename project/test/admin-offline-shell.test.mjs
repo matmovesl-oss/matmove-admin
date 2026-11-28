@@ -27,8 +27,9 @@ test('Admin offline shell caches only the static app shell and fingerprinted ass
   assert.doesNotMatch(worker, /cache\.put\([^\n]*(?:wallet|staff|customer|transaction|payment)/i);
   assert.match(offline, /permissions and live information must be verified online/);
   assert.equal(JSON.parse(manifest).display, 'standalone');
-  assert.match(app, /Connect to the internet to verify your MatMove Admin access/);
-  assert.match(app, /lastVerified\.current/);
+  assert.match(app, /Connect to the internet to verify your MatMove Admin session/);
+  assert.match(app, /setAccess\(null\)/);
+  assert.doesNotMatch(app, /lastVerified\.current/);
 });
 
 test('Admin homepage artwork has a same-origin fallback when uploaded images are missing', async () => {
