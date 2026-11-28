@@ -4,6 +4,7 @@
 
 
 import {loadAdminSession} from './lib/adminSession';
+import StaffMfaGate from './components/StaffMfaGate';
 import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 const ConciergePage = lazy(() => import('./pages/ConciergePage'));
 const HomepagePostsPage = lazy(() => import('./pages/HomepagePostsPage'));
@@ -44,58 +45,193 @@ function Denied({message='Access denied. This section has not been assigned to y
 function Gate({access,section,children}:{access:AdminAccess;section:string;children:React.ReactNode}){return canAccess(access,section)?<>{children}</>:<Denied/>;}
 function GameGate({access}:{access:AdminAccess}){const loc=useLocation();const tab=new URLSearchParams(loc.search).get('tab');if(!tab){const first=['overview','players','entries','winnings','settings','recovery'].find(t=>canAccess(access,`games.${t}`));return first?<Navigate to={`/games?tab=${first}`} replace/>:<Denied/>;}if(!['overview','players','entries','winnings','settings','recovery'].includes(tab))return <Denied/>;return <Gate access={access} section={`games.${tab}`}><GamesPage/></Gate>;}
 function Console({session,recovery,onRecoveryDone}:{session:any;recovery:boolean;onRecoveryDone:()=>void}){
- const [reload,setReload]=useState(0);const [access,setAccess]=useState<AdminAccess|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const loc=useLocation();const lastVerified=useRef<AdminAccess|null>(null);
+ const [reload,setReload]=useState(0);
+ const [access,setAccess]=useState<AdminAccess|null>(null);
+ const [loading,setLoading]=useState(true);
+ const [error,setError]=useState('');
+ const [mfaReady,setMfaReady]=useState(false);
+ const [sessionStartedAt,setSessionStartedAt]=useState<string|null>(null);
+ const [idleWarning,setIdleWarning]=useState(false);
+ const loc=useLocation();
+ const lastActivity=useRef(Date.now());
+ const lastTouch=useRef(0);
+ const touchInFlight=useRef(false);
+ const expired=useRef(false);
+
  useEffect(()=>{
   let live=true,inFlight=false;
-  if(lastVerified.current?.id!==session.user.id)lastVerified.current=null;
   const refresh=async()=>{
    if(inFlight)return;
-   if(typeof navigator!=='undefined'&&!navigator.onLine){if(!lastVerified.current){setError('Connect to the internet to verify your MatMove Admin access.');setLoading(false);}return;}
+   if(typeof navigator!=='undefined'&&!navigator.onLine){
+    if(live){setAccess(null);setMfaReady(false);setLoading(false);setError('Admin is locked while this device is offline. Reconnect to verify your staff access.');}
+    return;
+   }
    inFlight=true;
-   try{const row=await loadAdminSession(supabase,session);if(live){lastVerified.current=row;setAccess(row);setError('');}}
-   catch(e){if(live){const message=e instanceof Error?e.message:'Unable to verify staff permissions.';const networkFailure=(typeof navigator!=='undefined'&&!navigator.onLine)||/failed to fetch|network|timeout|offline|load failed/i.test(message);if(networkFailure&&lastVerified.current?.id===session.user.id){setAccess(lastVerified.current);setError('Connection interrupted. Showing the last verified admin view; actions will resume when you are back online.');}else{lastVerified.current=null;setAccess(null);setError(message);}}}
-   finally{inFlight=false;if(live)setLoading(false);}
+   try{
+    const row=await loadAdminSession(supabase,session);
+    if(!live)return;
+    if(!row||row.is_active!==true){
+     setAccess(null);setMfaReady(false);
+     setError('Admin access is no longer active. Contact the MatMove owner if you believe this is an error.');
+     void supabase.auth.signOut({scope:'local'});
+     return;
+    }
+    setAccess(row);setError('');
+   }catch(e){
+    if(live){
+     setAccess(null);setMfaReady(false);
+     setError(e instanceof Error?e.message:'Unable to verify staff permissions. Admin remains locked.');
+    }
+   }finally{
+    inFlight=false;
+    if(live)setLoading(false);
+   }
   };
-  if(!lastVerified.current)setLoading(true);
   void refresh();
-  const timer=setInterval(()=>void refresh(),30000);
-  window.addEventListener('online',refresh);
-  return()=>{live=false;clearInterval(timer);window.removeEventListener('online',refresh);};
+  const timer=setInterval(()=>void refresh(),5000);
+  const online=()=>void refresh();
+  const offline=()=>{
+   setAccess(null);setMfaReady(false);
+   setError('Admin is locked while this device is offline. Reconnect to verify your staff access.');
+  };
+  window.addEventListener('online',online);
+  window.addEventListener('offline',offline);
+  return()=>{live=false;clearInterval(timer);window.removeEventListener('online',online);window.removeEventListener('offline',offline);};
  },[session.user.id,session.access_token,reload]);
- async function finished(){const row=await loadAdminSession(supabase,session);if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');}
+
+ async function beginVerifiedSession(){
+  const result=await supabase.rpc('matmove_admin_session_touch',{
+   p_device_label:typeof navigator!=='undefined'?(navigator.platform||'Browser device'):'Browser device',
+   p_user_agent:typeof navigator!=='undefined'?navigator.userAgent:'',
+  });
+  if(result.error||!result.data?.startedAt){
+   await supabase.auth.signOut({scope:'local'});
+   throw new Error(result.error?.message||'Your secure Admin session could not be started. Please sign in again.');
+  }
+  expired.current=false;
+  const now=Date.now();
+  lastActivity.current=now;lastTouch.current=now;
+  setSessionStartedAt(result.data.startedAt);
+  setIdleWarning(false);setError('');setMfaReady(true);
+ }
+
+ useEffect(()=>{
+  if(!mfaReady||!sessionStartedAt)return;
+  let live=true;
+  const expire=async(message:string)=>{
+   if(expired.current)return;
+   expired.current=true;
+   setMfaReady(false);setIdleWarning(false);setAccess(null);setError(message);
+   await supabase.auth.signOut({scope:'local'}).catch(()=>undefined);
+  };
+  const touch=async()=>{
+   const now=Date.now();
+   if(touchInFlight.current||now-lastTouch.current<60000)return;
+   touchInFlight.current=true;
+   try{
+    const result=await supabase.rpc('matmove_admin_session_touch',{
+     p_device_label:typeof navigator!=='undefined'?(navigator.platform||'Browser device'):'Browser device',
+     p_user_agent:typeof navigator!=='undefined'?navigator.userAgent:'',
+    });
+    if(!live)return;
+    if(result.error||!result.data?.startedAt){
+     await expire('Your Admin session has expired or was revoked. Sign in again with your password and authenticator.');
+     return;
+    }
+    lastTouch.current=Date.now();
+    setSessionStartedAt(result.data.startedAt);
+   }catch{
+    if(live)await expire('The secure Admin session could not be verified. Sign in again.');
+   }finally{touchInFlight.current=false;}
+  };
+  const activity=()=>{
+   lastActivity.current=Date.now();
+   setIdleWarning(false);
+   void touch();
+  };
+  const check=()=>{
+   const now=Date.now();
+   const idle=now-lastActivity.current;
+   const absolute=now-Date.parse(sessionStartedAt);
+   if(!Number.isFinite(absolute)||absolute>=24*60*60*1000){
+    void expire('Your 24-hour maximum Admin session has ended. Sign in again.');
+   }else if(idle>=15*60*1000){
+    void expire('You were signed out after 15 minutes of inactivity. Sign in again.');
+   }else{
+    setIdleWarning(idle>=13*60*1000);
+   }
+  };
+  const timer=window.setInterval(check,1000);
+  const events=['pointerdown','keydown','touchstart','scroll'];
+  events.forEach(event=>window.addEventListener(event,activity,{passive:true}));
+  const offline=()=>void expire('The secure Admin session is locked because the device went offline. Sign in again after reconnecting.');
+  window.addEventListener('offline',offline);
+  return()=>{
+   live=false;window.clearInterval(timer);
+   events.forEach(event=>window.removeEventListener(event,activity));
+   window.removeEventListener('offline',offline);
+  };
+ },[mfaReady,sessionStartedAt]);
+
+ async function finished(){
+  const row=await loadAdminSession(supabase,session);
+  if(!row?.is_active)throw new Error('Your current staff access could not be confirmed. Contact the owner.');
+  setAccess(row);onRecoveryDone();window.history.replaceState(null,'','/');window.location.assign('/');
+ }
 
  if(loading)return <p className="p-8">Checking staff assignments…</p>;
- return <AdminAccessContext.Provider value={access}>{error&&access?.is_active&&<div role="status" className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-lg">{error}</div>}{!access?.is_active?<Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>:<Suspense fallback={<div role="status" aria-live="polite" className="mx-auto max-w-4xl p-8 text-sm font-semibold text-slate-600">Loading your MatMove Admin section…</div>}>{recovery||access.requires_password_setup||loc.pathname==='/accept-invite'?<StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/>:<Routes>
- <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
- <Route path="/support" element={<Gate access={access} section="support"><CustomerSupportPage/></Gate>}/>
- <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
- <Route path="/homepage-posts" element={<Gate access={access} section="notifications"><HomepagePostsPage/></Gate>}/>
- <Route path="/concierge" element={<Gate access={access} section="concierge"><ConciergePage/></Gate>}/>
- <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
- <Route path="/reports" element={sections.some(([key])=>canAccess(access,key))?<ReportsPage key={access.id}/>:<Denied/>}/>
- <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage/></Gate>}/>
- <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage/></Gate>}/>
- <Route path="/games" element={<GameGate access={access}/>}/>
- <Route path="/sports" element={<Gate access={access} section="sports"><SportsPage/></Gate>}/>
- <Route path="/kyc" element={<Gate access={access} section="kyc"><KycPage/></Gate>}/>
- <Route path="/civitas" element={<Gate access={access} section="financials"><CivitasAdministrativePage/></Gate>}/>
- <Route path="/special" element={<Gate access={access} section="special"><SpecialOperationsPage/></Gate>}/>
- <Route path="/payroll" element={<Gate access={access} section="special"><AdministrativePayrollPage/></Gate>}/>
- <Route path="/travel" element={<Gate access={access} section="travel"><AdminTravelPage/></Gate>}/>
- <Route path="/events" element={<Gate access={access} section="events"><AdminEventsPage/></Gate>}/>
- <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage/></Gate>}/>
- <Route path="/loading-bonanza" element={<Gate access={access} section="financials"><LoadingBonanzaPage/></Gate>}/>
- <Route path="/cash-payments" element={<Gate access={access} section="financials"><CashPaymentsPage/></Gate>}/>
- <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage/></Gate>}/>
- <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
- <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage/></Gate>}/>
- <Route path="/staff" element={<Gate access={access} section="staff"><StaffGovernancePage/></Gate>}/>
-  <Route path="/app-releases" element={<Gate access={access} section="staff"><AppReleasePage/></Gate>}/>
- <Route path="/logs" element={<Gate access={access} section="logs"><LogsPage/></Gate>}/>
- <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage/></Gate>}/>
- <Route path="/wallets" element={<Navigate to="/financials" replace/>}/><Route path="/withdrawals" element={<Navigate to="/payouts" replace/>}/><Route path="/users" element={<Navigate to="/customers" replace/>}/>
- <Route path="*" element={<Denied/>}/>
- </Routes>}</Suspense>}</AdminAccessContext.Provider>;
+ if(!access?.is_active)return <Denied message={error||'Access denied. An active Admin staff assignment is required.'} retry={()=>setReload(n=>n+1)}/>;
+ if(recovery||access.requires_password_setup||loc.pathname==='/accept-invite'){
+  return <AdminAccessContext.Provider value={access}><StaffPasswordPage key={session.user.id} userId={session.user.id} mode={recovery?'recovery':'invite'} onComplete={finished}/></AdminAccessContext.Provider>;
+ }
+ if(!mfaReady){
+  return <StaffMfaGate key={session.user.id} userId={session.user.id} onVerified={beginVerifiedSession}/>;
+ }
+ return <AdminAccessContext.Provider value={access}>
+  {error&&<div role="alert" className="fixed bottom-4 left-1/2 z-[100] w-[min(92vw,620px)] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 shadow-lg">{error}</div>}
+  {idleWarning&&<div role="alertdialog" aria-modal="true" aria-labelledby="admin-idle-title" className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/60 p-4">
+   <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+    <h2 id="admin-idle-title" className="text-lg font-bold text-slate-950">Admin session expiring soon</h2>
+    <p className="mt-2 text-sm leading-6 text-slate-600">You have been inactive for 13 minutes. MatMove Admin will sign you out after 15 minutes of inactivity.</p>
+    <button type="button" onClick={()=>{lastActivity.current=Date.now();setIdleWarning(false);void supabase.rpc('matmove_admin_session_touch',{p_device_label:typeof navigator!=='undefined'?(navigator.platform||'Browser device'):'Browser device',p_user_agent:typeof navigator!=='undefined'?navigator.userAgent:''}).then(result=>{if(result.error)void supabase.auth.signOut({scope:'local'});else lastTouch.current=Date.now();});}} className="mt-5 min-h-11 w-full rounded-xl bg-emerald-800 px-4 py-3 font-bold text-white">Continue working</button>
+   </section>
+  </div>}
+  <Suspense fallback={<div role="status" aria-live="polite" className="mx-auto max-w-4xl p-8 text-sm font-semibold text-slate-600">Loading your MatMove Admin section…</div>}>
+   <Routes>
+    <Route path="/" element={<Navigate to={homeFor(access)} replace/>}/>
+    <Route path="/support" element={<Gate access={access} section="support"><CustomerSupportPage/></Gate>}/>
+    <Route path="/notifications" element={<Gate access={access} section="notifications"><NotificationsPage/></Gate>}/>
+    <Route path="/homepage-posts" element={<Gate access={access} section="notifications"><HomepagePostsPage/></Gate>}/>
+    <Route path="/concierge" element={<Gate access={access} section="concierge"><ConciergePage/></Gate>}/>
+    <Route path="/dashboard" element={<Gate access={access} section="dashboard"><DashboardPage/></Gate>}/>
+    <Route path="/reports" element={sections.some(([key])=>canAccess(access,key))?<ReportsPage key={access.id}/>:<Denied/>}/>
+    <Route path="/dispatch" element={<Gate access={access} section="dispatch"><DispatchRadarPage/></Gate>}/>
+    <Route path="/pricing" element={<Gate access={access} section="pricing"><PricingPage/></Gate>}/>
+    <Route path="/games" element={<GameGate access={access}/>}/>
+    <Route path="/sports" element={<Gate access={access} section="sports"><SportsPage/></Gate>}/>
+    <Route path="/kyc" element={<Gate access={access} section="kyc"><KycPage/></Gate>}/>
+    <Route path="/civitas" element={<Gate access={access} section="financials"><CivitasAdministrativePage/></Gate>}/>
+    <Route path="/special" element={<Gate access={access} section="special"><SpecialOperationsPage/></Gate>}/>
+    <Route path="/payroll" element={<Gate access={access} section="special"><AdministrativePayrollPage/></Gate>}/>
+    <Route path="/travel" element={<Gate access={access} section="travel"><AdminTravelPage/></Gate>}/>
+    <Route path="/events" element={<Gate access={access} section="events"><AdminEventsPage/></Gate>}/>
+    <Route path="/financials" element={<Gate access={access} section="financials"><FinancialsPage/></Gate>}/>
+    <Route path="/loading-bonanza" element={<Gate access={access} section="financials"><LoadingBonanzaPage/></Gate>}/>
+    <Route path="/cash-payments" element={<Gate access={access} section="financials"><CashPaymentsPage/></Gate>}/>
+    <Route path="/transactions" element={<Gate access={access} section="transactions"><TransactionsPage/></Gate>}/>
+    <Route path="/payouts" element={<Gate access={access} section="payouts"><PayoutsPage/></Gate>}/>
+    <Route path="/customers" element={<Gate access={access} section="customers"><UsersPage/></Gate>}/>
+    <Route path="/staff" element={<Gate access={access} section="staff"><StaffGovernancePage/></Gate>}/>
+    <Route path="/app-releases" element={<Gate access={access} section="staff"><AppReleasePage/></Gate>}/>
+    <Route path="/logs" element={<Gate access={access} section="logs"><LogsPage/></Gate>}/>
+    <Route path="/audit" element={<Gate access={access} section="logs"><AuditPage/></Gate>}/>
+    <Route path="/wallets" element={<Navigate to="/financials" replace/>}/>
+    <Route path="/withdrawals" element={<Navigate to="/payouts" replace/>}/>
+    <Route path="/users" element={<Navigate to="/customers" replace/>}/>
+    <Route path="*" element={<Denied/>}/>
+   </Routes>
+  </Suspense>
+ </AdminAccessContext.Provider>;
 }
 const recoveryKey='matmove_admin_recovery';
 export function validRecoveryMarker(raw:string|null,userId:string,now=Date.now()){
