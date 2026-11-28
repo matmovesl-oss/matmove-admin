@@ -35,6 +35,7 @@ export default function StaffMfaGate({
 }) {
   const [stage, setStage] = useState<Stage>('checking');
   const [factorId, setFactorId] = useState('');
+  const [verifiedFactors, setVerifiedFactors] = useState<Factor[]>([]);
   const [canReplaceSetup, setCanReplaceSetup] = useState(false);
   const [challengeId, setChallengeId] = useState('');
   const [qrCode, setQrCode] = useState('');
@@ -83,8 +84,10 @@ export default function StaffMfaGate({
         setStage('verified');
         return;
       }
-      const totp = factors.data?.totp || [];
-      const verified = totp.find((factor: Factor) => factor.status === 'verified');
+      const totp = (factors.data?.totp || []) as unknown as Factor[];
+      const availableFactors = totp.filter((factor: Factor) => factor.status === 'verified');
+      setVerifiedFactors(availableFactors);
+      const verified = availableFactors[0];
       if (verified) {
         setCanReplaceSetup(false);
         await issueChallenge(verified.id);
@@ -170,7 +173,9 @@ export default function StaffMfaGate({
       // enrollment request using the same friendly name.
       const listed = await supabase.auth.mfa.listFactors();
       if (listed.error) throw new Error('Could not check your existing authenticator setup. Access remains blocked; refresh and retry.');
-      const verified = (listed.data?.totp || []).find((factor: Factor) => factor.status === 'verified');
+      const availableFactors = ((listed.data?.totp || []) as unknown as Factor[]).filter((factor: Factor) => factor.status === 'verified');
+      setVerifiedFactors(availableFactors);
+      const verified = availableFactors[0];
       if (verified) {
         setCanReplaceSetup(false);
         await issueChallenge(verified.id);
@@ -270,6 +275,20 @@ export default function StaffMfaGate({
     }
   }
 
+  async function switchAuthenticator(id: string) {
+    if (!id || id === factorId || busy) return;
+    setBusy(true);
+    setError('');
+    setCode('');
+    try {
+      await issueChallenge(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The selected authenticator could not be challenged.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault();
     if (!factorId || !challengeId || !/^\d{6}$/.test(code)) {
@@ -355,7 +374,24 @@ export default function StaffMfaGate({
 
         {stage === 'challenge' && (
           <div className="mt-6 space-y-3">
-            <p className="text-sm leading-6 text-slate-700">Enter the current six-digit code from your registered authenticator app to continue to the Admin workspace.</p>
+            <p className="text-sm leading-6 text-slate-700">Enter the current six-digit code from one of your registered MatMove Admin authenticator devices.</p>
+            {verifiedFactors.length > 1 && (
+              <label className="block text-sm font-semibold text-slate-700">
+                Choose authenticator device
+                <select
+                  value={factorId}
+                  disabled={busy}
+                  onChange={event => void switchAuthenticator(event.target.value)}
+                  className="mt-2 min-h-11 w-full rounded-xl border bg-white px-3 text-sm"
+                >
+                  {verifiedFactors.map((factor, index) => (
+                    <option key={factor.id} value={factor.id}>
+                      {factor.friendly_name || (index === 0 ? 'Primary authenticator' : 'Backup authenticator')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         )}
 
