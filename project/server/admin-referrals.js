@@ -38,7 +38,7 @@ export function createReferralAdminHandler({authorize=requireAdmin,env=process.e
  return async(req,res)=>{res.setHeader('Cache-Control','no-store');try{
   const q=query(req);if(!['referral-overview','referral-page','referral-settings','referral-recovery','referral-recovery-save'].includes(q.view))throw failure(400,'Invalid referral view.');
   if(req.method!==(['referral-settings','referral-recovery-save'].includes(q.view)?'POST':'GET'))throw failure(405,'Method not allowed.');
-  const {client,user,access}=await authorize(req,['financials'],{env});if(q.actor!==user.id)throw failure(409,'Your signed-in account changed. Reopen Financial & Wallets.');
+  const {client,user,access}=await authorize(req,['financials'],{env,maxTotpAgeSeconds:req.method==='POST'?300:undefined});if(q.actor!==user.id)throw failure(409,'Your signed-in account changed. Reopen Financial & Wallets.');
   if(q.view==='referral-recovery'||q.view==='referral-recovery-save'){
    if(access.is_owner!==true)throw failure(403,'Only the owner may recover referral receipts.');
    if(q.cursor||q.state)throw failure(400,'Invalid receipt recovery query.');
